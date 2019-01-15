@@ -1,1 +1,2 @@
-# huaweicloud-sdk-python-obs
+
+Version: 3.0.5
