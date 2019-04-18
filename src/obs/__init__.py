@@ -37,6 +37,7 @@ __all__ = [
     'Lifecycle',
     'Notification',
     'TopicConfiguration',
+    'FunctionGraphConfiguration',
     'FilterRule',
     'Replication',
     'ReplicationRule',

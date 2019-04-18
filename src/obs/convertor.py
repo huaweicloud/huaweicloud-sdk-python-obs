@@ -299,6 +299,16 @@ class Convertor(object):
         ET.SubElement(root, 'DefaultStorageClass').text = util.to_string(self.ha.adapt_storage_class(util.to_string(storageClass)))
         return ET.tostring(root, 'UTF-8')
     
+    def trans_encryption(self, encryption, key=None):
+        root = ET.Element('ServerSideEncryptionConfiguration')
+        rule = ET.SubElement(root, 'Rule')
+        sse = ET.SubElement(rule, 'ApplyServerSideEncryptionByDefault')
+        if encryption == 'kms' and not self.is_obs:encryption = 'aws:kms'
+        ET.SubElement(sse, 'SSEAlgorithm').text = util.to_string(encryption)
+        if key is not None:
+            ET.SubElement(sse, 'KMSMasterKeyID').text = util.to_string(key)
+        return ET.tostring(root, 'UTF-8')    
+            
     def trans_quota(self, quota):
         root = ET.Element('Quota')
         ET.SubElement(root, 'StorageQuota').text = util.to_string(quota)
@@ -482,28 +492,34 @@ class Convertor(object):
     
     def trans_notification(self, notification):
         root = ET.Element('NotificationConfiguration')
-        if notification is not None and len(notification) > 0 and notification.get('topicConfigurations') is not None and len(notification['topicConfigurations']) > 0:
-            for topicConfiguration in notification['topicConfigurations']:
-                topicConfigurationEle = ET.SubElement(root, 'TopicConfiguration')
-                if topicConfiguration.get('id') is not None:
-                    ET.SubElement(topicConfigurationEle, 'Id').text = util.safe_decode(topicConfiguration['id'])
+        
+        def _set_configuration(config_type, urn_type):
+            if notification is not None and len(notification) > 0 and notification.get(config_type) is not None and len(notification[config_type]) > 0:
+                node = config_type[:1].upper() + config_type[1:-1]
+                for topicConfiguration in notification[config_type]:
+                    topicConfigurationEle = ET.SubElement(root, node)
+                    if topicConfiguration.get('id') is not None:
+                        ET.SubElement(topicConfigurationEle, 'Id').text = util.safe_decode(topicConfiguration['id'])
+                        
+                    if isinstance(topicConfiguration.get('filterRules'), list) and len(topicConfiguration['filterRules']) > 0:
+                        filterEle = ET.SubElement(topicConfigurationEle, 'Filter')
+                        filterRulesEle = ET.SubElement(filterEle, 'Object' if self.is_obs else 'S3Key')
+                        for filterRule in topicConfiguration['filterRules']:
+                            filterRuleEle = ET.SubElement(filterRulesEle, 'FilterRule')
+                            if filterRule.get('name') is not None:
+                                ET.SubElement(filterRuleEle, 'Name').text = util.to_string(filterRule['name'])
+                            if filterRule.get('value') is not None:
+                                ET.SubElement(filterRuleEle, 'Value').text = util.safe_decode(filterRule['value'])
+                    _urn_type = urn_type[:1].upper() + urn_type[1:]
+                    if topicConfiguration.get(urn_type) is not None:
+                        ET.SubElement(topicConfigurationEle, _urn_type).text = util.to_string(topicConfiguration[urn_type])
                     
-                if isinstance(topicConfiguration.get('filterRules'), list) and len(topicConfiguration['filterRules']) > 0:
-                    filterEle = ET.SubElement(topicConfigurationEle, 'Filter')
-                    filterRulesEle = ET.SubElement(filterEle, 'Object' if self.is_obs else 'S3Key')
-                    for filterRule in topicConfiguration['filterRules']:
-                        filterRuleEle = ET.SubElement(filterRulesEle, 'FilterRule')
-                        if filterRule.get('name') is not None:
-                            ET.SubElement(filterRuleEle, 'Name').text = util.to_string(filterRule['name'])
-                        if filterRule.get('value') is not None:
-                            ET.SubElement(filterRuleEle, 'Value').text = util.safe_decode(filterRule['value'])
-                
-                if topicConfiguration.get('topic') is not None:
-                    ET.SubElement(topicConfigurationEle, 'Topic').text = util.to_string(topicConfiguration['topic'])
-                
-                if isinstance(topicConfiguration.get('events'), list) and len(topicConfiguration['events']) > 0:
-                    for event in topicConfiguration['events']:
-                        ET.SubElement(topicConfigurationEle, 'Event').text = util.to_string(self.ha.adapt_event_type(event))
+                    if isinstance(topicConfiguration.get('events'), list) and len(topicConfiguration['events']) > 0:
+                        for event in topicConfiguration['events']:
+                            ET.SubElement(topicConfigurationEle, 'Event').text = util.to_string(self.ha.adapt_event_type(event))
+        
+        _set_configuration('topicConfigurations', 'topic')
+        _set_configuration('functionGraphConfigurations', 'functionGraph')                    
                     
         return ET.tostring(root, 'UTF-8')
     
@@ -996,6 +1012,18 @@ class Convertor(object):
         quota = self._find_item(root, 'StorageQuota')
         return GetBucketQuotaResponse(quota=util.to_long(quota))
     
+    def parseGetBucketEncryption(self, xml, headers=None):
+        result = GetBucketEncryptionResponse()
+        root = ET.fromstring(xml)
+        sse = root.find('Rule/ApplyServerSideEncryptionByDefault')
+        if sse:
+            encryption = self._find_item(sse, 'SSEAlgorithm')
+            result.encryption = encryption.replace('aws:', '')
+            result.key = self._find_item(sse, 'KMSMasterKeyID')
+        
+        return result
+        
+    
     def parseGetBucketTagging(self, xml, headers=None):
         result = TagInfo()
         root = ET.fromstring(xml)
@@ -1246,33 +1274,37 @@ class Convertor(object):
     def parseGetBucketNotification(self, xml, headers=None):
         notification = Notification()
         root = ET.fromstring(xml)
-        topicConfigurations = root.findall('TopicConfiguration')
-        if topicConfigurations is not None:
-            tc_list = []
-            for topicConfiguration in topicConfigurations:
-                tc = TopicConfiguration()
-                tc.id = self._find_item(topicConfiguration, 'Id')
-                tc.topic = self._find_item(topicConfiguration, 'Topic')
-                event_list = []
-                events = topicConfiguration.findall('Event')
-                if events is not None:
-                    for event in events:
-                        event_list.append(util.to_string(event.text))
+        def _get_configuration(config_class, config_type, urn_type):
+            topicConfigurations = root.findall(config_type)
+            if topicConfigurations is not None:
+                tc_list = []
+                for topicConfiguration in topicConfigurations:
+                    tc = config_class()
+                    tc.id = self._find_item(topicConfiguration, 'Id')
+                    setattr(tc, urn_type, self._find_item(topicConfiguration, urn_type))
+                    event_list = []
+                    events = topicConfiguration.findall('Event')
+                    if events is not None:
+                        for event in events:
+                            event_list.append(util.to_string(event.text))
+        
+                    tc.events = event_list
+                    filterRule_list = []
+                    filterRules = topicConfiguration.findall('Filter/Object/FilterRule' if self.is_obs else 'Filter/S3Key/FilterRule')
+                    if filterRules is not None:
+                        for filterRule in filterRules:
+                            name = filterRule.find('Name')
+                            value = filterRule.find('Value')
+                            fr = FilterRule(name=util.to_string(name.text) if name is not None else None, value=util.to_string(value.text)
+                                            if value is not None else None)
+                            filterRule_list.append(fr)
+                    tc.filterRules = filterRule_list
+                    tc_list.append(tc)
+                return tc_list
     
-                tc.events = event_list
-                filterRule_list = []
-                filterRules = topicConfiguration.findall('Filter/Object/FilterRule' if self.is_obs else 'Filter/S3Key/FilterRule')
-                if filterRules is not None:
-                    for filterRule in filterRules:
-                        name = filterRule.find('Name')
-                        value = filterRule.find('Value')
-                        fr = FilterRule(name=util.to_string(name.text) if name is not None else None, value=util.to_string(value.text)
-                                        if value is not None else None)
-                        filterRule_list.append(fr)
-                tc.filterRules = filterRule_list
-                tc_list.append(tc)
-    
-            notification.topicConfigurations = tc_list
+        notification.topicConfigurations = _get_configuration(TopicConfiguration, 'TopicConfiguration', 'Topic')
+        notification.functionGraphConfigurations = _get_configuration(FunctionGraphConfiguration, 'FunctionGraphConfiguration', 'FunctionGraph')
+        
         return notification
     
     def parseListMultipartUploads(self, xml, headers=None):

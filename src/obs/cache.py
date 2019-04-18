@@ -4,6 +4,7 @@ import weakref, collections
 from obs import const
 import time
 
+
 class _LocalCacheThread(object):
     class Dict(dict):
         def __del__(self):
@@ -26,8 +27,7 @@ class _LocalCacheThread(object):
     def set(self, key, value):
         self.weak[key] = strongRef = self.Dict(value)
         self.strong.append(strongRef)
-        
-    
+         
 class _LocalCacheProcess(object):
 
     def __init__(self, maxlen=10):
@@ -59,4 +59,5 @@ class _LocalCacheProcess(object):
                 pass
         
         
-LocalCache = _LocalCacheThread if const.IS_WINDOWS else _LocalCacheProcess
+# LocalCache = _LocalCacheThread if const.IS_WINDOWS else _LocalCacheProcess
+LocalCache = _LocalCacheThread

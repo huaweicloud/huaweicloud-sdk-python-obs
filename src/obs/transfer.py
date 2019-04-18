@@ -31,9 +31,9 @@ def _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enable
 
 
 def _resumer_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                      header, versionId, progressCallback, obsClient):
+                      header, versionId, progressCallback, obsClient, imageProcess=None, notifier=progress.NONE_NOTIFIER):
     down_operation = downloadOperation(util.to_string(bucketName), util.to_string(objectKey), util.to_string(downloadFile), partSize, taskNum, enableCheckPoint, util.to_string(checkPointFile),
-                                       header, versionId, progressCallback, obsClient)
+                                       header, versionId, progressCallback, obsClient, imageProcess, notifier)
     if down_operation.size == 0:
         down_operation._delete_record()
         down_operation._delete_tmp_file()
@@ -46,7 +46,7 @@ def _resumer_download(bucketName, objectKey, downloadFile, partSize, taskNum, en
 
 
 class Operation(object):
-    def __init__(self, bucketName, objectKey, fileName, partSize, taskNum, enableCheckPoint, checkPointFile, progressCallback, obsClient):
+    def __init__(self, bucketName, objectKey, fileName, partSize, taskNum, enableCheckPoint, checkPointFile, progressCallback, obsClient, notifier=progress.NONE_NOTIFIER):
         self.bucketName = bucketName
         self.objectKey = objectKey
         self.fileName = util.safe_trans_to_gb2312(fileName)
@@ -55,7 +55,7 @@ class Operation(object):
         self.enableCheckPoint = enableCheckPoint
         self.checkPointFile = util.safe_trans_to_gb2312(checkPointFile)
         self.progressCallback = progressCallback
-        self.notifier = progress.NONE_NOTIFIER
+        self.notifier = notifier
         self.obsClient = obsClient
         self._lock = threading.Lock()
         self._abortLock = threading.Lock()
@@ -300,11 +300,12 @@ class uploadOperation(Operation):
 
 class downloadOperation(Operation):
     def __init__(self, bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                 header, versionId, progressCallback, obsClient):
+                 header, versionId, progressCallback, obsClient, imageProcess=None, notifier=progress.NONE_NOTIFIER):
         super(downloadOperation, self).__init__(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint,
-                                                checkPointFile, progressCallback, obsClient)
+                                                checkPointFile, progressCallback, obsClient, notifier)
         self.header = header
         self.versionId = versionId
+        self.imageProcess = imageProcess
         
         parent_dir = os.path.dirname(self.fileName)
         if not os.path.exists(parent_dir):
@@ -344,6 +345,8 @@ class downloadOperation(Operation):
             return 0
     
     def _download(self):
+        inner_notifier = False
+        
         if self.enableCheckPoint:
             self._load()
         
@@ -357,12 +360,13 @@ class downloadOperation(Operation):
                 unfinished_down_parts.append(part)
             else:
                 sendedBytes += (part['length'] - part['offset']) + 1
-        
         try:        
             if len(unfinished_down_parts) > 0:
-                if self.progressCallback is not None and (self.size - sendedBytes) > 0:
-                    self.notifier = progress.ProgressNotifier(self.progressCallback, self.size)
-                    self.notifier.start()
+                if (self.size - sendedBytes) > 0:
+                    if self.progressCallback is not None:
+                        self.notifier = progress.ProgressNotifier(self.progressCallback, self.size)
+                        inner_notifier = True
+                        self.notifier.start()
                     self.notifier.send(sendedBytes)
                 
                 thread_pools = _ThreadPool(functools.partial(self._produce, download_parts=unfinished_down_parts), [self._consume] * self.taskNum)
@@ -393,7 +397,9 @@ class downloadOperation(Operation):
                 self.obsClient.log_client.log(INFO, 'Rename failed. The reason maybe:[the {0} exists, not a file path, not permission]. Please check.')
                 raise e
         finally:
-            self.notifier.end()
+            if inner_notifier:
+                self.notifier.end()
+            
         
     def _load(self):
         self._record = self._get_record()
@@ -404,7 +410,7 @@ class downloadOperation(Operation):
 
 
     def _prepare(self):
-        object_staus = [self.objectKey, self.size, self.lastModified, self.versionId]
+        object_staus = [self.objectKey, self.size, self.lastModified, self.versionId, self.imageProcess]
         with open(_to_unicode(self._tmp_file), 'wb') as f:
             if self.size > 0:
                 f.seek(self.size-1, 0)
@@ -413,19 +419,20 @@ class downloadOperation(Operation):
         tmp_file_status = [os.path.getsize(self._tmp_file), os.path.getmtime(self._tmp_file)]
         self._record = {'bucketName':self.bucketName, 'objectKey':self.objectKey, 'versionId':self.versionId,
                         'downloadFile':self.fileName, 'downloadParts':self._split_object(), 'objectStatus':object_staus,
-                        'tmpFileStatus':tmp_file_status}
+                        'tmpFileStatus':tmp_file_status, 'imageProcess':self.imageProcess}
         self.obsClient.log_client.log(INFO, 'prepare new download task success.')
         if self.enableCheckPoint:
             self._write_record(self._record)
 
     def _type_record(self, record):
         try:
-            for key in ('bucketName', 'objectKey', 'versionId', 'downloadFile'):
+            for key in ('bucketName', 'objectKey', 'versionId', 'downloadFile', 'imageProcess'):
                 if key == 'versionId' and record['versionId'] is None:
                     continue
+                if key == 'imageProcess' and record['imageProcess'] is None:
+                    continue 
                 if not isinstance(record[key], str):
-                    self.obsClient.log_client.log(ERROR, '{0} is not a string type. {1} belong to {2}'.format(key, record[key],
-                                                                                                              record[key].__class__))
+                    self.obsClient.log_client.log(ERROR, '{0} is not a string type. {1} belong to {2}'.format(key, record[key], record[key].__class__))
                     return False
             if not isinstance(record['downloadParts'], list):
                 self.obsClient.log_client.log(ERROR, 'downloadParts is not a list.It is {0} type'.format(record['downloadParts'].__class__))
@@ -442,10 +449,10 @@ class downloadOperation(Operation):
         return True
 
     def _check_download_record(self, record):
-        if not operator.eq([record['bucketName'], record['objectKey'], record['versionId'], record['downloadFile']],
-                           [self.bucketName, self.objectKey, self.versionId, self.fileName]):
+        if not operator.eq([record['bucketName'], record['objectKey'], record['versionId'], record['downloadFile'], record['imageProcess']],
+                           [self.bucketName, self.objectKey, self.versionId, self.fileName, self.imageProcess]):
             return False
-        if not operator.eq(record['objectStatus'], [self.objectKey, self.size, self.lastModified, self.versionId]):
+        if not operator.eq(record['objectStatus'], [self.objectKey, self.size, self.lastModified, self.versionId, self.imageProcess]):
             return False
         if record['tmpFileStatus'][0] != self.size:
             return False
@@ -484,7 +491,7 @@ class downloadOperation(Operation):
         return get_object_header
     
     def _download_part(self, part):
-        get_object_request = GetObjectRequest(versionId=self.versionId)
+        get_object_request = GetObjectRequest(versionId=self.versionId, imageProcess=self.imageProcess)
         get_object_header = self._copy_get_object_header(self.header)
         get_object_header.range = util.to_string(part['offset'])+'-'+ util.to_string(part['length'])
         if not self._is_abort():

@@ -42,6 +42,7 @@ __all__ = [
     'Lifecycle',
     'Notification',
     'TopicConfiguration',
+    'FunctionGraphConfiguration',
     'FilterRule',
     'Replication',
     'ReplicationRule',
@@ -98,6 +99,7 @@ __all__ = [
     'UploadPartResponse',
     'ResponseWrapper',
     'ObjectStream',
+    'GetBucketEncryptionResponse'
 ]
 
 
@@ -494,10 +496,11 @@ class ReplicationRule(BaseModel):
         self.storageClass = storageClass
         
 class Notification(BaseModel):
-    allowedAttr = {'topicConfigurations': list}
+    allowedAttr = {'topicConfigurations': list, 'functionGraphConfigurations': list}
 
-    def __init__(self, topicConfigurations=None):
+    def __init__(self, topicConfigurations=None, functionGraphConfigurations=None):
         self.topicConfigurations = topicConfigurations
+        self.functionGraphConfigurations = functionGraphConfigurations
 
 class TopicConfiguration(BaseModel):
     allowedAttr = {'id': BASESTRING, 'topic': BASESTRING, 'events': list, 'filterRules': list}
@@ -505,6 +508,15 @@ class TopicConfiguration(BaseModel):
     def __init__(self, id=None, topic=None, events=None, filterRules=None):
         self.id = id
         self.topic = topic
+        self.events = events
+        self.filterRules = filterRules
+
+class FunctionGraphConfiguration(BaseModel):
+    allowedAttr = {'id': BASESTRING, 'functionGraph': BASESTRING, 'events': list, 'filterRules': list}
+
+    def __init__(self, id=None, functionGraph=None, events=None, filterRules=None):
+        self.id = id
+        self.functionGraph = functionGraph
         self.events = events
         self.filterRules = filterRules
 
@@ -917,7 +929,12 @@ class GetBucketStorageInfoResponse(BaseModel):
     def __init__(self, size=None, objectNumber=None):
         self.size = size
         self.objectNumber = objectNumber
-    
+
+class GetBucketEncryptionResponse(BaseModel):
+    allowedAttr = {'encryption': BASESTRING, 'key': BASESTRING}
+    def __init__(self, encryption=None, key=None):
+        self.encryption = encryption
+        self.key = key    
     
 class GetBucketStoragePolicyResponse(BaseModel):
     allowedAttr = {'storageClass': BASESTRING}
@@ -1100,7 +1117,6 @@ class UploadPartResponse(BaseModel):
         self.sseKmsKey = sseKmsKey
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
-        
         
 class ResponseWrapper(object):
     def __init__(self, conn, result, connHolder, contentLength=None, notifier=None):

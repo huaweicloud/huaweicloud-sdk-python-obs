@@ -146,7 +146,7 @@ class delegate(object):
 def conn_delegate(conn):
     return delegate(conn)
 
-def get_readable_entity(readable, chunk_size=65536, notifier=None):
+def get_readable_entity(readable, chunk_size=65536, notifier=None, auto_close=True):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
     def entity(conn):
@@ -164,11 +164,11 @@ def get_readable_entity(readable, chunk_size=65536, notifier=None):
                 conn.send('\r\n' if const.IS_PYTHON2 else '\r\n'.encode('UTF-8'))
                 conn.send(chunk)
         finally:
-            if hasattr(readable, 'close') and callable(readable.close):
+            if hasattr(readable, 'close') and callable(readable.close) and auto_close:
                 readable.close()
     return entity
 
-def get_readable_entity_by_totalcount(readable, totalCount, chunk_size=65536, notifier=None):
+def get_readable_entity_by_totalcount(readable, totalCount, chunk_size=65536, notifier=None, auto_close=True):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
     def entity(conn):
@@ -186,7 +186,7 @@ def get_readable_entity_by_totalcount(readable, totalCount, chunk_size=65536, no
                     break
                 conn.send(chunk)
         finally:
-            if hasattr(readable, 'close') and callable(readable.close):
+            if hasattr(readable, 'close') and callable(readable.close) and auto_close:
                 readable.close()
     return entity
 
@@ -263,7 +263,7 @@ def base64_encode(unencoded):
     return encodeestr if const.IS_PYTHON2 else encodeestr.decode('UTF-8')
 
 def encode_object_key(key):
-    return encode_item(key, '/')
+    return encode_item(key, '/~')
 
 
 def encode_item(item, safe='/'):
@@ -376,3 +376,6 @@ def verify_attr_type(value, allowedAttrType):
                 return True
         return False
     return isinstance(value, allowedAttrType)
+
+def lazyCallback(*args, **kwargs):
+    pass

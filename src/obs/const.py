@@ -69,7 +69,14 @@ DEFAULT_SECURE_PORT = 443
 DEFAULT_INSECURE_PORT = 80
 DEFAULT_MINIMUM_SIZE = 100 * 1024
 DEFAULT_MAXIMUM_SIZE = 5 * 1024 * 1024 * 1024
-OBS_SDK_VERSION = '3.0.5'
+
+DEFAULT_BYTE_INTTERVAL = 102400
+DEFAULT_TASK_INTTERVAL = 100
+DEFAULT_TASK_NUM = 8
+DEFAULT_TASK_QUEUE_SIZE = 20000
+
+
+OBS_SDK_VERSION = '3.1.2.1'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -116,16 +123,29 @@ ALLOWED_RESOURCE_PARAMTER_NAMES = (
         'cors',
         'restore',
         'tagging',
-        'append',
-        'position',
         'replication',
         'metadata',
+        'encryption',
+        
+        # File System API
+        'append',
+        'position',
+        'truncate',
+        'modify',
+        'rename',
+        'length',
+        'name',
+        'fileinterface',
+        
+        
         'response-content-type',
         'response-content-language',
         'response-expires',
         'response-cache-control',
         'response-content-disposition',
         'response-content-encoding',
+        'x-image-save-bucket',
+        'x-image-save-object',
         'x-image-process',
         'x-oss-process'
 )

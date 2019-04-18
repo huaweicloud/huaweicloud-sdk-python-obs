@@ -12,12 +12,12 @@ from setuptools import setup, find_packages
 
 setup(
     name='esdk-obs-python',
-    version='3.0.5',
+    version='3.1.2.1',
     packages=find_packages(),
     zip_safe=False,
     description='OBS Python SDK',
     long_description='OBS Python SDK',
-    license='Apache License 2.0',
+    license='Apache-2.0',
     keywords=('obs', 'python'),
     platforms='Independant',
     url='',
