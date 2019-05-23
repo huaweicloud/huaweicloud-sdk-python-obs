@@ -1,4 +1,29 @@
+﻿Version 3.1.4
+新特性：
+
+资料&demo:
+
+修复问题：
+1. 修复使用chunk模式上传对象时，不符合HTTP规范的问题；
+2. 修复ObsClient.putContent/ObsClient.putObject/ObsClient.putFile/ObsClient.appendObject/ObsClient.uploadPart开启进度条后，在报错场景下未及时清理进度的问题；
+3. 修复ObsClient.initLog可能导致日志冲突的问题，修改为不继承父配置；
+4. 修复ObsClient.close方法未正常关闭日志文件句柄的问题；
+
+-------------------------------------------------------------------------------------------------
+
 Version 3.1.2.1
+新特性：
+1. 新增桶加密接口（ObsClient.setBucketEncryption/ObsClient.getBucketEncryption/ObsClient.deleteBucketEncryption），目前仅支持SSE-KMS的服务端加密方式；
+2. 对象上传相关接口（ObsClient.putContent/ObsClient.putObject/ObsClient.appendObject/ObsClient.uploadPart）新增是否自动关闭输入流标识符，默认为 True；
+
+资料&demo:
+
+修复问题：
+1. 修复linux操作系统下，多次初始化ObsClient导致的fork多个子进程的问题。
+
+
+-------------------------------------------------------------------------------------------------
+Version 3.1.2
 
 新特性：
 1. 桶事件通知接口（ObsClient.setBucketNotification/ObsClient.getBucketNotification）新增对函数工作流服务配置和查询的支持；
