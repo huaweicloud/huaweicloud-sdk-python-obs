@@ -1,6 +1,17 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
-import socket
+# Copyright 2019 Huawei Technologies Co.,Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+# this file except in compliance with the License.  You may obtain a copy of the
+# License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software distributed
+# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations under the License.
+
 import time
 import functools
 import threading
@@ -9,7 +20,6 @@ import re
 import traceback
 import math
 import random
-import multiprocessing
 from obs import const, convertor, util, auth, locks, progress
 from obs.cache import LocalCache
 from obs.ilog import NoneLogClient, INFO, WARNING, ERROR, DEBUG, LogClient
@@ -55,9 +65,6 @@ class _InternalException(Exception):
     def __init__(self, result):
         self.result = result
         
-class _PrematureException(Exception):
-    pass
-
 class _SecurityProvider(object):
     def __init__(self, access_key_id, secret_access_key, security_token=None):
         access_key_id = util.to_string(util.safe_encode(access_key_id)).strip()
@@ -284,6 +291,8 @@ class _BasicClient(object):
                         except Exception as ex:
                             self.log_client.log(WARNING, ex)
         self.connHolder = None
+        if self.log_client:
+            self.log_client.close()
 
     def refresh(self, access_key_id, secret_access_key, security_token=None):
         self.securityProvider = _SecurityProvider(access_key_id, secret_access_key, security_token)
@@ -300,16 +309,6 @@ class _BasicClient(object):
         param = util.safe_encode(param)
         if param is None or util.to_string(param).strip() == '':
             raise Exception(msg)
-    
-    def _need_clear(self, e):
-        clear = False
-        if isinstance(e, (socket.error, httplib.HTTPException)):
-            clear = True
-        elif self.use_http2:
-            from obs import http2
-            clear = http2._is_hyper_exception(e)
-        
-        return clear
     
     def _generate_object_url(self, ret, bucketName, objectKey):
         if ret and ret.status < 300 and ret.body:
@@ -344,17 +343,15 @@ class _BasicClient(object):
                 return self._parse_xml(conn, methodName, readable) if not parseMethod else parseMethod(conn)
             except Exception as e:
                 ret = None
-                if isinstance(e, _PrematureException):
-                    raise e
-                elif isinstance(e, _RedirectException):
-                    _redirectLocation = e.location
-                    flag -= 1
-                    ret = e.result
-                elif isinstance(e, _InternalException):
-                    ret = e.result
                 
-                if self._need_clear(e):
+                if isinstance(e, _InternalException):
+                    ret = e.result
+                else:
                     util.close_conn(conn, self.log_client)
+                    if isinstance(e, _RedirectException):
+                        _redirectLocation = e.location
+                        flag -= 1
+                        ret = e.result
                 
                 if flag >= self.max_retry_count or readable:
                     self.log_client.log(ERROR, 'request error, %s' % e)
@@ -1331,12 +1328,14 @@ class ObsClient(_BasicClient):
                     
             headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
         
-        if notifier is not None:
-            notifier.start()
-        ret = self._make_post_request(bucketName, objectKey, pathArgs={'append': None, 'position': util.to_string(content['position']) if content.get('position') is not None else 0}, 
-                                       headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='appendObject', readable=readable)
-        if notifier is not None:
-            notifier.end()
+        try:
+            if notifier is not None:
+                notifier.start()
+            ret = self._make_post_request(bucketName, objectKey, pathArgs={'append': None, 'position': util.to_string(content['position']) if content.get('position') is not None else 0}, 
+                                           headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='appendObject', readable=readable)
+        finally:
+            if notifier is not None:
+                notifier.end()
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
     
@@ -1354,25 +1353,27 @@ class ObsClient(_BasicClient):
         readable = False
         chunkedMode = False
         
-        entity = content
-        notifier = None
-        if entity is None:
-            entity = ''
-        elif hasattr(entity, 'read') and callable(entity.read):
-            readable = True
-            if headers.get('contentLength') is None:
-                chunkedMode = True
-                notifier = progress.ProgressNotifier(progressCallback, -1) if progressCallback is not None else progress.NONE_NOTIFIER
-                entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose)
-            else:
-                totalCount = util.to_long(headers.get('contentLength'))
-                notifier = progress.ProgressNotifier(progressCallback, totalCount) if totalCount > 0 and progressCallback is not None else progress.NONE_NOTIFIER
-                entity = util.get_readable_entity_by_totalcount(entity, totalCount, self.chunk_size, notifier, autoClose)
-            
-            notifier.start()            
-        ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, chunkedMode=chunkedMode, methodName='putContent', readable=readable)
-        if notifier is not None:
-            notifier.end()
+        try:
+            entity = content
+            notifier = None
+            if entity is None:
+                entity = ''
+            elif hasattr(entity, 'read') and callable(entity.read):
+                readable = True
+                if headers.get('contentLength') is None:
+                    chunkedMode = True
+                    notifier = progress.ProgressNotifier(progressCallback, -1) if progressCallback is not None else progress.NONE_NOTIFIER
+                    entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose)
+                else:
+                    totalCount = util.to_long(headers.get('contentLength'))
+                    notifier = progress.ProgressNotifier(progressCallback, totalCount) if totalCount > 0 and progressCallback is not None else progress.NONE_NOTIFIER
+                    entity = util.get_readable_entity_by_totalcount(entity, totalCount, self.chunk_size, notifier, autoClose)
+                
+                notifier.start()            
+            ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, chunkedMode=chunkedMode, methodName='putContent', readable=readable)
+        finally:
+            if notifier is not None:
+                notifier.end()
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
 
@@ -1437,9 +1438,11 @@ class ObsClient(_BasicClient):
             notifier = progress.NONE_NOTIFIER
             readable = False
         entity = util.get_file_entity_by_totalcount(file_path, totalCount, self.chunk_size, notifier)
-        notifier.start()
-        ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, methodName='putContent', readable=readable)
-        notifier.end()
+        try:
+            notifier.start()
+            ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, methodName='putContent', readable=readable)
+        finally:
+            notifier.end()
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
     
@@ -1510,13 +1513,15 @@ class ObsClient(_BasicClient):
                     headers[const.CONTENT_MD5_HEADER] = md5
                 if sseHeader:
                     self.convertor._set_sse_header(sseHeader, headers, True)
-                    
-        if notifier is not None:
-            notifier.start()
-        ret = self._make_put_request(bucketName, objectKey, pathArgs={'partNumber': partNumber, 'uploadId': uploadId}, 
+        
+        try:
+            if notifier is not None:
+                notifier.start()
+            ret = self._make_put_request(bucketName, objectKey, pathArgs={'partNumber': partNumber, 'uploadId': uploadId}, 
                                       headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='uploadPart', readable=readable)
-        if notifier is not None:
-            notifier.end()
+        finally:
+            if notifier is not None:
+                notifier.end()
         return ret
     
     @funcCache

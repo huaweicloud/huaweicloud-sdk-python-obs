@@ -1,5 +1,16 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
+# Copyright 2019 Huawei Technologies Co.,Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+# this file except in compliance with the License.  You may obtain a copy of the
+# License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software distributed
+# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations under the License.
 
 import os
 import sys
@@ -72,6 +83,9 @@ class NoneLogClient(object):
     def log(self, level, msg, *args, **kwargs):
         pass
 
+    def close(self):
+        pass
+
 class LogClient(object):
     def __init__(self, log_config, log_name='OBS_LOGGER', display_name=None):
         if not log_config or not isinstance(log_config, LogConf):
@@ -83,6 +97,8 @@ class LogClient(object):
         self.logger = logging.getLogger(log_name)
         if not hasattr(self.logger, '_inited'):
             self.logger.setLevel(logging.DEBUG)
+            if hasattr(self.logger, 'propagate'):
+                self.logger.propagate = False
             if not log_config.disable:
                 self.initLogger()
             self.logger._inited = 1
@@ -107,8 +123,15 @@ class LogClient(object):
             console_handler = logging.StreamHandler()
             console_handler.setLevel(self.log_config.print_log_level)
             console_handler.setFormatter(formatter)
-
             self.logger.addHandler(console_handler)
+
+    def close(self):
+        for handle in self.logger.handlers:
+            try:
+                handle.close()
+            except:
+                # ignore exception of log handle close.
+                pass
 
     def log(self, level, msg, *args, **kwargs):
         base_back = sys._getframe().f_back
