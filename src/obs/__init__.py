@@ -71,6 +71,7 @@ __all__ = [
     'CompleteMultipartUploadRequest',
     'DeleteObjectsRequest',
     'ListMultipartUploadsRequest',
-    'GetObjectRequest'
+    'GetObjectRequest',
+    'UploadFileHeader'
 ]
 

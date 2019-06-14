@@ -252,20 +252,25 @@ class ConcurrentRotatingFileHandler(BaseRotatingHandler):
             # opens "logfile.3" in notepad); we could test rename each file, but
             # nobody's complained about this being an issue; so the additional
             # code complexity isn't warranted.
-            for i in range(self.backupCount - 1, 0, -1):
-                sfn = "%s.%d" % (self.baseFilename, i)
-                dfn = "%s.%d" % (self.baseFilename, i + 1)
-                if os.path.exists(sfn):
-                    #print "%s -> %s" % (sfn, dfn)
-                    if os.path.exists(dfn):
-                        os.remove(dfn)
-                    os.rename(sfn, dfn)
-            dfn = self.baseFilename + ".1"
-            if os.path.exists(dfn):
-                os.remove(dfn)
-            os.rename(tmpname, dfn)
-            #print "%s -> %s" % (self.baseFilename, dfn)
-            self._degrade(False, "Rotation completed")
+            try:
+                for i in range(self.backupCount - 1, 0, -1):
+                    sfn = "%s.%d" % (self.baseFilename, i)
+                    dfn = "%s.%d" % (self.baseFilename, i + 1)
+                    if os.path.exists(sfn):
+                        #print "%s -> %s" % (sfn, dfn)
+                        if os.path.exists(dfn):
+                            os.remove(dfn)
+                        if os.path.exists(sfn):
+                            os.rename(sfn, dfn)
+                dfn = self.baseFilename + ".1"
+                if os.path.exists(dfn):
+                    os.remove(dfn)
+                if os.path.exists(tmpname):
+                    os.rename(tmpname, dfn)
+                #print "%s -> %s" % (self.baseFilename, dfn)
+                self._degrade(False, "Rotation completed")
+            except (IOError, OSError):
+                pass
         finally:
             # Re-open the output stream, but if "delay" is enabled then wait
             # until the next emit() call. This could reduce rename contention in

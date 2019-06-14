@@ -110,7 +110,8 @@ __all__ = [
     'UploadPartResponse',
     'ResponseWrapper',
     'ObjectStream',
-    'GetBucketEncryptionResponse'
+    'GetBucketEncryptionResponse',
+    'UploadFileHeader'
 ]
 
 
@@ -615,6 +616,21 @@ class PutObjectHeader(BaseModel):
         self.extensionGrants = extensionGrants
 
 AppendObjectHeader = PutObjectHeader
+
+class UploadFileHeader(BaseModel):
+    allowedAttr = {'acl': BASESTRING, 'websiteRedirectLocation': BASESTRING,'contentType': BASESTRING, 'sseHeader': SseHeader,
+                   'storageClass': BASESTRING, 'successActionRedirect': BASESTRING, 'expires': int, 'extensionGrants': list}
+
+    def __init__(self, acl=None, websiteRedirectLocation=None, contentType=None, sseHeader=None,
+                 storageClass=None, successActionRedirect=None, expires=None, extensionGrants=None):
+        self.acl = acl
+        self.websiteRedirectLocation = websiteRedirectLocation
+        self.contentType = contentType
+        self.sseHeader = sseHeader
+        self.storageClass = storageClass
+        self.successActionRedirect = successActionRedirect
+        self.expires = expires
+        self.extensionGrants = extensionGrants
 
 class AppendObjectContent(BaseModel):
     allowedAttr = {'content': [object], 'position': [LONG, int, BASESTRING], 'offset':[LONG, int, BASESTRING], 'isFile': bool}

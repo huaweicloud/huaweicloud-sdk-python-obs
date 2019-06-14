@@ -22,7 +22,7 @@ from obs import const
 
 class Adapter(object):
     
-    OBS_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'public-read-delivered', 'public-read-write-delivered']
+    OBS_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'public-read-delivered', 'public-read-write-delivered', 'bucket-owner-full-control']
     V2_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'authenticated-read', 'bucket-owner-read', 'bucket-owner-full-control', 'log-delivery-write']
     
     OBS_ALLOWED_STORAGE_CLASS = ['STANDARD', 'WARM', 'COLD']
@@ -608,6 +608,9 @@ class Convertor(object):
                     if group_val:
                         granteeEle = ET.SubElement(grantEle, 'Grantee', {} if self.is_obs else attrib)
                         ET.SubElement(granteeEle, 'Canned' if self.is_obs else 'URI').text = group_val
+                    else:
+                        aclEle.remove(grantEle)
+                        continue
                 elif grantee.get('grantee_id') is not None:
                     attrib['xsi:type'] = 'CanonicalUser'
                     granteeEle = ET.SubElement(grantEle, 'Grantee', {} if self.is_obs else attrib)

@@ -27,6 +27,7 @@ from obs.model import CompletePart
 from obs.model import CompleteMultipartUploadRequest
 from obs.model import GetObjectRequest
 from obs.model import GetObjectHeader
+from obs.model import UploadFileHeader
 from obs.ilog import INFO, ERROR, DEBUG
 
 if const.IS_PYTHON2:
@@ -35,9 +36,9 @@ else:
     import queue
 
 
-def _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile, checkSum, metadata, progressCallback, obsClient):
+def _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile, checkSum, metadata, progressCallback, obsClient, headers):
     upload_operation = uploadOperation(util.to_string(bucketName), util.to_string(objectKey), util.to_string(uploadFile), partSize, taskNum, enableCheckPoint,
-                                       util.to_string(checkPointFile), checkSum, metadata, progressCallback, obsClient)
+                                       util.to_string(checkPointFile), checkSum, metadata, progressCallback, obsClient, headers)
     return upload_operation._upload()
 
 
@@ -108,11 +109,12 @@ class Operation(object):
 
 class uploadOperation(Operation):
     def __init__(self, bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                 checkSum, metadata, progressCallback, obsClient):
+                 checkSum, metadata, progressCallback, obsClient, headers):
         super(uploadOperation, self).__init__(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint,
                                               checkPointFile, progressCallback, obsClient)
         self.checkSum = checkSum
         self.metadata = metadata
+        self.headers = headers
 
         try:
             self.size = os.path.getsize(self.fileName)
@@ -267,8 +269,14 @@ class uploadOperation(Operation):
         fileStatus = [self.size, self.lastModified]
         if self.checkSum:
             fileStatus.append(util.md5_file_encode_by_size_offset(self.fileName, self.size, 0))
+        
+        if self.headers is None:
+            self.headers = UploadFileHeader()
             
-        resp = self.obsClient.initiateMultipartUpload(self.bucketName, self.objectKey, metadata=self.metadata)
+        resp = self.obsClient.initiateMultipartUpload(self.bucketName, self.objectKey, metadata=self.metadata, acl=self.headers.acl,
+                                                      storageClass=self.headers.storageClass, websiteRedirectLocation=self.headers.websiteRedirectLocation,
+                                                      contentType=self.headers.contentType, sseHeader=self.headers.sseHeader, expires=self.headers.expires, 
+                                                      extensionGrants=self.headers.extensionGrants)
         if resp.status > 300:
             raise Exception('initiateMultipartUpload failed. ErrorCode:{0}. ErrorMessage:{1}'.format(resp.errorCode, resp.errorMessage))
         uploadId = resp.body.uploadId

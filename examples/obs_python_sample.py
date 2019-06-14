@@ -1,5 +1,16 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
+# Copyright 2019 Huawei Technologies Co.,Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+# this file except in compliance with the License.  You may obtain a copy of the
+# License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software distributed
+# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations under the License.
 
 from obs import *
 
@@ -9,7 +20,7 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 
 # create ObsClient instance
-obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
+obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server='http://yweywyeewoi')
 bucketClient = obsClient.bucketClient(bucketName)
 
 # init log
@@ -284,13 +295,13 @@ def DeleteBucketWebsite():
 # set bucket logging configuration
 def SetBucketLogging():
     Lgrantee = Grantee(grantee_id='userid', group=None)
-    Lgrantee1 = Grantee(grantee_id=None, group=Group.ALL_USERE)
+    Lgrantee1 = Grantee(grantee_id=None, group=Group.ALL_USERS)
 
     Lgrant1 = Grant(grantee=Lgrantee, permission=Permission.WRITE)
     Lgrant2 = Grant(grantee=Lgrantee1, permission=Permission.READ)
 
     LgrantList = [Lgrant1, Lgrant2]
-    Llog = Logging(targetBucket='bucket003', targetPrefix='log_1', targetGrants=LgrantList)
+    Llog = Logging(targetBucket='bucket003', targetPrefix='log_1', targetGrants=LgrantList, agency='your agency')
 
     resp = bucketClient.setBucketLogging(logstatus=Llog)
     print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
@@ -391,6 +402,24 @@ def GetBucketNotification():
                 print('rule [' + str(index) + ']')
                 print('name:', rule.name)
                 print('value:', rule.value)
+
+#set bucket encryption
+def SetBucketEncryption():
+    resp = bucketClient.setBucketEncryption('kms')
+    print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
+
+#get bucket encryption
+def GetBucketEncription():
+    resp = bucketClient.getBucketEncryption()
+    print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
+    if resp.body:
+        print('encryption:', resp.body)
+
+#delete bucket encryption
+def DeleteBucketEncryption():
+    resp = bucketClient.deleteBucketEncryption()
+    print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
+
 
 # list multipart uploads
 def ListMultipartUploads():
@@ -654,7 +683,7 @@ if __name__ == '__main__':
 # =========================================================
 #     CreateBucket()
 #     DeleteBucket()
-#     ListBuckets()
+    ListBuckets()
 #     HeadBucket()
 #     GetBucketMetadata()
 #     SetBucketQuota()

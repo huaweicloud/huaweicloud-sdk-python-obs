@@ -372,12 +372,17 @@ class _BasicClient(object):
             objectKey = ''
         port = None
         scheme = None
+        path = None
         if redirectLocation:
             redirectLocation = urlparse(redirectLocation)
             connect_server = redirectLocation.hostname
             scheme = redirectLocation.scheme
             port = redirectLocation.port if redirectLocation.port is not None else const.DEFAULT_INSECURE_PORT if scheme.lower() == 'http' else const.DEFAULT_SECURE_PORT
             redirect = True
+            _path = redirectLocation.path
+            query = redirectLocation.query
+            path = _path + '?' + query if query else _path
+            skipAuthentication = True if path else False
         else:
             connect_server = self.server if self.is_cname else self.calling_format.get_server(self.server, bucketName)
             redirect = False
@@ -385,8 +390,10 @@ class _BasicClient(object):
         
         if self.is_cname:
             bucketName = ''
-            
-        path = self.calling_format.get_url(bucketName, objectKey, pathArgs)
+        
+        if not path:    
+            path = self.calling_format.get_url(bucketName, objectKey, pathArgs)
+        
         headers = self._rename_request_headers(headers, method)
 
         if entity is not None and not callable(entity):
@@ -399,8 +406,7 @@ class _BasicClient(object):
 
         headers[const.HOST_HEADER] = '%s:%s' % (connect_server, port) if port != 443 and port != 80 else connect_server
         header_config = self._add_auth_headers(headers, method, bucketName, objectKey, pathArgs, skipAuthentication)
-            
-
+        
         header_log = header_config.copy()
         header_log[const.HOST_HEADER] = '******'
         header_log[const.AUTHORIZATION_HEADER] = '******'
@@ -796,6 +802,11 @@ class _BasicClient(object):
             
         self.log_client.log(DEBUG, 'http response result:status:%d,reason:%s,code:%s,message:%s,headers:%s',
                             status, reason, code, message, header)
+        
+        if status >= 300:
+            self.log_client.log(ERROR, 'exceptional obs response:status:%d,reason:%s,code:%s,message:%s,requestId:%s',
+                                status, reason, code, message, requestId)
+ 
         ret = GetResult(code=code, message=message, status=status, reason=reason, body=body, 
                          requestId=requestId, hostId=hostId, resource=resource, header=header)
         
@@ -1092,6 +1103,8 @@ class ObsClient(_BasicClient):
     def setBucketAcl(self, bucketName, acl=ACL(), aclControl=None):
         if acl is not None and len(acl) > 0 and aclControl is not None:
             raise Exception('Both acl and aclControl are set')
+        if not acl and not aclControl:
+            raise Exception('Both acl and aclControl are not set')
         return self._make_put_request(bucketName, **self.convertor.trans_set_bucket_acl(acl=acl, aclControl=aclControl))
 
     @funcCache
@@ -1606,6 +1619,8 @@ class ObsClient(_BasicClient):
     def setObjectAcl(self, bucketName, objectKey, acl=ACL(), versionId=None, aclControl=None):
         if acl is not None and len(acl) > 0 and aclControl is not None:
             raise Exception('Both acl and aclControl are set')
+        if not acl and not aclControl:
+            raise Exception('Both acl and aclControl are not set')
         return self._make_put_request(bucketName, objectKey, **self.convertor.trans_set_object_acl(acl=acl, versionId=versionId, aclControl=aclControl))
 
 
@@ -1720,9 +1735,9 @@ class ObsClient(_BasicClient):
     
 
     @funcCache
-    def uploadFile(self, bucketName, objectKey, uploadFile, partSize=5 * 1024 * 1024, 
+    def uploadFile(self, bucketName, objectKey, uploadFile, partSize=9 * 1024 * 1024, 
                    taskNum=1, enableCheckpoint=False, checkpointFile=None, 
-                   checkSum=False, metadata=None, progressCallback=None):
+                   checkSum=False, metadata=None, progressCallback=None, headers=None):
         self.log_client.log(INFO, 'enter resume upload file...')
         self._assert_not_null(bucketName, 'bucketName is empty')
         self._assert_not_null(objectKey, 'objectKey is empty')
@@ -1740,7 +1755,7 @@ class ObsClient(_BasicClient):
             taskNum = 1
         else:
             taskNum = int(math.ceil(taskNum))
-        return _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile, checkSum, metadata, progressCallback, self)
+        return _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile, checkSum, metadata, progressCallback, self, headers)
     
     @funcCache
     def _downloadFileWithNotifier(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1, enableCheckpoint=False,

@@ -87,7 +87,7 @@ DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 
 
-OBS_SDK_VERSION = '3.1.4'
+OBS_SDK_VERSION = '3.19.5'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -211,7 +211,8 @@ ALLOWED_RESPONSE_HTTP_HEADER_METADATA_NAMES = (
         'access-control-max-age',
         'access-control-allow-methods',
         'access-control-expose-headers',
-        'connection'
+        'connection',
+        'x-reserved-indicator'
 )
 
 
