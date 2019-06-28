@@ -403,24 +403,6 @@ def GetBucketNotification():
                 print('name:', rule.name)
                 print('value:', rule.value)
 
-#set bucket encryption
-def SetBucketEncryption():
-    resp = bucketClient.setBucketEncryption('kms')
-    print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
-
-#get bucket encryption
-def GetBucketEncription():
-    resp = bucketClient.getBucketEncryption()
-    print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
-    if resp.body:
-        print('encryption:', resp.body)
-
-#delete bucket encryption
-def DeleteBucketEncryption():
-    resp = bucketClient.deleteBucketEncryption()
-    print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
-
-
 # list multipart uploads
 def ListMultipartUploads():
     Lmultipart = ListMultipartUploadsRequest(delimiter=None, prefix=None, max_uploads=10, key_marker=None,
