@@ -61,23 +61,8 @@ def doBucketQuotaOperation():
 #     resp = obsClient.getBucketQuota(bucketName)
     resp = bucketClient.getBucketQuota()
 
-    print('Getting bucket quota ' + str(resp.body) + ' \n')
+    print('Getting bucket quota ' + str(resp.body) + ' \n')   
     
-def doBucketEncryptionOperation():
-    print('Setting bucket encryption\n')
-#     obsClient.setBucketEncryption(bucketName, 'kms')
-    bucketClient.setBucketEncryption('kms')
-    
-    print('Getting bucket encryption\n')
-#     resp = obsClient.getBucketEncryption(bucketName)
-    resp = bucketClient.getBucketEncryption()
-    print('\t' + str(resp.body) + '\n')
-
-    print('Deleting bucket encryption\n')
-#     obsClient.deleteBucketEncryption(bucketName)
-    bucketClient.deleteBucketEncryption()
-    
-
 def doBucketVersioningOperation():
 #     print('Getting bucket versioning config ' + str(obsClient.getBucketVersioning(bucketName).body) + ' \n')
     print('Getting bucket versioning config ' + str(bucketClient.getBucketVersioning().body) + ' \n')
@@ -232,9 +217,6 @@ getBucketStorageInfo()
 
 # Put/Get bucket quota operations
 doBucketQuotaOperation()
-
-# Put/Get/Delete encryption operations
-doBucketEncryptionOperation()
 
 # Put/Get bucket versioning operations
 doBucketVersioningOperation()
