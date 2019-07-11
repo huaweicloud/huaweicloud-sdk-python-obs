@@ -171,7 +171,8 @@ class _BasicClient(object):
                  port=None, max_retry_count=3, timeout=60, chunk_size=65536,
                  long_conn_mode=False, proxy_host=None, proxy_port=None,
                  proxy_username=None, proxy_password=None, security_token=None,
-                 custom_ciphers=None, use_http2=False, is_signature_negotiation=True, is_cname=False):
+                 custom_ciphers=None, use_http2=False, is_signature_negotiation=True, is_cname=False,
+                 max_redirect_count=10):
         self.securityProvider = _SecurityProvider(access_key_id, secret_access_key, security_token)
         server = server if server is not None else ''
         server = util.to_string(util.safe_encode(server))
@@ -212,6 +213,7 @@ class _BasicClient(object):
         self.use_http2 = use_http2
         self.is_signature_negotiation = is_signature_negotiation
         self.is_cname = is_cname
+        self.max_redirect_count = max_redirect_count
         
         if self.path_style or self.is_cname:
             self.is_signature_negotiation = False
@@ -332,9 +334,17 @@ class _BasicClient(object):
     def _make_put_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, entity=None, chunkedMode=False, methodName=None, readable=False):
         return self._make_request_with_retry(const.HTTP_METHOD_PUT, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, methodName=methodName, readable=readable)
 
+    def _make_error_result(self, e, ret):
+        self.log_client.log(ERROR, 'request error, %s' % e)
+        self.log_client.log(ERROR, traceback.format_exc())
+        if ret is not None:
+            return ret
+        raise e
+
     def _make_request_with_retry(self, methodType, bucketName, objectKey=None, pathArgs=None, headers=None, 
                        entity=None, chunkedMode=False, methodName=None, readable=False, parseMethod=None, redirectLocation=None, skipAuthentication=False):
         flag = 0
+        redirect_count = 0
         conn = None
         _redirectLocation = redirectLocation
         while True:
@@ -349,16 +359,16 @@ class _BasicClient(object):
                 else:
                     util.close_conn(conn, self.log_client)
                     if isinstance(e, _RedirectException):
+                        redirect_count += 1
                         _redirectLocation = e.location
                         flag -= 1
                         ret = e.result
-                
+                if redirect_count >= self.max_redirect_count:
+                    self.log_client.log(ERROR, 'request redirect count [%d] greater than max redirect count [%d]' % (
+                    redirect_count, self.max_redirect_count))
+                    return self._make_error_result(e, ret)
                 if flag >= self.max_retry_count or readable:
-                    self.log_client.log(ERROR, 'request error, %s' % e)
-                    self.log_client.log(ERROR, traceback.format_exc())
-                    if ret is not None:
-                        return ret
-                    raise e
+                    return self._make_error_result(e, ret)
                 flag += 1
                 time.sleep(math.pow(2, flag) * 0.05)
                 self.log_client.log(WARNING, 'request again, time:%d' % int(flag))
@@ -769,6 +779,7 @@ class _BasicClient(object):
                 break
             xml = chunk if xml is None else xml + chunk
         header = self._rename_response_headers(headers)
+        indicator = headers.get(self.ha.indicator_header())
         if status < 300:
             if methodName is not None:
                 parseMethod = getattr(self.convertor, 'parse' + methodName[:1].upper() + methodName[1:])
@@ -799,7 +810,7 @@ class _BasicClient(object):
                 
         if not requestId:
             requestId = headers.get(self.ha.request_id_header())
-            
+          
         self.log_client.log(DEBUG, 'http response result:status:%d,reason:%s,code:%s,message:%s,headers:%s',
                             status, reason, code, message, header)
         
@@ -808,7 +819,7 @@ class _BasicClient(object):
                                 status, reason, code, message, requestId)
  
         ret = GetResult(code=code, message=message, status=status, reason=reason, body=body, 
-                         requestId=requestId, hostId=hostId, resource=resource, header=header)
+                         requestId=requestId, hostId=hostId, resource=resource, header=header, indicator=indicator)
         
         if not readable:
             if status >= 300 and status < 400 and status != 304 and const.LOCATION_HEADER.lower() in headers:

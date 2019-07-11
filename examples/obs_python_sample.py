@@ -20,7 +20,7 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 
 # create ObsClient instance
-obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server='http://yweywyeewoi')
+obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
 bucketClient = obsClient.bucketClient(bucketName)
 
 # init log

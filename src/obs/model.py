@@ -142,9 +142,10 @@ class BaseModel(dict):
 class GetResult(BaseModel):
  
     allowedAttr = {'status': int, 'reason':BASESTRING, 'errorCode': BASESTRING, 'errorMessage': BASESTRING,
-                   'body': object, 'requestId': BASESTRING, 'hostId': BASESTRING, 'resource': BASESTRING, 'header':list}
+                   'body': object, 'requestId': BASESTRING, 'hostId': BASESTRING, 'resource': BASESTRING, 'header':list,
+                   'indicator': BASESTRING}
  
-    def __init__(self, code=None, message=None, status=None, reason=None, body=None, requestId=None, hostId=None, resource=None, header=None):
+    def __init__(self, code=None, message=None, status=None, reason=None, body=None, requestId=None, hostId=None, resource=None, header=None, indicator=None):
         self.status = status
         self.reason = reason
         self.errorCode = code
@@ -154,6 +155,7 @@ class GetResult(BaseModel):
         self.hostId = hostId
         self.resource = resource
         self.header = header
+        self.indicator = indicator
 
 class CompletePart(BaseModel):
     allowedAttr = {'partNum': int, 'etag': BASESTRING}

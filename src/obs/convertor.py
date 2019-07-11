@@ -78,6 +78,9 @@ class Adapter(object):
     def request_id_header(self):
         return self._get_header_prefix() + 'request-id'
     
+    def indicator_header(self):
+        return 'x-reserved-indicator'
+    
     def location_header(self):
         return self._get_header_prefix() + 'location'
     

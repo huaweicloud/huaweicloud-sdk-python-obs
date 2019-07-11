@@ -61,8 +61,9 @@ def doBucketQuotaOperation():
 #     resp = obsClient.getBucketQuota(bucketName)
     resp = bucketClient.getBucketQuota()
 
-    print('Getting bucket quota ' + str(resp.body) + ' \n')   
+    print('Getting bucket quota ' + str(resp.body) + ' \n')
     
+
 def doBucketVersioningOperation():
 #     print('Getting bucket versioning config ' + str(obsClient.getBucketVersioning(bucketName).body) + ' \n')
     print('Getting bucket versioning config ' + str(bucketClient.getBucketVersioning().body) + ' \n')

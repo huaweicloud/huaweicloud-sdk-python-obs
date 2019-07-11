@@ -17,14 +17,8 @@ import sys
 import logging.handlers
 from obs.const import IS_WINDOWS, IS_PYTHON2
 
-_lock = None
-
-if IS_WINDOWS:
-    import threading
-    _lock = threading.Lock()
-else:
-    import multiprocessing
-    _lock = multiprocessing.Lock()
+import threading
+_lock = threading.Lock()
 
 if IS_PYTHON2:
     from ConfigParser import ConfigParser
@@ -32,13 +26,6 @@ else:
     from configparser import ConfigParser
 
 _handler = logging.handlers.RotatingFileHandler
-
-if not IS_WINDOWS:
-    try:
-        from obs import cloghandler
-        _handler = cloghandler.ConcurrentRotatingFileHandler
-    except Exception:
-        pass
 
 CRITICAL = logging.CRITICAL
 ERROR = logging.ERROR
