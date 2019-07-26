@@ -1,3 +1,14 @@
+Version 3.19.5.1
+
+Documentation & Demo
+1. Added the description of the max_redirect_count parameter in the OBS client initialization section of the API Reference.
+2. Added the description of the max_redirect_count parameter in the OBS client initialization section of the Developer Guide.
+
+Resolved issues:
+1. Fixed the issue that infinite number of redirects, resulting in an infinite loop.
+
+-------------------------------------------------------------------------------------------------
+
 Version 3.19.5
 Updated the version ID format. The new version ID is named in the following format: Main version ID.Year ID.Month ID.
 
@@ -15,6 +26,7 @@ Resolved issues:
 2. Fixed the issue that the process exits abnormally due to logrotate in special scenarios.
 3. Optimized the resumable upload API uploadFile. The default part size is changed to 9 MB.
 4. Fixed the issue that bucketClient does not support bucket encryption APIs.
+
 -------------------------------------------------------------------------------------------------
 
 Version 3.1.4
