@@ -43,7 +43,8 @@ from obs.model import GetObjectHeader
 from obs.model import CopyObjectHeader
 from obs.model import SetObjectMetadataHeader
 from obs.bucket import BucketClient
-
+import loadtoken
+from inspect import isfunction
 
 if const.IS_PYTHON2:
     from urlparse import urlparse
@@ -166,13 +167,13 @@ class ConvertWrapper(object):
 
 
 class _BasicClient(object):
-    def __init__(self, access_key_id, secret_access_key, is_secure=True, server=None,
+    def __init__(self, access_key_id='', secret_access_key='', is_secure=True, server=None,
                  signature='obs', region='region', path_style=False, ssl_verify=False,
                  port=None, max_retry_count=3, timeout=60, chunk_size=65536,
                  long_conn_mode=False, proxy_host=None, proxy_port=None,
                  proxy_username=None, proxy_password=None, security_token=None,
                  custom_ciphers=None, use_http2=False, is_signature_negotiation=True, is_cname=False,
-                 max_redirect_count=10):
+                 max_redirect_count=10, security_providers=None, security_provider_policy=None):
         self.securityProvider = _SecurityProvider(access_key_id, secret_access_key, security_token)
         server = server if server is not None else ''
         server = util.to_string(util.safe_encode(server))
@@ -194,6 +195,24 @@ class _BasicClient(object):
         if len(host_port) == 2:
             port = util.to_int(host_port[1])
 
+        self.security_provider_policy = security_provider_policy
+        
+        if security_providers is None:
+            self.security_providers = [loadtoken.ENV, loadtoken.ECS]
+        else:
+            self.security_providers = security_providers    
+
+        try:
+            if security_providers == []:
+                raise ValueError('no available security_providers')
+            for method in self.security_providers:
+                getattr(method, '__name__')
+                if not isfunction(method.search):
+                    raise AttributeError(method+'has no function called search')
+        except Exception:
+            self.security_provider_policy = None
+            print(traceback.format_exc())        
+
         self.is_secure = is_secure
         self.server = host_port[0]
 
@@ -214,7 +233,7 @@ class _BasicClient(object):
         self.is_signature_negotiation = is_signature_negotiation
         self.is_cname = is_cname
         self.max_redirect_count = max_redirect_count
-        
+
         if self.path_style or self.is_cname:
             self.is_signature_negotiation = False
             if self.signature == 'obs':
@@ -248,6 +267,20 @@ class _BasicClient(object):
         else:
             self.ha = convertor.Adapter(self.signature)
             self.convertor = convertor.Convertor(self.signature, self.ha)
+
+    def _get_token(self):
+        from searchmethod import get_token
+        try:
+            if self.security_provider_policy is not None:
+                if self.securityProvider.access_key_id!='' and self.securityProvider.secret_access_key!='':
+                    return self.securityProvider                
+
+                value_dict = get_token(self.security_providers, name=self.security_provider_policy)
+                securityProvider = _SecurityProvider(value_dict.get('accessKey'),value_dict.get('secretKey'),value_dict.get('securityToken')) 
+                return securityProvider
+        except Exception:
+            self.log_client.log(WARNING, traceback.format_exc())                      
+        return self.securityProvider
 
     def _init_connHolder(self):
         if const.IS_PYTHON2:
@@ -426,7 +459,7 @@ class _BasicClient(object):
 
     def _add_auth_headers(self, headers, method, bucketName, objectKey, pathArgs, skipAuthentication=False):
         from datetime import datetime
-        
+
         now_date = None
         if self.ha.date_header() not in headers:
             now_date = datetime.utcnow()
@@ -434,11 +467,11 @@ class _BasicClient(object):
         
         if skipAuthentication:
             return headers  
-        
-        securityProvider = self.securityProvider
+
+        securityProvider = self._get_token()
         ak = securityProvider.access_key_id
         sk = securityProvider.secret_access_key
-        
+
         if util.is_valid(ak) and util.is_valid(sk):
             if securityProvider.security_token is not None:
                 headers[self.ha.security_token_header()] = securityProvider.security_token
@@ -588,8 +621,7 @@ class _BasicClient(object):
         except _InternalException as ex:
             raise ex
         except Exception as e:
-            if self._need_clear(e):
-                conn._clear = True
+            conn._clear = True  
             self.log_client.log(ERROR, traceback.format_exc())
             raise e
         finally:
@@ -887,7 +919,7 @@ class ObsClient(_BasicClient):
         
         expires += util.to_int(time.time())
 
-        securityProvider = self.securityProvider
+        securityProvider = self._get_token()
         if securityProvider.security_token is not None and self.ha.security_token_header() not in queryParams:
             queryParams[self.ha.security_token_header()] = securityProvider.security_token
 
@@ -913,7 +945,7 @@ class ObsClient(_BasicClient):
         from datetime import datetime
 
         headers, queryParams, expires, calling_format = self._prepareParameterForSignedUrl(specialParam, expires, headers, queryParams)
-        
+
         if self.is_cname:
             connect_server = self.server
             bucketName = None
@@ -927,7 +959,7 @@ class ObsClient(_BasicClient):
         shortDate = date.strftime(const.SHORT_DATE_FORMAT)
         longDate = date.strftime(const.LONG_DATE_FORMAT)
 
-        securityProvider = self.securityProvider
+        securityProvider = self._get_token()
 
         if securityProvider.security_token is not None and self.ha.security_token_header() not in queryParams:
             queryParams[self.ha.security_token_header()] = securityProvider.security_token
@@ -938,7 +970,7 @@ class ObsClient(_BasicClient):
         queryParams['X-Amz-Credential'] = v4Auth.getCredenttial()
         queryParams['X-Amz-Date'] = longDate
         queryParams['X-Amz-Expires'] = expires
-        
+
         headMap = v4Auth.setMapKeyLower(headers)
         signedHeaders = v4Auth.getSignedHeaders(headMap)
         
@@ -970,7 +1002,7 @@ class ObsClient(_BasicClient):
         date = datetime.utcnow()
         shortDate = date.strftime(const.SHORT_DATE_FORMAT)
         longDate = date.strftime(const.LONG_DATE_FORMAT)
-        securityProvider = self.securityProvider
+        securityProvider = self._get_token()
 
         expires = 300 if expires is None else util.to_int(expires)
         expires = date + timedelta(seconds=expires)
