@@ -1,3 +1,17 @@
+Version 3.19.7.1
+
+New Features:
+1. Supports obtaining access keys in customized mode to create an instance of ObsClient. Currently, users can obtain access keys from environment variables or obtain temporary access keys from the ECS server. Or users can customize other obtaining methods. Multiple methods can be combined to obtain access keys. In this case, users can obtain access keys by using the methods in sequence or by specifying which method goes first.
+
+Documentation & Demo:
+1. Added the security_providers and security_provider_policy parameters to section "Initializing an Instance of ObsClient" in OBS Python SDK API Reference.
+2. Added the code example for obtaining access keys to create an instance of ObsClient in predefined mode to section "Initializing an Instance of ObsClient" in OBS Python SDK API Reference.
+3. Added the code examples for obtaining access keys in predefined mode and in combination mode to section "Creating an Instance of ObsClient" in OBS Python SDK Developer Guide.
+4. Added the security_providers and security_provider_policy parameters to section "Configuring an Instance of ObsClient" in OBS Python SDK Developer Guide.
+
+Resolved Issues:
+-------------------------------------------------------------------------------------------------
+
 Version 3.19.5.1
 
 Documentation & Demo
