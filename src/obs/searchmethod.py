@@ -12,7 +12,7 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-from loadtoken import NoneTokenException
+from obs.loadtoken import NoneTokenException
 
 def get_token(security_providers, name='OBS_DEFAULT'):
     if name == 'OBS_DEFAULT':

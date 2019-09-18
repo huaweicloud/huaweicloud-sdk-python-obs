@@ -43,7 +43,7 @@ from obs.model import GetObjectHeader
 from obs.model import CopyObjectHeader
 from obs.model import SetObjectMetadataHeader
 from obs.bucket import BucketClient
-import loadtoken
+from obs import loadtoken
 from inspect import isfunction
 
 if const.IS_PYTHON2:
@@ -269,7 +269,7 @@ class _BasicClient(object):
             self.convertor = convertor.Convertor(self.signature, self.ha)
 
     def _get_token(self):
-        from searchmethod import get_token
+        from obs.searchmethod import get_token
         try:
             if self.security_provider_policy is not None:
                 if self.securityProvider.access_key_id!='' and self.securityProvider.secret_access_key!='':

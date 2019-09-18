@@ -1,3 +1,14 @@
+
+Version 3.19.7.2
+
+New Features:
+
+Documentation & Demo:
+1. Fixed the issue that package import method using the relative path is incompatible with Python 3.x versions.
+
+Resolved Issues:
+-------------------------------------------------------------------------------------------------
+
 Version 3.19.7.1
 
 New Features:
