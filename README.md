@@ -1,12 +1,16 @@
-
-Version 3.19.7.2
-
-New Features:
+Version 3.19.11
 
 Documentation & Demo:
-1. Fixed the issue that package import method using the relative path is incompatible with Python 3.x versions.
 
 Resolved Issues:
+1. Fixed the issue that the authentication information header is added when redirection is performed upon a 302 response returned for a GET request.
+2. Fixed the issue that the content-type cannot be obtained based on the file name extension if the extension is in uppercase.
+3. Fixed the issue that the sequence of request parameters is incorrect in Authentication make_canonicalstring for calculating the authentication value.
+4. Fixed the issue that the sample code examples/concurrent_copy_part_sample.py does not process failed requests.
+5. Fixed the issue that the sample code examples/concurrent_download_object_sample.py does not process failed requests.
+6. Fixed the issue that the sample code examples/concurrent_upload_part_sample.py does not process failed requests.
+7. Fixed the issue that some response fields are empty in anonymous access.
+
 -------------------------------------------------------------------------------------------------
 
 Version 3.19.7.1
@@ -20,7 +24,16 @@ Documentation & Demo:
 3. Added the code examples for obtaining access keys in predefined mode and in combination mode to section "Creating an Instance of ObsClient" in OBS Python SDK Developer Guide.
 4. Added the security_providers and security_provider_policy parameters to section "Configuring an Instance of ObsClient" in OBS Python SDK Developer Guide.
 
-Resolved Issues:
+Resolved issues:
+
+-------------------------------------------------------------------------------------------------
+
+Version 3.19.5.2
+
+Documentation & Demo
+
+Resolved issues:
+1. Fixed the issue that an error occurs indicating no attribute when the broken pipe exception occurs during the API calling.
 -------------------------------------------------------------------------------------------------
 
 Version 3.19.5.1

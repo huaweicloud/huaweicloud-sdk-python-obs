@@ -112,18 +112,17 @@ class Authentication(object):
             str_list.append('/')
 
         if path_args:
-            e1 = '?'
-            e2 = '&'
+            e = '?'
             cannoList = sorted(path_args.items(), key=lambda d: d[0])
             for path_key, path_value in cannoList:
                 if path_key.lower() in const.ALLOWED_RESOURCE_PARAMTER_NAMES or path_key.lower().startswith(self.ha._get_header_prefix()):
                     path_key = util.encode_item(path_key, '/')
                     if path_value is None:
-                        e1 += path_key + '&'
+                        e += path_key + '&'
                         continue
-                    e2 += path_key + '=' + util.to_string(path_value) + '&'
+                    e += path_key + '=' + util.to_string(path_value) + '&'
 
-            e = (e1 + e2).replace('&&', '&').replace('?&', '?')[:-1]
+            e = e[:-1]
             str_list.append(e)
         return ''.join(str_list)
 

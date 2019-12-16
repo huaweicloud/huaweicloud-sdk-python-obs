@@ -63,23 +63,32 @@ def doGetObject(lock, completedBlocks, bucketName, objectKey, startPos, endPos, 
                         break
                     f.write(chunk)
                 response.close()
-        print('Part#', i+1, 'done\n')
+        print('Part#' + str(i+1) + 'done\n')
         with lock:
             completedBlocks.value += 1
+    else:
+        print('\tPart#' + str(i+1) + ' failed\n')            
 
 if __name__ == '__main__':
     # Constructs a obs client instance with your account for accessing OBS
     obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
     # Create bucket
     print('Create a new bucket to upload file\n')
-    obsClient.createBucket(bucketName)
+    resp = obsClient.createBucket(bucketName)
+    if resp.status >= 300:
+        raise Exception('Create Bucket failed')
 
     # Upload an object to your bucket
     print('Uploading a new object to OBS from a file\n')
-    obsClient.putFile(bucketName, objectKey, sampleFilePath)
+    resp = obsClient.putFile(bucketName, objectKey, sampleFilePath)
+    if resp.status >= 300:
+        raise Exception('putFile failed')
 
     # Get size of the object
     resp = obsClient.getObjectMetadata(bucketName, objectKey)
+    if resp.status >= 300:
+        raise Exception('getObjectMetadata failed')
+
     header = dict(resp.header)
     objectSize = int(header.get('content-length'))
 
@@ -130,10 +139,14 @@ if __name__ == '__main__':
     for p in processes:
         p.join()
 
-    if not IS_WINDOWS and completedBlocks.value != blockCount:
+    if completedBlocks.value != blockCount:
         raise Exception('Download fails due to some blocks are not finished yet')
 
     print('Succeed to download object ' + objectKey + '\n')
 
     print('Deleting object ' + objectKey + '\n')
-    obsClient.deleteObject(bucketName, objectKey)
+    resp = obsClient.deleteObject(bucketName, objectKey)
+    if resp.status < 300:
+        print('Deleting object ' + objectKey + ' Succeed\n')
+    else:
+        raise Exception('Deleting object failed')    

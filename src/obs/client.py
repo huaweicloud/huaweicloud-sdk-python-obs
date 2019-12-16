@@ -380,9 +380,10 @@ class _BasicClient(object):
         redirect_count = 0
         conn = None
         _redirectLocation = redirectLocation
+        redirectFlag = False
         while True:
             try:
-                conn = self._make_request_internal(methodType, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, _redirectLocation, skipAuthentication=skipAuthentication)
+                conn = self._make_request_internal(methodType, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, _redirectLocation, skipAuthentication=skipAuthentication, redirectFlag=redirectFlag)
                 return self._parse_xml(conn, methodName, readable) if not parseMethod else parseMethod(conn)
             except Exception as e:
                 ret = None
@@ -396,6 +397,10 @@ class _BasicClient(object):
                         _redirectLocation = e.location
                         flag -= 1
                         ret = e.result
+                        if methodType == const.HTTP_METHOD_GET and  e.result.status == 302:
+                            redirectFlag = True
+                        else:
+                            redirectFlag = False
                 if redirect_count >= self.max_redirect_count:
                     self.log_client.log(ERROR, 'request redirect count [%d] greater than max redirect count [%d]' % (
                     redirect_count, self.max_redirect_count))
@@ -409,7 +414,7 @@ class _BasicClient(object):
             break
 
     def _make_request_internal(self, method, bucketName='', objectKey=None, pathArgs=None, headers=None, entity=None,
-                               chunkedMode=False, redirectLocation=None, skipAuthentication=False):
+                               chunkedMode=False, redirectLocation=None, skipAuthentication=False, redirectFlag=False):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
@@ -425,7 +430,10 @@ class _BasicClient(object):
             _path = redirectLocation.path
             query = redirectLocation.query
             path = _path + '?' + query if query else _path
-            skipAuthentication = True if path else False
+            skipAuthentication = True
+            if not redirectFlag and not path:
+                skipAuthentication = False
+
         else:
             connect_server = self.server if self.is_cname else self.calling_format.get_server(self.server, bucketName)
             redirect = False
@@ -449,7 +457,7 @@ class _BasicClient(object):
 
         headers[const.HOST_HEADER] = '%s:%s' % (connect_server, port) if port != 443 and port != 80 else connect_server
         header_config = self._add_auth_headers(headers, method, bucketName, objectKey, pathArgs, skipAuthentication)
-        
+
         header_log = header_config.copy()
         header_log[const.HOST_HEADER] = '******'
         header_log[const.AUTHORIZATION_HEADER] = '******'
@@ -662,7 +670,7 @@ class _BasicClient(object):
             reason = result.reason
             self.convertor.parseGetObject(headers, body)
             header = self._rename_response_headers(headers)
-            requestId = headers.get(self.ha.request_id_header())
+            requestId = dict(header).get('request-id')
             return GetResult(status=status, reason=reason, header=header, body=body, requestId=requestId)
         except _RedirectException as ex:
             raise ex
@@ -724,7 +732,7 @@ class _BasicClient(object):
             reason = result.reason
             self.convertor.parseGetObject(headers, body)
             header = self._rename_response_headers(headers)
-            requestId = headers.get(self.ha.request_id_header())
+            requestId = dict(header).get('request-id')
             return GetResult(status=status, reason=reason, header=header, body=body, requestId=requestId)
         except _RedirectException as ex:
             raise ex
@@ -755,15 +763,15 @@ class _BasicClient(object):
                 readed_count += len(chunk)
         return origin_file_path, readed_count
     
-    def _rename_key(self, k, v, header_prefix, meta_header_prefix):
+    def _rename_key(self, k, v):
         flag = 0
-        if k.startswith(meta_header_prefix):
-            k = k[k.index(meta_header_prefix) + len(meta_header_prefix):]
+        if k.startswith(const.V2_META_HEADER_PREFIX):
+            k = k[k.index(const.V2_META_HEADER_PREFIX) + len(const.V2_META_HEADER_PREFIX):]
             k = util.decode_item(k)
             v = util.decode_item(v)
             flag = 1
-        elif k.startswith(header_prefix):
-            k = k[k.index(header_prefix) + len(header_prefix):]
+        elif k.startswith(const.V2_HEADER_PREFIX):
+            k = k[k.index(const.V2_HEADER_PREFIX) + len(const.V2_HEADER_PREFIX):]
             v = util.decode_item(v)
             flag = 1
         elif k.startswith(const.OBS_META_HEADER_PREFIX):
@@ -779,14 +787,12 @@ class _BasicClient(object):
 
     def _rename_response_headers(self, headers):
         header = []
-        header_prefix = self.ha._get_header_prefix()
-        meta_header_prefix = self.ha._get_meta_header_prefix()
         for k, v in headers.items():
             flag = 0
             if k in const.ALLOWED_RESPONSE_HTTP_HEADER_METADATA_NAMES:
                 flag = 1
             else:
-                flag, k, v = self._rename_key(k, v, header_prefix, meta_header_prefix)
+                flag, k, v = self._rename_key(k, v)
             if flag:
                 header.append((k, v))
         return header
@@ -803,7 +809,6 @@ class _BasicClient(object):
         headers = {}
         for k, v in result.getheaders():
             headers[k.lower()] = v
-        
         xml = None
         while True:
             chunk = result.read(chuckSize)
@@ -829,7 +834,9 @@ class _BasicClient(object):
                         self.log_client.log(ERROR, util.to_string(e))
                         self.log_client.log(ERROR, traceback.format_exc())
                     
-            requestId = headers.get(self.ha.request_id_header())
+            requestId = headers.get('x-obs-request-id')
+            if requestId is None:
+                requestId = headers.get('x-amz-request-id')
         elif xml:
             xml = xml if const.IS_PYTHON2 else xml.decode('UTF-8')
             try:
@@ -840,16 +847,18 @@ class _BasicClient(object):
                 self.log_client.log(ERROR, util.to_string(ee))
                 self.log_client.log(ERROR, traceback.format_exc())
                 
-        if not requestId:
-            requestId = headers.get(self.ha.request_id_header())
+        if requestId is None:
+            requestId = headers.get('x-obs-request-id')
+        if requestId is None:
+            requestId = headers.get('x-amz-request-id')
           
         self.log_client.log(DEBUG, 'http response result:status:%d,reason:%s,code:%s,message:%s,headers:%s',
                             status, reason, code, message, header)
-        
+
         if status >= 300:
             self.log_client.log(ERROR, 'exceptional obs response:status:%d,reason:%s,code:%s,message:%s,requestId:%s',
                                 status, reason, code, message, requestId)
- 
+
         ret = GetResult(code=code, message=message, status=status, reason=reason, body=body, 
                          requestId=requestId, hostId=hostId, resource=resource, header=header, indicator=indicator)
         
@@ -1329,7 +1338,7 @@ class ObsClient(_BasicClient):
             content = AppendObjectContent()
             
         if headers.get('contentType') is None:
-            headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:])
+            headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
         
         chunkedMode = False
         readable = False
@@ -1342,7 +1351,7 @@ class ObsClient(_BasicClient):
                     raise Exception('file [%s] does not exist' % file_path)
             
             if headers.get('contentType') is None:
-                headers['contentType'] = const.MIME_TYPES.get(file_path[file_path.rfind('.') + 1:])
+                headers['contentType'] = const.MIME_TYPES.get(file_path[file_path.rfind('.') + 1:].lower())
             
             file_size = util.to_long(os.path.getsize(file_path))
             headers['contentLength'] = util.to_long(headers.get('contentLength'))
@@ -1403,7 +1412,7 @@ class ObsClient(_BasicClient):
         if headers is None:
             headers = PutObjectHeader()
         if headers.get('contentType') is None:
-            headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:])
+            headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
         _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
         
         readable = False
@@ -1475,10 +1484,10 @@ class ObsClient(_BasicClient):
             headers['contentLength'] = size if headers['contentLength'] > size else headers['contentLength']
 
         if headers.get('contentType') is None:
-            headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:])
+            headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
 
         if headers.get('contentType') is None:
-            headers['contentType'] = const.MIME_TYPES.get(file_path[file_path.rfind('.') + 1:])
+            headers['contentType'] = const.MIME_TYPES.get(file_path[file_path.rfind('.') + 1:].lower())
 
         _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
         if const.CONTENT_LENGTH_HEADER not in _headers:
@@ -1700,7 +1709,7 @@ class ObsClient(_BasicClient):
             objectKey = ''
         
         if contentType is None:
-            contentType = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:])
+            contentType = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
         
         return self._make_post_request(bucketName, objectKey, methodName='initiateMultipartUpload', 
                                        **self.convertor.trans_initiate_multipart_upload(acl=acl, storageClass=storageClass, 

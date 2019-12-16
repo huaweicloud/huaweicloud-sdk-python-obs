@@ -54,27 +54,39 @@ def doCopyPart(partETags, bucketName, objectKey, partNumber, uploadId, copySourc
     resp = obsClient.copyPart(bucketName=bucketName, objectKey=objectKey, partNumber=partNumber, uploadId=uploadId, copySource=copySource, copySourceRange=copySourceRange)
     if resp.status < 300:
         partETags[partNumber] = resp.body.etag
-        print('Part#', partNumber, 'done\n')
+        print('Part#' + str(partNumber) + 'done\n')
+    else:
+        print('\tPart#' + str(partNumber) + ' failed\n')
 
 if __name__ == '__main__':
     # Constructs a obs client instance with your account for accessing OBS
     obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
     # Create bucket
     print('Create a new bucket for demo\n')
-    obsClient.createBucket(bucketName)
+    resp = obsClient.createBucket(bucketName)
+    if resp.status >= 300:
+        raise Exception('Create Bucket failed')
 
     # # Upload an object to your source bucket
     print('Uploading a new object to OBS from a file\n')
-    obsClient.putFile(sourceBucketName, sourceObjectKey, sampleFilePath)
+    resp = obsClient.putFile(sourceBucketName, sourceObjectKey, sampleFilePath)
+    if resp.status >= 300:
+        raise Exception('putFile failed')
 
     # Claim a upload id firstly
     resp = obsClient.initiateMultipartUpload(bucketName, objectKey)
+    if resp.status >= 300:
+        raise Exception('initiateMultipartUpload failed')
+
     uploadId = resp.body.uploadId
     print('Claiming a new upload id ' + uploadId + '\n')
 
     # 5MB
     partSize = 5 * 1024 * 1024
     resp = obsClient.getObjectMetadata(sourceBucketName, sourceObjectKey)
+    if resp.status >= 300:
+        raise Exception('getObjectMetadata failed')
+
     header = dict(resp.header)
     objectSize = int(header.get('content-length'))
 
@@ -110,14 +122,17 @@ if __name__ == '__main__':
         p.join()
 
     if len(partETags) != partCount:
-        raise Exception('Upload multiparts fail due to some parts are not finished yet')
+        raise Exception('copyParts fail due to some parts are not finished yet')
 
     # View all parts uploaded recently
     print('Listing all parts......')
     resp = obsClient.listParts(bucketName, objectKey, uploadId)
-    for part in resp.body.parts:
-        print('\tPart#' + str(part.partNumber) + ', ETag=' + part.etag)
-    print('\n')
+    if resp.status < 300:
+        for part in resp.body.parts:
+            print('\tPart#' + str(part.partNumber) + ', ETag=' + part.etag)
+        print('\n')
+    else:
+        raise Exception('listParts failed')
 
     # Complete to upload multiparts
 
@@ -131,3 +146,7 @@ if __name__ == '__main__':
     resp = obsClient.completeMultipartUpload(bucketName, objectKey, uploadId, CompleteMultipartUploadRequest(parts))
     if resp.status < 300:
         print('Succeed to complete multiparts into an object named ' + objectKey + '\n')
+    else:
+        print('errorCode:', resp.errorCode)
+        print('errorMessage:', resp.errorMessage)
+        raise Exception('completeMultipartUpload failed')
