@@ -444,7 +444,7 @@ class _BasicClient(object):
         
         if not path:    
             path = self.calling_format.get_url(bucketName, objectKey, pathArgs)
-        
+
         headers = self._rename_request_headers(headers, method)
 
         if entity is not None and not callable(entity):
@@ -461,6 +461,8 @@ class _BasicClient(object):
         header_log = header_config.copy()
         header_log[const.HOST_HEADER] = '******'
         header_log[const.AUTHORIZATION_HEADER] = '******'
+        if self.ha.security_token_header() in header_log:
+            header_log[self.ha.security_token_header()] = "******"
         self.log_client.log(DEBUG, 'method:%s, path:%s, header:%s', method, path, header_log)
         conn = self._send_request(connect_server, method, path, header_config, entity, port, scheme, redirect, chunkedMode)
         return conn
@@ -492,11 +494,18 @@ class _BasicClient(object):
                 longDate = now_date.strftime(const.LONG_DATE_FORMAT)
                 v4Auth = auth.V4Authentication(ak, sk, str(self.region) if self.region is not None else '', shortDate, longDate, self.path_style, self.ha)
                 ret = v4Auth.doAuth(method, bucketName, objectKey, pathArgs, headers)
-                self.log_client.log(DEBUG, '%s: %s' % (const.CANONICAL_REQUEST, ret[const.CANONICAL_REQUEST]))
+
+                log_canonical_request = ret[const.CANONICAL_REQUEST]
+                if self.ha.security_token_header() in headers:
+                    log_canonical_request = str.replace(log_canonical_request, headers[self.ha.security_token_header()],"******")
+                self.log_client.log(DEBUG, '%s: %s' % (const.CANONICAL_REQUEST, log_canonical_request))
             else:
                 obsAuth = auth.Authentication(ak, sk, self.path_style, self.ha, self.server, self.is_cname)
                 ret = obsAuth.doAuth(method, bucketName, objectKey, pathArgs, headers)
-                self.log_client.log(DEBUG, '%s: %s' % (const.CANONICAL_STRING, ret[const.CANONICAL_STRING]))
+                log_canonical_string = ret[const.CANONICAL_STRING]
+                if self.ha.security_token_header() in headers:
+                    log_canonical_string = str.replace(log_canonical_string, headers[self.ha.security_token_header()], "******")
+                self.log_client.log(DEBUG, '%s: %s' % (const.CANONICAL_STRING, log_canonical_string))
             headers[const.AUTHORIZATION_HEADER] = ret[const.AUTHORIZATION_HEADER]
         return headers
     
@@ -510,10 +519,10 @@ class _BasicClient(object):
                         if method not in (const.HTTP_METHOD_PUT, const.HTTP_METHOD_POST):
                             continue
                         k = self.ha._get_meta_header_prefix() + k
-                    
+
                     if(k.lower().startswith(self.ha._get_meta_header_prefix())):
                         k = util.encode_item(k, ' ;/?:@&=+$,')
-                    
+
                     if(k.lower() == self.ha._get_header_prefix() + 'copy-source'):
                         index = v.rfind('?versionId=')
                         if index > 0:

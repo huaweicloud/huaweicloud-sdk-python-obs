@@ -19,7 +19,7 @@ OBS using the OBS SDK for Python.
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
-server = 'your-endpoint'
+server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 

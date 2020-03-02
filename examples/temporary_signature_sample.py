@@ -19,7 +19,7 @@
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
-server = 'http://your-endpoint'
+server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 
