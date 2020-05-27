@@ -36,16 +36,16 @@ else:
     import queue
 
 
-def _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile, checkSum, metadata, progressCallback, obsClient, headers):
+def _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile, checkSum, metadata, progressCallback, obsClient, headers, extensionHeaders=None):
     upload_operation = uploadOperation(util.to_string(bucketName), util.to_string(objectKey), util.to_string(uploadFile), partSize, taskNum, enableCheckPoint,
-                                       util.to_string(checkPointFile), checkSum, metadata, progressCallback, obsClient, headers)
+                                       util.to_string(checkPointFile), checkSum, metadata, progressCallback, obsClient, headers, extensionHeaders=extensionHeaders)
     return upload_operation._upload()
 
 
 def _resumer_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                      header, versionId, progressCallback, obsClient, imageProcess=None, notifier=progress.NONE_NOTIFIER):
+                      header, versionId, progressCallback, obsClient, imageProcess=None, notifier=progress.NONE_NOTIFIER, extensionHeaders=None):
     down_operation = downloadOperation(util.to_string(bucketName), util.to_string(objectKey), util.to_string(downloadFile), partSize, taskNum, enableCheckPoint, util.to_string(checkPointFile),
-                                       header, versionId, progressCallback, obsClient, imageProcess, notifier)
+                                       header, versionId, progressCallback, obsClient, imageProcess, notifier, extensionHeaders=extensionHeaders)
     if down_operation.size == 0:
         down_operation._delete_record()
         down_operation._delete_tmp_file()
@@ -109,12 +109,13 @@ class Operation(object):
 
 class uploadOperation(Operation):
     def __init__(self, bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                 checkSum, metadata, progressCallback, obsClient, headers):
+                 checkSum, metadata, progressCallback, obsClient, headers, extensionHeaders=None):
         super(uploadOperation, self).__init__(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint,
                                               checkPointFile, progressCallback, obsClient)
         self.checkSum = checkSum
         self.metadata = metadata
         self.headers = headers
+        self.extensionHeaders = extensionHeaders
 
         try:
             self.size = os.path.getsize(self.fileName)
@@ -123,7 +124,7 @@ class uploadOperation(Operation):
             self._delete_record()
             self.obsClient.log_client.log(ERROR, 'something is happened when obtain uploadFile information. Please check')
             raise e
-        resp = self.obsClient.headBucket(self.bucketName)
+        resp = self.obsClient.headBucket(self.bucketName, extensionHeaders=extensionHeaders)
         if resp.status > 300:
             raise Exception('head bucket {0} failed. Please check. Status:{1}.'.format(self.bucketName, resp.status))
 
@@ -157,7 +158,7 @@ class uploadOperation(Operation):
                 thread_pools.run()
                 
                 if self._abort:
-                    self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'])
+                    self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'], extensionHeaders=self.extensionHeaders)
                     self.obsClient.log_client.log(ERROR, 'the code from server is 4**, please check space、persimission and so on.')
                     self._delete_record()
                     if self._exception is not None:
@@ -166,7 +167,7 @@ class uploadOperation(Operation):
                 for p in self._record['uploadParts']:
                     if not p['isCompleted']:
                         if not self.enableCheckPoint:
-                            self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'])
+                            self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'], extensionHeaders=self.extensionHeaders)
                         raise Exception('some parts are failed when upload. Please try again')
                 
             part_Etags = []
@@ -174,18 +175,18 @@ class uploadOperation(Operation):
                 part_Etags.append(CompletePart(partNum=part['partNum'], etag=part['etag']))
                 self.obsClient.log_client.log(INFO, 'Completing to upload multiparts')
             resp = self.obsClient.completeMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'],
-                                                          CompleteMultipartUploadRequest(part_Etags))
+                                                          CompleteMultipartUploadRequest(part_Etags), extensionHeaders=self.extensionHeaders)
             if resp.status < 300:
                 if self.enableCheckPoint:
                     self._delete_record()
             else:
                 if not self.enableCheckPoint:
-                    self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'])
+                    self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'], extensionHeaders=self.extensionHeaders)
                     self.obsClient.log_client.log(ERROR, 'something is wrong when complete multipart.ErrorCode:{0}. ErrorMessage:{1}'.format(
                         resp.errorCode, resp.errorMessage))
                 else:
                     if resp.status > 300 and resp.status < 500:
-                        self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'])
+                        self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'], extensionHeaders=self.extensionHeaders)
                         self.obsClient.log_client.log(ERROR, 'something is wrong when complete multipart.ErrorCode:{0}. ErrorMessage:{1}'.format(
                             resp.errorCode, resp.errorMessage))
                         self._delete_record()
@@ -197,7 +198,7 @@ class uploadOperation(Operation):
         self._record = self._get_record()
         if self._record and not (self._type_check(self._record) and self._check_upload_record(self._record)):
             if self._record['bucketName'] and self._record['objectKey'] and self._record['uploadId'] is not None:
-                self.obsClient.abortMultipartUpload(self._record['bucketName'], self._record['objectKey'], self._record['uploadId'])
+                self.obsClient.abortMultipartUpload(self._record['bucketName'], self._record['objectKey'], self._record['uploadId'], extensionHeaders=self.extensionHeaders)
             self.obsClient.log_client.log(ERROR, 'checkpointFile is invalid')
             self._delete_record()
             self._record = None
@@ -276,7 +277,7 @@ class uploadOperation(Operation):
         resp = self.obsClient.initiateMultipartUpload(self.bucketName, self.objectKey, metadata=self.metadata, acl=self.headers.acl,
                                                       storageClass=self.headers.storageClass, websiteRedirectLocation=self.headers.websiteRedirectLocation,
                                                       contentType=self.headers.contentType, sseHeader=self.headers.sseHeader, expires=self.headers.expires, 
-                                                      extensionGrants=self.headers.extensionGrants)
+                                                      extensionGrants=self.headers.extensionGrants, extensionHeaders=self.extensionHeaders)
         if resp.status > 300:
             raise Exception('initiateMultipartUpload failed. ErrorCode:{0}. ErrorMessage:{1}'.format(resp.errorCode, resp.errorMessage))
         uploadId = resp.body.uploadId
@@ -301,7 +302,7 @@ class uploadOperation(Operation):
         if not self._is_abort():
             try:
                 resp = self.obsClient._uploadPartWithNotifier(self.bucketName, self.objectKey, part['partNumber'], self._record['uploadId'], self.fileName,
-                                                 isFile=True, partSize=part['length'], offset=part['offset'], notifier=self.notifier)
+                                                 isFile=True, partSize=part['length'], offset=part['offset'], notifier=self.notifier, extensionHeaders=self.extensionHeaders)
                 if resp.status < 300:
                     self._record['uploadParts'][part['partNumber']-1]['isCompleted'] = True
                     self._record['partEtags'].append(CompletePart(util.to_int(part['partNumber']), resp.body.etag))
@@ -319,19 +320,20 @@ class uploadOperation(Operation):
 
 class downloadOperation(Operation):
     def __init__(self, bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                 header, versionId, progressCallback, obsClient, imageProcess=None, notifier=progress.NONE_NOTIFIER):
+                 header, versionId, progressCallback, obsClient, imageProcess=None, notifier=progress.NONE_NOTIFIER, extensionHeaders=None):
         super(downloadOperation, self).__init__(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint,
                                                 checkPointFile, progressCallback, obsClient, notifier)
         self.header = header
         self.versionId = versionId
         self.imageProcess = imageProcess
+        self.extensionHeaders = extensionHeaders
         
         parent_dir = os.path.dirname(self.fileName)
         if not os.path.exists(parent_dir):
             os.makedirs(parent_dir, exist_ok=True)
         
         self._tmp_file = self.fileName + '.tmp'
-        metedata_resp = self.obsClient.getObjectMetadata(self.bucketName, self.objectKey, self.versionId)
+        metedata_resp = self.obsClient.getObjectMetadata(self.bucketName, self.objectKey, self.versionId, extensionHeaders=self.extensionHeaders)
         if metedata_resp.status < 300:
             self.lastModified = metedata_resp.body.lastModified
             self.size = metedata_resp.body.contentLength if metedata_resp.body.contentLength is not None and metedata_resp.body.contentLength >= 0 else 0
@@ -517,7 +519,7 @@ class downloadOperation(Operation):
             response = None
             try:
                 resp = self.obsClient._getObjectWithNotifier(bucketName=self.bucketName, objectKey=self.objectKey, 
-                                                             getObjectRequest=get_object_request, headers=get_object_header, notifier=self.notifier)
+                                                             getObjectRequest=get_object_request, headers=get_object_header, notifier=self.notifier, extensionHeaders=self.extensionHeaders)
                 if resp.status < 300:
                     respone = resp.body.response
                     chunk_size = 65536

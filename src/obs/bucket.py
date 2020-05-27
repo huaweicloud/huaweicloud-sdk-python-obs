@@ -75,7 +75,10 @@ class BucketClient(object):
         'optionsObject',
         'setBucketEncryption',
         'getBucketEncryption',
-        'deleteBucketEncryption'
+        'deleteBucketEncryption',
+        'headObject',
+        'setBucketRequestPayment',
+        'getBucketRequestPayment'
     ]
     
     def __init__(self, obsClient, bucketName):

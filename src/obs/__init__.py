@@ -72,6 +72,8 @@ __all__ = [
     'DeleteObjectsRequest',
     'ListMultipartUploadsRequest',
     'GetObjectRequest',
-    'UploadFileHeader'
+    'UploadFileHeader',
+    'Payer',
+    'ExtensionHeader'
 ]
 

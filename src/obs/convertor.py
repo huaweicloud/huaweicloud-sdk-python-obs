@@ -164,6 +164,9 @@ class Adapter(object):
     
     def object_type_header(self):
         return 'x-obs-object-type'
+
+    def request_payer_header(self):
+        return self._get_header_prefix() + 'request-payer'
     
     def adapt_group(self, group):
         if self.is_obs:
@@ -908,7 +911,18 @@ class Convertor(object):
                     if replicationRule.get('storageClass') is not None:
                         ET.SubElement(destinationEle, 'Bucket').text = self.ha.adapt_storage_class(replicationRule['storageClass'])
         return ET.tostring(root, 'UTF-8')
-    
+
+    def trans_bucket_request_payment(self, payer):
+        root = ET.Element('RequestPaymentConfiguration')
+        ET.SubElement(root, 'Payer').text = util.to_string(payer)
+        return ET.tostring(root, 'UTF-8')
+
+    def trans_get_extension_headers(self, headers):
+        _headers = {}
+        if headers is not None and len(headers) > 0:
+            self._put_key_value(_headers, self.ha.request_payer_header(), (headers.get('requesterPayer')))
+        return  _headers
+
     def _find_item(self, root, itemname):
         result = root.find(itemname)
         if result is None:
@@ -1628,3 +1642,8 @@ class Convertor(object):
         replication = Replication(agency=agency, replicationRules=_rules)
         return replication
 
+    def parseGetBucketRequestPayment(self, xml, headers=None):
+        root = ET.fromstring(xml)
+        payer =self._find_item(root, 'Payer')
+        payment = GetBucketRequestPaymentResponse(payer=payer)
+        return payment

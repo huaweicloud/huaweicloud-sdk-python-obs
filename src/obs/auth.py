@@ -127,7 +127,7 @@ class Authentication(object):
         return ''.join(str_list)
 
 class V4Authentication(object):
-    CONTENT_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    CONTENT_SHA256 = 'UNSIGNED-PAYLOAD'
     def __init__(self, ak, sk, region, shortDate, longDate, path_style, ha):
         self.ak = ak
         self.sk = sk

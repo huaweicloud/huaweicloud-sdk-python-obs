@@ -58,7 +58,7 @@ class _RedirectException(Exception):
         self.msg = msg
         self.location = location
         self.result = result
-    
+
     def __str__(self):
         return self.msg
 
@@ -349,23 +349,23 @@ class _BasicClient(object):
         if ret and ret.status < 300 and ret.body:
             ret.body.objectUrl = self.calling_format.get_full_url(self.is_secure, self.server, self.port, bucketName, objectKey, {})
     
-    def _make_options_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, methodName=None):
-        return self._make_request_with_retry(const.HTTP_METHOD_OPTIONS, bucketName, objectKey, pathArgs, headers, methodName=methodName)
+    def _make_options_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, methodName=None, extensionHeaders=None):
+        return self._make_request_with_retry(const.HTTP_METHOD_OPTIONS, bucketName, objectKey, pathArgs, headers, methodName=methodName, extensionHeaders=extensionHeaders)
 
-    def _make_head_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, methodName=None, skipAuthentication=False):
-        return self._make_request_with_retry(const.HTTP_METHOD_HEAD, bucketName, objectKey, pathArgs, headers, methodName=methodName, skipAuthentication=skipAuthentication)
+    def _make_head_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, methodName=None, skipAuthentication=False, extensionHeaders=None):
+        return self._make_request_with_retry(const.HTTP_METHOD_HEAD, bucketName, objectKey, pathArgs, headers, methodName=methodName, skipAuthentication=skipAuthentication, extensionHeaders=extensionHeaders)
 
-    def _make_get_request(self, bucketName='', objectKey=None, pathArgs=None, headers=None, methodName=None, parseMethod=None, readable=False):
-        return self._make_request_with_retry(const.HTTP_METHOD_GET, bucketName, objectKey, pathArgs, headers, methodName=methodName, parseMethod=parseMethod, readable=readable)
+    def _make_get_request(self, bucketName='', objectKey=None, pathArgs=None, headers=None, methodName=None, parseMethod=None, readable=False, extensionHeaders=None):
+        return self._make_request_with_retry(const.HTTP_METHOD_GET, bucketName, objectKey, pathArgs, headers, methodName=methodName, parseMethod=parseMethod, readable=readable, extensionHeaders=extensionHeaders)
 
-    def _make_delete_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, entity=None, methodName=None):
-        return self._make_request_with_retry(const.HTTP_METHOD_DELETE, bucketName, objectKey, pathArgs, headers, entity, methodName=methodName)
+    def _make_delete_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, entity=None, methodName=None, extensionHeaders=None):
+        return self._make_request_with_retry(const.HTTP_METHOD_DELETE, bucketName, objectKey, pathArgs, headers, entity, methodName=methodName, extensionHeaders=extensionHeaders)
 
-    def _make_post_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, entity=None, chunkedMode=False, methodName=None, readable=False):
-        return self._make_request_with_retry(const.HTTP_METHOD_POST, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, methodName=methodName, readable=readable)
+    def _make_post_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, entity=None, chunkedMode=False, methodName=None, readable=False, extensionHeaders=None):
+        return self._make_request_with_retry(const.HTTP_METHOD_POST, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, methodName=methodName, readable=readable, extensionHeaders=extensionHeaders)
     
-    def _make_put_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, entity=None, chunkedMode=False, methodName=None, readable=False):
-        return self._make_request_with_retry(const.HTTP_METHOD_PUT, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, methodName=methodName, readable=readable)
+    def _make_put_request(self, bucketName, objectKey=None, pathArgs=None, headers=None, entity=None, chunkedMode=False, methodName=None, readable=False, extensionHeaders=None):
+        return self._make_request_with_retry(const.HTTP_METHOD_PUT, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, methodName=methodName, readable=readable, extensionHeaders=extensionHeaders)
 
     def _make_error_result(self, e, ret):
         self.log_client.log(ERROR, 'request error, %s' % e)
@@ -375,7 +375,7 @@ class _BasicClient(object):
         raise e
 
     def _make_request_with_retry(self, methodType, bucketName, objectKey=None, pathArgs=None, headers=None, 
-                       entity=None, chunkedMode=False, methodName=None, readable=False, parseMethod=None, redirectLocation=None, skipAuthentication=False):
+                       entity=None, chunkedMode=False, methodName=None, readable=False, parseMethod=None, redirectLocation=None, skipAuthentication=False, extensionHeaders=None):
         flag = 0
         redirect_count = 0
         conn = None
@@ -383,7 +383,7 @@ class _BasicClient(object):
         redirectFlag = False
         while True:
             try:
-                conn = self._make_request_internal(methodType, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, _redirectLocation, skipAuthentication=skipAuthentication, redirectFlag=redirectFlag)
+                conn = self._make_request_internal(methodType, bucketName, objectKey, pathArgs, headers, entity, chunkedMode, _redirectLocation, skipAuthentication=skipAuthentication, redirectFlag=redirectFlag, extensionHeaders=extensionHeaders)
                 return self._parse_xml(conn, methodName, readable) if not parseMethod else parseMethod(conn)
             except Exception as e:
                 ret = None
@@ -399,8 +399,6 @@ class _BasicClient(object):
                         ret = e.result
                         if methodType == const.HTTP_METHOD_GET and  e.result.status == 302:
                             redirectFlag = True
-                        else:
-                            redirectFlag = False
                 if redirect_count >= self.max_redirect_count:
                     self.log_client.log(ERROR, 'request redirect count [%d] greater than max redirect count [%d]' % (
                     redirect_count, self.max_redirect_count))
@@ -414,7 +412,7 @@ class _BasicClient(object):
             break
 
     def _make_request_internal(self, method, bucketName='', objectKey=None, pathArgs=None, headers=None, entity=None,
-                               chunkedMode=False, redirectLocation=None, skipAuthentication=False, redirectFlag=False):
+                               chunkedMode=False, redirectLocation=None, skipAuthentication=False, redirectFlag=False, extensionHeaders=None):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
@@ -431,7 +429,7 @@ class _BasicClient(object):
             query = redirectLocation.query
             path = _path + '?' + query if query else _path
             skipAuthentication = True
-            if not redirectFlag and not path:
+            if not redirectFlag:
                 skipAuthentication = False
 
         else:
@@ -444,6 +442,15 @@ class _BasicClient(object):
         
         if not path:    
             path = self.calling_format.get_url(bucketName, objectKey, pathArgs)
+
+        extension_headers = self.convertor.trans_get_extension_headers(extensionHeaders)
+        if len(extension_headers) > 0:
+            if headers is None or not isinstance(headers, dict):
+                headers = {}
+            else:
+                headers = headers.copy()
+            for key, value in extension_headers.items():
+                headers[key] = value
 
         headers = self._rename_request_headers(headers, method)
 
@@ -1109,178 +1116,185 @@ class ObsClient(_BasicClient):
         return const.V2_SIGNATURE, res
 
     @funcCache
-    def listBuckets(self, isQueryLocation=True):
+    def listBuckets(self, isQueryLocation=True, extensionHeaders=None):
         if self.is_cname:
             raise Exception('listBuckets is not allowed in customdomain mode')
-        return self._make_get_request(methodName='listBuckets', **self.convertor.trans_list_buckets(isQueryLocation=isQueryLocation))
+        return self._make_get_request(methodName='listBuckets', extensionHeaders=extensionHeaders, **self.convertor.trans_list_buckets(isQueryLocation=isQueryLocation))
     
     @funcCache
-    def createBucket(self, bucketName, header=CreateBucketHeader(), location=None):
+    def createBucket(self, bucketName, header=CreateBucketHeader(), location=None, extensionHeaders=None):
         if self.is_cname:
             raise Exception('createBucket is not allowed in customdomain mode')
-        res = self._make_put_request(bucketName, **self.convertor.trans_create_bucket(header=header, location=location))
+        res = self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **self.convertor.trans_create_bucket(header=header, location=location))
         try:
             if self.is_signature_negotiation and res.status == 400 and res.errorMessage == 'Unsupported Authorization Type' and self.thread_local.signature == const.OBS_SIGNATURE:
                 self.thread_local.signature = const.V2_SIGNATURE
-                res = self._make_put_request(bucketName, **self.convertor.trans_create_bucket(header=header, location=location))
+                res = self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **self.convertor.trans_create_bucket(header=header, location=location))
         finally:
             return res
 
     @funcCache
-    def listObjects(self, bucketName, prefix=None, marker=None, max_keys=None, delimiter=None):
-        return self._make_get_request(bucketName, methodName='listObjects',
+    def listObjects(self, bucketName, prefix=None, marker=None, max_keys=None, delimiter=None, extensionHeaders=None):
+        return self._make_get_request(bucketName, methodName='listObjects', extensionHeaders=extensionHeaders,
                                       **self.convertor.trans_list_objects(prefix=prefix, marker=marker, max_keys=max_keys, delimiter=delimiter))
 
     @funcCache
-    def headBucket(self, bucketName):
-        return self._make_head_request(bucketName)
+    def headBucket(self, bucketName, extensionHeaders=None):
+        return self._make_head_request(bucketName, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketMetadata(self, bucketName, origin=None, requestHeaders=None):
-        return self._make_head_request(bucketName, methodName='getBucketMetadata', **self.convertor.trans_get_bucket_metadata(origin=origin, requestHeaders=requestHeaders))
+    def headObject(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
+        pathArgs = {}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+        return self._make_head_request(bucketName, objectKey, pathArgs=pathArgs, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketLocation(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'location':None}, methodName='getBucketLocation')
+    def getBucketMetadata(self, bucketName, origin=None, requestHeaders=None, extensionHeaders=None):
+        return self._make_head_request(bucketName, methodName='getBucketMetadata', extensionHeaders=extensionHeaders, **self.convertor.trans_get_bucket_metadata(origin=origin, requestHeaders=requestHeaders))
 
     @funcCache
-    def deleteBucket(self, bucketName):
-        return self._make_delete_request(bucketName)
+    def getBucketLocation(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'location':None}, methodName='getBucketLocation', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketQuota(self, bucketName, quota):
+    def deleteBucket(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def setBucketQuota(self, bucketName, quota, extensionHeaders=None):
         self._assert_not_null(quota, 'quota is empty')
-        return self._make_put_request(bucketName, pathArgs={'quota': None}, entity=self.convertor.trans_quota(quota))
+        return self._make_put_request(bucketName, pathArgs={'quota': None}, entity=self.convertor.trans_quota(quota), extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketQuota(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'quota': None}, methodName='getBucketQuota')
+    def getBucketQuota(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'quota': None}, methodName='getBucketQuota', extensionHeaders=extensionHeaders)
     
     @funcCache
-    def getBucketStorageInfo(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'storageinfo': None}, methodName='getBucketStorageInfo')
+    def getBucketStorageInfo(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'storageinfo': None}, methodName='getBucketStorageInfo', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketAcl(self, bucketName, acl=ACL(), aclControl=None):
+    def setBucketAcl(self, bucketName, acl=ACL(), aclControl=None, extensionHeaders=None):
         if acl is not None and len(acl) > 0 and aclControl is not None:
             raise Exception('Both acl and aclControl are set')
         if not acl and not aclControl:
             raise Exception('Both acl and aclControl are not set')
-        return self._make_put_request(bucketName, **self.convertor.trans_set_bucket_acl(acl=acl, aclControl=aclControl))
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **self.convertor.trans_set_bucket_acl(acl=acl, aclControl=aclControl))
 
     @funcCache
-    def getBucketAcl(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'acl': None}, methodName='getBucketAcl')
+    def getBucketAcl(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'acl': None}, methodName='getBucketAcl', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketPolicy(self, bucketName, policyJSON):
+    def setBucketPolicy(self, bucketName, policyJSON, extensionHeaders=None):
         self._assert_not_null(policyJSON, 'policyJSON is empty')
-        return self._make_put_request(bucketName, pathArgs={'policy' : None}, entity=policyJSON)
+        return self._make_put_request(bucketName, pathArgs={'policy' : None}, entity=policyJSON, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketPolicy(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'policy' : None}, methodName='getBucketPolicy')
+    def getBucketPolicy(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'policy' : None}, methodName='getBucketPolicy', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def deleteBucketPolicy(self, bucketName):
-        return self._make_delete_request(bucketName, pathArgs={'policy' : None})
+    def deleteBucketPolicy(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, pathArgs={'policy' : None}, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketVersioning(self, bucketName, status):
+    def setBucketVersioning(self, bucketName, status, extensionHeaders=None):
         self._assert_not_null(status, 'status is empty')
-        return self._make_put_request(bucketName, pathArgs={'versioning' : None}, entity=self.convertor.trans_version_status(status))
+        return self._make_put_request(bucketName, pathArgs={'versioning' : None}, entity=self.convertor.trans_version_status(status), extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketVersioning(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'versioning' : None}, methodName='getBucketVersioning')
+    def getBucketVersioning(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'versioning' : None}, methodName='getBucketVersioning', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def listVersions(self, bucketName, version=Versions()):
-        return self._make_get_request(bucketName, methodName='listVersions', **self.convertor.trans_list_versions(version=version))
+    def listVersions(self, bucketName, version=Versions(), extensionHeaders=None):
+        return self._make_get_request(bucketName, methodName='listVersions', extensionHeaders=extensionHeaders, **self.convertor.trans_list_versions(version=version))
 
     @funcCache
-    def listMultipartUploads(self, bucketName, multipart=ListMultipartUploadsRequest()):
-        return self._make_get_request(bucketName, methodName='listMultipartUploads', **self.convertor.trans_list_multipart_uploads(multipart=multipart))
+    def listMultipartUploads(self, bucketName, multipart=ListMultipartUploadsRequest(), extensionHeaders=None):
+        return self._make_get_request(bucketName, methodName='listMultipartUploads', extensionHeaders=extensionHeaders, **self.convertor.trans_list_multipart_uploads(multipart=multipart))
 
     @funcCache
-    def deleteBucketLifecycle(self, bucketName):
-        return self._make_delete_request(bucketName, pathArgs={'lifecycle':None})
+    def deleteBucketLifecycle(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, pathArgs={'lifecycle':None}, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketLifecycle(self, bucketName, lifecycle):
+    def setBucketLifecycle(self, bucketName, lifecycle, extensionHeaders=None):
         self._assert_not_null(lifecycle, 'lifecycle is empty')
-        return self._make_put_request(bucketName, **self.convertor.trans_set_bucket_lifecycle(lifecycle=lifecycle))
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **self.convertor.trans_set_bucket_lifecycle(lifecycle=lifecycle))
 
     @funcCache
-    def getBucketLifecycle(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'lifecycle':None}, methodName='getBucketLifecycle')
+    def getBucketLifecycle(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'lifecycle':None}, methodName='getBucketLifecycle', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def deleteBucketWebsite(self, bucketName):
-        return self._make_delete_request(bucketName, pathArgs={'website':None})
+    def deleteBucketWebsite(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, pathArgs={'website':None}, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketWebsite(self, bucketName, website):
+    def setBucketWebsite(self, bucketName, website, extensionHeaders=None):
         self._assert_not_null(website, 'website is empty')
-        return self._make_put_request(bucketName, pathArgs={'website':None}, entity=self.convertor.trans_website(website))
+        return self._make_put_request(bucketName, pathArgs={'website':None}, entity=self.convertor.trans_website(website), extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketWebsite(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'website':None}, methodName='getBucketWebsite')
+    def getBucketWebsite(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'website':None}, methodName='getBucketWebsite', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketLogging(self, bucketName, logstatus=Logging()):
+    def setBucketLogging(self, bucketName, logstatus=Logging(), extensionHeaders=None):
         if logstatus is None:
             logstatus = Logging()
-        return self._make_put_request(bucketName, pathArgs={'logging':None}, entity=self.convertor.trans_logging(logstatus))
+        return self._make_put_request(bucketName, pathArgs={'logging':None}, entity=self.convertor.trans_logging(logstatus), extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketLogging(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'logging':None}, methodName='getBucketLogging')
+    def getBucketLogging(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'logging':None}, methodName='getBucketLogging', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketTagging(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'tagging' : None}, methodName='getBucketTagging')
+    def getBucketTagging(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'tagging' : None}, methodName='getBucketTagging', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketTagging(self, bucketName, tagInfo):
+    def setBucketTagging(self, bucketName, tagInfo, extensionHeaders=None):
         self._assert_not_null(tagInfo, 'tagInfo is empty')
-        return self._make_put_request(bucketName, **self.convertor.trans_set_bucket_tagging(tagInfo=tagInfo))
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **self.convertor.trans_set_bucket_tagging(tagInfo=tagInfo))
 
     @funcCache
-    def deleteBucketTagging(self, bucketName):
-        return self._make_delete_request(bucketName, pathArgs={'tagging' : None})
+    def deleteBucketTagging(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, pathArgs={'tagging' : None}, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketCors(self, bucketName, corsRuleList):
+    def setBucketCors(self, bucketName, corsRuleList, extensionHeaders=None):
         self._assert_not_null(corsRuleList, 'corsRuleList is empty')
-        return self._make_put_request(bucketName, **self.convertor.trans_set_bucket_cors(corsRuleList=corsRuleList))
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **self.convertor.trans_set_bucket_cors(corsRuleList=corsRuleList))
 
     @funcCache
-    def deleteBucketCors(self, bucketName):
-        return self._make_delete_request(bucketName, pathArgs={'cors' : None})
+    def deleteBucketCors(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, pathArgs={'cors' : None}, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketCors(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'cors': None}, methodName='getBucketCors')
+    def getBucketCors(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'cors': None}, methodName='getBucketCors', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def optionsBucket(self, bucketName, option):
-        return self.optionsObject(bucketName, None, option=option)
+    def optionsBucket(self, bucketName, option, extensionHeaders=None):
+        return self.optionsObject(bucketName, None, option=option, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketNotification(self, bucketName, notification=Notification()):
+    def setBucketNotification(self, bucketName, notification=Notification(), extensionHeaders=None):
         if notification is None:
             notification = Notification()
-        return self._make_put_request(bucketName, pathArgs={'notification': None}, entity=self.convertor.trans_notification(notification))
+        return self._make_put_request(bucketName, pathArgs={'notification': None}, entity=self.convertor.trans_notification(notification), extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketNotification(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'notification': None}, methodName='getBucketNotification')
+    def getBucketNotification(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'notification': None}, methodName='getBucketNotification', extensionHeaders=extensionHeaders)
     
     
     @funcCache
-    def optionsObject(self, bucketName, objectKey, option):
+    def optionsObject(self, bucketName, objectKey, option, extensionHeaders=None):
         headers = {}
         if option is not None:
             if option.get('origin') is not None:
@@ -1289,10 +1303,10 @@ class ObsClient(_BasicClient):
                 headers[const.ACCESS_CONTROL_REQUEST_METHOD_HEADER] = option['accessControlRequestMethods']
             if option.get('accessControlRequestHeaders') is not None:
                 headers[const.ACCESS_CONTROL_REQUEST_HEADERS_HEADER] = option['accessControlRequestHeaders']
-        return self._make_options_request(bucketName, objectKey, headers=headers, methodName='optionsBucket')
+        return self._make_options_request(bucketName, objectKey, headers=headers, methodName='optionsBucket', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getObjectMetadata(self, bucketName, objectKey, versionId=None, sseHeader=None, origin=None, requestHeaders=None):
+    def getObjectMetadata(self, bucketName, objectKey, versionId=None, sseHeader=None, origin=None, requestHeaders=None, extensionHeaders=None):
         pathArgs = {}
         if versionId:
             pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
@@ -1303,39 +1317,39 @@ class ObsClient(_BasicClient):
         if _requestHeaders:
             headers[const.ACCESS_CONTROL_REQUEST_HEADERS_HEADER] = util.to_string(_requestHeaders)
         return self._make_head_request(bucketName, objectKey, pathArgs=pathArgs, 
-                                       headers=self.convertor._set_sse_header(sseHeader, headers=headers, onlySseCHeader=True), methodName='getObjectMetadata')
+                                       headers=self.convertor._set_sse_header(sseHeader, headers=headers, onlySseCHeader=True), methodName='getObjectMetadata', extensionHeaders=extensionHeaders)
     
     @funcCache
-    def setObjectMetadata(self, bucketName, objectKey, metadata=None, headers=None, versionId=None):
+    def setObjectMetadata(self, bucketName, objectKey, metadata=None, headers=None, versionId=None, extensionHeaders=None):
         if headers is None:
             headers = SetObjectMetadataHeader()
             
-        return self._make_put_request(bucketName, objectKey, methodName='setObjectMetadata', **self.convertor.trans_set_object_metadata(metadata=metadata, headers=headers, versionId=versionId))
+        return self._make_put_request(bucketName, objectKey, methodName='setObjectMetadata', extensionHeaders=extensionHeaders, **self.convertor.trans_set_object_metadata(metadata=metadata, headers=headers, versionId=versionId))
 
     @funcCache
     def getObject(self, bucketName, objectKey, downloadPath=None, getObjectRequest=GetObjectRequest(), 
-                  headers=GetObjectHeader(), loadStreamInMemory=False, progressCallback=None):
+                  headers=GetObjectHeader(), loadStreamInMemory=False, progressCallback=None, extensionHeaders=None):
         _parse_content = self._parse_content
         CHUNKSIZE = self.chunk_size
         readable = False if progressCallback is None else True
         def parseMethod(conn):
             return _parse_content(conn, objectKey, downloadPath, CHUNKSIZE, loadStreamInMemory, progressCallback)
         
-        return self._make_get_request(bucketName, objectKey, parseMethod=parseMethod, readable=readable, **self.convertor.trans_get_object(getObjectRequest=getObjectRequest, headers=headers))
+        return self._make_get_request(bucketName, objectKey, parseMethod=parseMethod, readable=readable, extensionHeaders=extensionHeaders, **self.convertor.trans_get_object(getObjectRequest=getObjectRequest, headers=headers))
     
     @funcCache
     def _getObjectWithNotifier(self, bucketName, objectKey, getObjectRequest=GetObjectRequest(), 
-                  headers=GetObjectHeader(), downloadPath=None, notifier=None):
+                  headers=GetObjectHeader(), downloadPath=None, notifier=None, extensionHeaders=None):
         _parse_content_with_notifier = self._parse_content_with_notifier
         CHUNKSIZE = self.chunk_size
         readable = False if notifier is None else True
         def parseMethod(conn):
             return _parse_content_with_notifier(conn, objectKey, CHUNKSIZE, downloadPath, notifier)
         
-        return self._make_get_request(bucketName, objectKey, parseMethod=parseMethod, readable=readable, **self.convertor.trans_get_object(getObjectRequest=getObjectRequest, headers=headers))
+        return self._make_get_request(bucketName, objectKey, parseMethod=parseMethod, readable=readable, extensionHeaders=extensionHeaders, **self.convertor.trans_get_object(getObjectRequest=getObjectRequest, headers=headers))
     
     @funcCache
-    def appendObject(self, bucketName, objectKey, content=None, metadata=None, headers=None, progressCallback=None, autoClose=True):
+    def appendObject(self, bucketName, objectKey, content=None, metadata=None, headers=None, progressCallback=None, autoClose=True, extensionHeaders=None):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
@@ -1406,7 +1420,7 @@ class ObsClient(_BasicClient):
             if notifier is not None:
                 notifier.start()
             ret = self._make_post_request(bucketName, objectKey, pathArgs={'append': None, 'position': util.to_string(content['position']) if content.get('position') is not None else 0}, 
-                                           headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='appendObject', readable=readable)
+                                           headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='appendObject', readable=readable, extensionHeaders=extensionHeaders)
         finally:
             if notifier is not None:
                 notifier.end()
@@ -1414,7 +1428,7 @@ class ObsClient(_BasicClient):
         return ret
     
     @funcCache
-    def putContent(self, bucketName, objectKey, content=None, metadata=None, headers=None, progressCallback=None, autoClose=True):
+    def putContent(self, bucketName, objectKey, content=None, metadata=None, headers=None, progressCallback=None, autoClose=True, extensionHeaders=None):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
@@ -1444,18 +1458,18 @@ class ObsClient(_BasicClient):
                     entity = util.get_readable_entity_by_totalcount(entity, totalCount, self.chunk_size, notifier, autoClose)
                 
                 notifier.start()            
-            ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, chunkedMode=chunkedMode, methodName='putContent', readable=readable)
+            ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, chunkedMode=chunkedMode, methodName='putContent', readable=readable, extensionHeaders=extensionHeaders)
         finally:
             if notifier is not None:
                 notifier.end()
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
 
-    def putObject(self, bucketName, objectKey, content, metadata=None, headers=None, progressCallback=None, autoClose=True):
-        return self.putContent(bucketName, objectKey, content, metadata, headers, progressCallback, autoClose)
+    def putObject(self, bucketName, objectKey, content, metadata=None, headers=None, progressCallback=None, autoClose=True, extensionHeaders=None):
+        return self.putContent(bucketName, objectKey, content, metadata, headers, progressCallback, autoClose, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def putFile(self, bucketName, objectKey, file_path, metadata=None, headers=None, progressCallback=None):
+    def putFile(self, bucketName, objectKey, file_path, metadata=None, headers=None, progressCallback=None, extensionHeaders=None):
         file_path = util.safe_encode(file_path)
         if not os.path.exists(file_path):
             file_path = util.safe_trans_to_gb2312(file_path)
@@ -1480,7 +1494,7 @@ class ObsClient(_BasicClient):
                     key = util.safe_trans_to_gb2312('{0}/'.format(os.path.split(file_path)[1]) + f)
                 else:
                     key = '{0}/'.format(objectKey) + util.safe_trans_to_gb2312(f)
-                result = self.putFile(bucketName, key, __file_path, metadata, headers)
+                result = self.putFile(bucketName, key, __file_path, metadata, headers, extensionHeaders=extensionHeaders)
                 results.append((key, result))
             return results
 
@@ -1514,15 +1528,15 @@ class ObsClient(_BasicClient):
         entity = util.get_file_entity_by_totalcount(file_path, totalCount, self.chunk_size, notifier)
         try:
             notifier.start()
-            ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, methodName='putContent', readable=readable)
+            ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, methodName='putContent', readable=readable, extensionHeaders=extensionHeaders)
         finally:
             notifier.end()
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
-    
+
     @funcCache
     def uploadPart(self, bucketName, objectKey, partNumber, uploadId, object=None, isFile=False, partSize=None,
-                   offset=0, sseHeader=None, isAttachMd5=False, md5=None, content=None, progressCallback=None, autoClose=True):
+                   offset=0, sseHeader=None, isAttachMd5=False, md5=None, content=None, progressCallback=None, autoClose=True, extensionHeaders=None):
         self._assert_not_null(partNumber, 'partNumber is empty')
         self._assert_not_null(uploadId, 'uploadId is empty')
         
@@ -1592,7 +1606,7 @@ class ObsClient(_BasicClient):
             if notifier is not None:
                 notifier.start()
             ret = self._make_put_request(bucketName, objectKey, pathArgs={'partNumber': partNumber, 'uploadId': uploadId}, 
-                                      headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='uploadPart', readable=readable)
+                                      headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='uploadPart', readable=readable, extensionHeaders=extensionHeaders)
         finally:
             if notifier is not None:
                 notifier.end()
@@ -1600,7 +1614,7 @@ class ObsClient(_BasicClient):
     
     @funcCache
     def _uploadPartWithNotifier(self, bucketName, objectKey, partNumber, uploadId, content=None, isFile=False, partSize=None,
-                   offset=0, sseHeader=None, isAttachMd5=False, md5=None, notifier=None):
+                   offset=0, sseHeader=None, isAttachMd5=False, md5=None, notifier=None, extensionHeaders=None):
         self._assert_not_null(partNumber, 'partNumber is empty')
         self._assert_not_null(uploadId, 'uploadId is empty')
         
@@ -1656,11 +1670,11 @@ class ObsClient(_BasicClient):
                     self.convertor._set_sse_header(sseHeader, headers, True)
                     
         ret = self._make_put_request(bucketName, objectKey, pathArgs={'partNumber': partNumber, 'uploadId': uploadId}, 
-                                      headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='uploadPart', readable=readable)
+                                      headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='uploadPart', readable=readable, extensionHeaders=extensionHeaders)
         return ret
 
     @funcCache
-    def copyObject(self, sourceBucketName, sourceObjectKey, destBucketName, destObjectKey, metadata=None, headers=None, versionId=None):
+    def copyObject(self, sourceBucketName, sourceObjectKey, destBucketName, destObjectKey, metadata=None, headers=None, versionId=None, extensionHeaders=None):
         self._assert_not_null(sourceBucketName, 'sourceBucketName is empty')
         sourceObjectKey = util.safe_encode(sourceObjectKey)
         if sourceObjectKey is None:
@@ -1673,46 +1687,46 @@ class ObsClient(_BasicClient):
             headers = CopyObjectHeader()
                 
         return self._make_put_request(destBucketName, destObjectKey, 
-                                      methodName='copyObject', **self.convertor.trans_copy_object(metadata=metadata, headers=headers, versionId=versionId,
+                                      methodName='copyObject', extensionHeaders=extensionHeaders, **self.convertor.trans_copy_object(metadata=metadata, headers=headers, versionId=versionId,
                                                                                                   sourceBucketName=sourceBucketName, sourceObjectKey=sourceObjectKey))
 
     @funcCache
-    def setObjectAcl(self, bucketName, objectKey, acl=ACL(), versionId=None, aclControl=None):
+    def setObjectAcl(self, bucketName, objectKey, acl=ACL(), versionId=None, aclControl=None, extensionHeaders=None):
         if acl is not None and len(acl) > 0 and aclControl is not None:
             raise Exception('Both acl and aclControl are set')
         if not acl and not aclControl:
             raise Exception('Both acl and aclControl are not set')
-        return self._make_put_request(bucketName, objectKey, **self.convertor.trans_set_object_acl(acl=acl, versionId=versionId, aclControl=aclControl))
+        return self._make_put_request(bucketName, objectKey, extensionHeaders=extensionHeaders, **self.convertor.trans_set_object_acl(acl=acl, versionId=versionId, aclControl=aclControl))
 
 
     @funcCache
-    def getObjectAcl(self, bucketName, objectKey, versionId=None):
+    def getObjectAcl(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
         pathArgs = {'acl': None}
         if versionId:
             pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
 
-        return self._make_get_request(bucketName, objectKey, pathArgs=pathArgs, methodName='getObjectAcl')
+        return self._make_get_request(bucketName, objectKey, pathArgs=pathArgs, methodName='getObjectAcl', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def deleteObject(self, bucketName, objectKey, versionId=None):
+    def deleteObject(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
         path_args = {}
         if versionId:
             path_args[const.VERSION_ID_PARAM] = util.to_string(versionId)
-        return self._make_delete_request(bucketName, objectKey, pathArgs=path_args, methodName='deleteObject')
+        return self._make_delete_request(bucketName, objectKey, pathArgs=path_args, methodName='deleteObject', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def deleteObjects(self, bucketName, deleteObjectsRequest):
+    def deleteObjects(self, bucketName, deleteObjectsRequest, extensionHeaders=None):
         self._assert_not_null(deleteObjectsRequest, 'deleteObjectsRequest is empty')
-        return self._make_post_request(bucketName, methodName='deleteObjects', **self.convertor.trans_delete_objects(deleteObjectsRequest=deleteObjectsRequest))
+        return self._make_post_request(bucketName, methodName='deleteObjects', extensionHeaders=extensionHeaders, **self.convertor.trans_delete_objects(deleteObjectsRequest=deleteObjectsRequest))
 
     @funcCache
-    def restoreObject(self, bucketName, objectKey, days, tier=None, versionId=None):
+    def restoreObject(self, bucketName, objectKey, days, tier=None, versionId=None, extensionHeaders=None):
         self._assert_not_null(days, 'days is empty')
-        return self._make_post_request(bucketName, objectKey, **self.convertor.trans_restore_object(days=days, tier=tier, versionId=versionId))
+        return self._make_post_request(bucketName, objectKey, extensionHeaders=extensionHeaders, **self.convertor.trans_restore_object(days=days, tier=tier, versionId=versionId))
 
     @funcCache
     def initiateMultipartUpload(self, bucketName, objectKey, acl=None, storageClass=None,
-                                metadata=None, websiteRedirectLocation=None, contentType=None, sseHeader=None, expires=None, extensionGrants=None):
+                                metadata=None, websiteRedirectLocation=None, contentType=None, sseHeader=None, expires=None, extensionGrants=None, extensionHeaders=None):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
@@ -1720,85 +1734,93 @@ class ObsClient(_BasicClient):
         if contentType is None:
             contentType = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
         
-        return self._make_post_request(bucketName, objectKey, methodName='initiateMultipartUpload', 
+        return self._make_post_request(bucketName, objectKey, methodName='initiateMultipartUpload', extensionHeaders=extensionHeaders,
                                        **self.convertor.trans_initiate_multipart_upload(acl=acl, storageClass=storageClass, 
                                                                                         metadata=metadata, websiteRedirectLocation=websiteRedirectLocation,
                                                                                         contentType=contentType, sseHeader=sseHeader, expires=expires, extensionGrants=extensionGrants))
 
     @funcCache
-    def copyPart(self, bucketName, objectKey, partNumber, uploadId, copySource, copySourceRange=None, destSseHeader=None, sourceSseHeader=None):
+    def copyPart(self, bucketName, objectKey, partNumber, uploadId, copySource, copySourceRange=None, destSseHeader=None, sourceSseHeader=None, extensionHeaders=None):
         self._assert_not_null(partNumber, 'partNumber is empty')
         self._assert_not_null(uploadId, 'uploadId is empty')
         self._assert_not_null(copySource, 'copySource is empty')
         
-        return self._make_put_request(bucketName, objectKey, methodName='copyPart', **self.convertor.trans_copy_part(partNumber=partNumber, uploadId=uploadId, copySource=copySource, 
+        return self._make_put_request(bucketName, objectKey, methodName='copyPart', extensionHeaders=extensionHeaders, **self.convertor.trans_copy_part(partNumber=partNumber, uploadId=uploadId, copySource=copySource,
                                                                                                                      copySourceRange=copySourceRange, destSseHeader=destSseHeader, sourceSseHeader=sourceSseHeader))
 
     @funcCache
-    def completeMultipartUpload(self, bucketName, objectKey, uploadId, completeMultipartUploadRequest):
+    def completeMultipartUpload(self, bucketName, objectKey, uploadId, completeMultipartUploadRequest, extensionHeaders=None):
         self._assert_not_null(uploadId, 'uploadId is empty')
         self._assert_not_null(completeMultipartUploadRequest, 'completeMultipartUploadRequest is empty')
 
         ret = self._make_post_request(bucketName, objectKey, pathArgs={'uploadId':uploadId},
-                                       entity=self.convertor.trans_complete_multipart_upload_request(completeMultipartUploadRequest), methodName='completeMultipartUpload')
+                                       entity=self.convertor.trans_complete_multipart_upload_request(completeMultipartUploadRequest), methodName='completeMultipartUpload', extensionHeaders=extensionHeaders)
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
 
     @funcCache
-    def abortMultipartUpload(self, bucketName, objectKey, uploadId):
+    def abortMultipartUpload(self, bucketName, objectKey, uploadId, extensionHeaders=None):
         self._assert_not_null(uploadId, 'uploadId is empty')
-        return self._make_delete_request(bucketName, objectKey, pathArgs={'uploadId' : uploadId})
+        return self._make_delete_request(bucketName, objectKey, pathArgs={'uploadId' : uploadId}, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def listParts(self, bucketName, objectKey, uploadId, maxParts=None, partNumberMarker=None):
+    def listParts(self, bucketName, objectKey, uploadId, maxParts=None, partNumberMarker=None, extensionHeaders=None):
         self._assert_not_null(uploadId, 'uploadId is empty')
         pathArgs = {'uploadId': uploadId}
         if maxParts is not None:
             pathArgs['max-parts'] = maxParts
         if partNumberMarker is not None:
             pathArgs['part-number-marker'] = partNumberMarker
-        return self._make_get_request(bucketName, objectKey, pathArgs=pathArgs, methodName='listParts')
+        return self._make_get_request(bucketName, objectKey, pathArgs=pathArgs, methodName='listParts', extensionHeaders=extensionHeaders)
 
     @funcCache
-    def getBucketStoragePolicy(self, bucketName):
-        return self._make_get_request(bucketName, methodName='getBucketStoragePolicy', **self.convertor.trans_get_bucket_storage_policy())
+    def getBucketStoragePolicy(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, methodName='getBucketStoragePolicy', extensionHeaders=extensionHeaders, **self.convertor.trans_get_bucket_storage_policy())
 
     @funcCache
-    def setBucketStoragePolicy(self, bucketName, storageClass):
+    def setBucketStoragePolicy(self, bucketName, storageClass, extensionHeaders=None):
         self._assert_not_null(storageClass, 'storageClass is empty')
-        return self._make_put_request(bucketName, **self.convertor.trans_set_bucket_storage_policy(storageClass=storageClass))
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **self.convertor.trans_set_bucket_storage_policy(storageClass=storageClass))
 
     @funcCache
-    def setBucketEncryption(self, bucketName, encryption, key=None):
+    def setBucketEncryption(self, bucketName, encryption, key=None, extensionHeaders=None):
         self._assert_not_null(encryption, 'encryption is empty')
-        return self._make_put_request(bucketName, pathArgs={'encryption': None}, entity=self.convertor.trans_encryption(encryption=encryption, key=key))
+        return self._make_put_request(bucketName, pathArgs={'encryption': None}, entity=self.convertor.trans_encryption(encryption=encryption, key=key), extensionHeaders=extensionHeaders)
     
     @funcCache
-    def getBucketEncryption(self, bucketName):
-        return self._make_get_request(bucketName, methodName='getBucketEncryption', pathArgs={'encryption':None})
+    def getBucketEncryption(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, methodName='getBucketEncryption', pathArgs={'encryption':None}, extensionHeaders=extensionHeaders)
     
     @funcCache
-    def deleteBucketEncryption(self, bucketName):
-        return self._make_delete_request(bucketName, pathArgs={'encryption':None})
+    def deleteBucketEncryption(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, pathArgs={'encryption':None}, extensionHeaders=extensionHeaders)
     
     @funcCache
-    def setBucketReplication(self, bucketName, replication):
+    def setBucketReplication(self, bucketName, replication, extensionHeaders=None):
         self._assert_not_null(replication, 'replication is empty')
-        return self._make_put_request(bucketName, **self.convertor.trans_set_bucket_replication(replication=replication))
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **self.convertor.trans_set_bucket_replication(replication=replication))
 
     @funcCache
-    def getBucketReplication(self, bucketName):
-        return self._make_get_request(bucketName, pathArgs={'replication':None}, methodName='getBucketReplication')
+    def getBucketReplication(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'replication':None}, methodName='getBucketReplication', extensionHeaders=extensionHeaders)
     
     @funcCache
-    def deleteBucketReplication(self, bucketName):
-        return self._make_delete_request(bucketName, pathArgs={'replication':None})
-    
+    def deleteBucketReplication(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, pathArgs={'replication':None}, extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def setBucketRequestPayment(self, bucketName, payer, extensionHeaders=None):
+        self._assert_not_null(payer, 'payer is empty')
+        return self._make_put_request(bucketName, pathArgs={'requestPayment': None}, entity=self.convertor.trans_bucket_request_payment(payer=payer), extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def getBucketRequestPayment(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'requestPayment': None}, methodName='getBucketRequestPayment', extensionHeaders=extensionHeaders)
 
     @funcCache
     def uploadFile(self, bucketName, objectKey, uploadFile, partSize=9 * 1024 * 1024, 
                    taskNum=1, enableCheckpoint=False, checkpointFile=None, 
-                   checkSum=False, metadata=None, progressCallback=None, headers=None):
+                   checkSum=False, metadata=None, progressCallback=None, headers=None, extensionHeaders=None):
         self.log_client.log(INFO, 'enter resume upload file...')
         self._assert_not_null(bucketName, 'bucketName is empty')
         self._assert_not_null(objectKey, 'objectKey is empty')
@@ -1816,11 +1838,11 @@ class ObsClient(_BasicClient):
             taskNum = 1
         else:
             taskNum = int(math.ceil(taskNum))
-        return _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile, checkSum, metadata, progressCallback, self, headers)
+        return _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile, checkSum, metadata, progressCallback, self, headers, extensionHeaders=extensionHeaders)
     
     @funcCache
     def _downloadFileWithNotifier(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1, enableCheckpoint=False,
-                     checkpointFile=None, header=None, versionId=None, progressCallback=None, imageProcess=None, notifier=progress.NONE_NOTIFIER):
+                     checkpointFile=None, header=None, versionId=None, progressCallback=None, imageProcess=None, notifier=progress.NONE_NOTIFIER, extensionHeaders=None):
         self.log_client.log(INFO, 'enter resume download...')
         self._assert_not_null(bucketName, 'bucketName is empty')
         self._assert_not_null(objectKey, 'objectKey is empty')
@@ -1842,18 +1864,18 @@ class ObsClient(_BasicClient):
         else:
             taskNum = int(math.ceil(taskNum))
         return _resumer_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckpoint, checkpointFile, header, versionId, progressCallback, self,
-                                 imageProcess, notifier)
+                                 imageProcess, notifier, extensionHeaders=extensionHeaders)
     
     def downloadFile(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1, enableCheckpoint=False,
-                     checkpointFile=None, header=None, versionId=None, progressCallback=None, imageProcess=None):
-        return self._downloadFileWithNotifier(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckpoint, checkpointFile, header, versionId, progressCallback, imageProcess)
+                     checkpointFile=None, header=None, versionId=None, progressCallback=None, imageProcess=None, extensionHeaders=None):
+        return self._downloadFileWithNotifier(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckpoint, checkpointFile, header, versionId, progressCallback, imageProcess, extensionHeaders=extensionHeaders)
     
     
     def downloadFiles(self, bucketName, prefix, downloadFolder=None, taskNum=const.DEFAULT_TASK_NUM, taskQueueSize=const.DEFAULT_TASK_QUEUE_SIZE, 
                       headers=GetObjectHeader(), imageProcess=None, interval=const.DEFAULT_BYTE_INTTERVAL, taskCallback=None, progressCallback=None,
-                      threshold=const.DEFAULT_MAXIMUM_SIZE, partSize=5*1024*1024, subTaskNum=1, enableCheckpoint=False, checkpointFile=None):
+                      threshold=const.DEFAULT_MAXIMUM_SIZE, partSize=5*1024*1024, subTaskNum=1, enableCheckpoint=False, checkpointFile=None, extensionHeaders=None):
         return _download_files(self, bucketName, prefix, downloadFolder, taskNum, taskQueueSize, headers, imageProcess, 
-                               interval, taskCallback, progressCallback, threshold, partSize, subTaskNum, enableCheckpoint, checkpointFile)
+                               interval, taskCallback, progressCallback, threshold, partSize, subTaskNum, enableCheckpoint, checkpointFile, extensionHeaders=extensionHeaders)
         
             
     

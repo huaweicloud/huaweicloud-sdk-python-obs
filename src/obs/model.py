@@ -111,7 +111,10 @@ __all__ = [
     'ResponseWrapper',
     'ObjectStream',
     'GetBucketEncryptionResponse',
-    'UploadFileHeader'
+    'UploadFileHeader',
+    'GetBucketRequestPaymentResponse',
+    'Payer',
+    'ExtensionHeader'
 ]
 
 
@@ -1146,7 +1149,17 @@ class UploadPartResponse(BaseModel):
         self.sseKmsKey = sseKmsKey
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
-        
+
+class GetBucketRequestPaymentResponse(BaseModel):
+    allowedAttr = {'payer': BASESTRING}
+    def __init__(self, payer=None):
+        self.payer = payer
+
+class Payer(object):
+    BUCKET_OWNER_PAYER = "BucketOwner"
+    REQUESTER_PAYER = "Requester"
+    REQUESTER = "requester"
+
 class ResponseWrapper(object):
     def __init__(self, conn, result, connHolder, contentLength=None, notifier=None):
         self.conn = conn
@@ -1228,3 +1241,8 @@ class ObjectStream(BaseModel):
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
         
+class ExtensionHeader(BaseModel):
+    allowedAttr = {'requesterPayer': BASESTRING}
+
+    def __init__(self, requesterPayer=None):
+        self.requesterPayer = requesterPayer

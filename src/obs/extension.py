@@ -21,7 +21,7 @@ from obs.ilog import ERROR
 
 def _download_files(obsClient, bucketName, prefix, downloadFolder=None, taskNum=const.DEFAULT_TASK_NUM, taskQueueSize=const.DEFAULT_TASK_QUEUE_SIZE, 
                       headers=GetObjectHeader(), imageProcess=None, interval=const.DEFAULT_BYTE_INTTERVAL, taskCallback=None, progressCallback=None,
-                      threshold=const.DEFAULT_MAXIMUM_SIZE, partSize=5*1024*1024, subTaskNum=1, enableCheckpoint=False, checkpointFile=None):
+                      threshold=const.DEFAULT_MAXIMUM_SIZE, partSize=5*1024*1024, subTaskNum=1, enableCheckpoint=False, checkpointFile=None, extensionHeaders=None):
     try:
         executor = None
         notifier = None
@@ -46,7 +46,7 @@ def _download_files(obsClient, bucketName, prefix, downloadFolder=None, taskNum=
         prefix = prefix if prefix is not None else '' 
         prefixDir = prefix[:prefix.rfind('/')+1] 
         
-        for content in _list_objects(obsClient, bucketName, prefix=prefix):
+        for content in _list_objects(obsClient, bucketName, prefix=prefix, extensionHeaders=extensionHeaders):
             objectKey = content.key
             totalTasks += 1
             totalAmount += content.size
@@ -76,11 +76,11 @@ def _download_files(obsClient, bucketName, prefix, downloadFolder=None, taskNum=
                 state._successful_increment()
             elif content.size < threshold: 
                 executor.execute(_task_wrap, obsClient, obsClient._getObjectWithNotifier, key=objectKey, taskCallback=taskCallback, state=state, bucketName=bucketName, 
-                                 objectKey=objectKey, getObjectRequest=query, headers=headers, downloadPath=downloadPath, notifier=notifier)
+                                 objectKey=objectKey, getObjectRequest=query, headers=headers, downloadPath=downloadPath, notifier=notifier, extensionHeaders=extensionHeaders)
             else:
                 executor.execute(_task_wrap, obsClient, obsClient._downloadFileWithNotifier, key=objectKey, taskCallback=taskCallback, state=state, bucketName=bucketName, 
                                  objectKey=objectKey, downloadFile=downloadPath, partSize=partSize, taskNum=subTaskNum, enableCheckpoint=enableCheckpoint, 
-                                 checkpointFile=checkpointFile, header=headers, imageProcess=imageProcess, notifier=notifier)
+                                 checkpointFile=checkpointFile, header=headers, imageProcess=imageProcess, notifier=notifier, extensionHeaders=extensionHeaders)
                 
         state.total_tasks = totalTasks
         notifier.totalAmount = totalAmount
@@ -105,9 +105,9 @@ def _task_wrap(obsClient, func, key, taskCallback=None, state=None, **kwargs):
         taskCallback(key, e)
         obsClient.log_client.log(ERROR, traceback.format_exc())
         
-def _list_objects(obsClient, bucketName, prefix=None, marker=None, max_keys=None, delimiter=None):
+def _list_objects(obsClient, bucketName, prefix=None, marker=None, max_keys=None, delimiter=None, extensionHeaders=None):
     while True:
-        resp = obsClient.listObjects(bucketName, max_keys=max_keys, marker=marker, prefix=prefix, delimiter=delimiter)
+        resp = obsClient.listObjects(bucketName, max_keys=max_keys, marker=marker, prefix=prefix, delimiter=delimiter, extensionHeaders=extensionHeaders)
         if resp.status < 300:
             for content in resp.body.contents:
                 yield content
