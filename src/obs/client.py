@@ -45,6 +45,7 @@ from obs.model import SetObjectMetadataHeader
 from obs.bucket import BucketClient
 from obs import loadtoken
 from inspect import isfunction
+from obs.model import FetchPolicy, _FetchJob
 
 if const.IS_PYTHON2:
     from urlparse import urlparse
@@ -858,7 +859,10 @@ class _BasicClient(object):
             try:
                 search = self.pattern.search(xml)
                 xml = xml if search is None else xml.replace(search.group(), '')
-                code, message, requestId, hostId, resource = self.convertor.parseErrorResult(xml)
+                if headers.get("content-type", "not exsited") == const.MIME_TYPES.get("json"):
+                    code, message, requestId = self.convertor.parseJsonErrorResult(xml)
+                else:
+                    code, message, requestId, hostId, resource = self.convertor.parseErrorResult(xml)
             except Exception as ee:
                 self.log_client.log(ERROR, util.to_string(ee))
                 self.log_client.log(ERROR, traceback.format_exc())
@@ -1876,6 +1880,49 @@ class ObsClient(_BasicClient):
                       threshold=const.DEFAULT_MAXIMUM_SIZE, partSize=5*1024*1024, subTaskNum=1, enableCheckpoint=False, checkpointFile=None, extensionHeaders=None):
         return _download_files(self, bucketName, prefix, downloadFolder, taskNum, taskQueueSize, headers, imageProcess, 
                                interval, taskCallback, progressCallback, threshold, partSize, subTaskNum, enableCheckpoint, checkpointFile, extensionHeaders=extensionHeaders)
+
+    #OEF interface
+
+    @funcCache
+    def setBucketFetchPolicy(self, bucketName, status, agency, extensionHeaders=None):
+        self._assert_not_null(status, "status is empty")
+        self._assert_not_null(agency, "agency is empty")
+        fetchPolicy = FetchPolicy(status, agency)
+        return self._make_put_request(bucketName, const.FETCH_POLICY_KEY, extensionHeaders=extensionHeaders,
+                                      **self.convertor.trans_set_bucket_fetch_policy(fetchPolicy))
+
+    @funcCache
+    def getBucketFetchPolicy(self, bucketName, extensionHeaders=None):
+        headers = {self.ha.oef_marker_header(): "yes"}
+        return self._make_get_request(bucketName, const.FETCH_POLICY_KEY, methodName="getBucketFetchPolicy",
+                                      headers=headers, extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def deleteBucketFetchPolicy(self, bucketName, extensionHeaders=None):
+        headers = {self.ha.oef_marker_header(): "yes"}
+        return self._make_delete_request(bucketName, const.FETCH_POLICY_KEY, headers=headers,
+                                         extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def setBucketFetchJob(self, bucketName, url, host=None, key=None, md5=None, callBackUrl=None,
+                          callBackBody=None, callBackBodyType=None, callBackHost=None, fileType=None,
+                          ignoreSameKey=False, objectHeaders=None, etag=None, trustName=None, extensionHeaders=None):
+        self._assert_not_null(url, "url is empty")
+        fetchJob = _FetchJob(url=url, host=host, bucket=bucketName, key=key, md5=md5, callBackUrl=callBackUrl,
+                             callBackBody=callBackBody, callBackBodyType=callBackBodyType, callBackHost=callBackHost,
+                             fileType=fileType, ignoreSameKey=ignoreSameKey, objectHeaders=objectHeaders, etag=etag,
+                             trustName=trustName)
+        return self._make_post_request(bucketName, const.FETCH_JOB_KEY, methodName="setBucketFetchJob",
+                                       extensionHeaders=extensionHeaders,
+                                       **self.convertor.trans_set_bucket_fetch_job(fetchJob))
+
+    @funcCache
+    def getBucketFetchJob(self, bucketName, jobId, extensionHeaders=None):
+        self._assert_not_null(jobId, "jobId is empty")
+        headers = {self.ha.oef_marker_header(): "yes"}
+        key = const.FETCH_JOB_KEY + "/" + jobId
+        return self._make_get_request(bucketName, key, methodName="getBucketFetchJob", headers=headers,
+                                      extensionHeaders=extensionHeaders)
         
             
     

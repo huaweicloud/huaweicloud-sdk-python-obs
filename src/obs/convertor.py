@@ -16,9 +16,11 @@ try:
     import xml.etree.cElementTree as ET
 except:
     import xml.etree.ElementTree as ET
+import json
 from obs.model import *
 from obs import util
 from obs import const
+from obs.model import FetchPolicy, SetBucketFetchJobResponse, GetBucketFetchJobResponse, FetchJobResponse
 
 class Adapter(object):
     
@@ -167,7 +169,10 @@ class Adapter(object):
 
     def request_payer_header(self):
         return self._get_header_prefix() + 'request-payer'
-    
+
+    def oef_marker_header(self):
+        return self._get_header_prefix() + 'oef-marker'
+
     def adapt_group(self, group):
         if self.is_obs:
             return group if group in self.OBS_ALLOWED_GROUP else 'Everyone' if group == 'http://acs.amazonaws.com/groups/global/AllUsers' or group == 'AllUsers' else None
@@ -921,7 +926,33 @@ class Convertor(object):
         _headers = {}
         if headers is not None and len(headers) > 0:
             self._put_key_value(_headers, self.ha.request_payer_header(), (headers.get('requesterPayer')))
-        return  _headers
+        return _headers
+
+    # OEF trans func
+    def trans_set_bucket_fetch_policy(self, fetchPolicy):
+        headers = {}
+        self._put_key_value(headers, const.CONTENT_TYPE_HEADER, const.MIME_TYPES.get("json"))
+        self._put_key_value(headers, self.ha.oef_marker_header(), "yes")
+        jsonPolicy = {"fetch": fetchPolicy}
+        entity = json.dumps(jsonPolicy, ensure_ascii=False)
+        return {'headers': headers, 'entity': entity}
+
+    def trans_set_bucket_fetch_job(self, fetchJob):
+        headers = {}
+        self._put_key_value(headers, const.CONTENT_TYPE_HEADER, const.MIME_TYPES.get("json"))
+        self._put_key_value(headers, self.ha.oef_marker_header(), "yes")
+        if fetchJob.get("objectheaders") is not None:
+            for k in list(fetchJob["objectheaders"].keys()):
+                v = fetchJob["objectheaders"].get(k)
+                if v is not None:
+                    if not util.to_string(k).lower().startswith(self.ha._get_header_prefix()):
+                        del fetchJob["objectheaders"][k]
+                        k = self.ha._get_meta_header_prefix() + k
+                    fetchJob["objectheaders"][k] = v
+                else:
+                    del fetchJob["objectheaders"][k]
+        entity = json.dumps(fetchJob, ensure_ascii=False)
+        return {'headers': headers, 'entity': entity}
 
     def _find_item(self, root, itemname):
         result = root.find(itemname)
@@ -1647,3 +1678,67 @@ class Convertor(object):
         payer =self._find_item(root, 'Payer')
         payment = GetBucketRequestPaymentResponse(payer=payer)
         return payment
+
+    #OEF parse func
+    def _find_json_item(self, value, itemname):
+        result = value.get(itemname)
+        if result is None:
+            return None
+        if const.IS_PYTHON2:
+            result = util.safe_encode(result)
+        return util.to_string(result)
+
+    def parseJsonErrorResult(self, jsons):
+        result = json.loads(jsons)
+        code = self._find_json_item(result, "code")
+        message = self._find_json_item(result, "message")
+        requestId = self._find_json_item(result, "request_id")
+        return code, message, requestId
+
+    def parseGetBucketFetchPolicy(self, jsons, headers=None):
+        result = json.loads(jsons)
+        status = None
+        agency = None
+        fetchResult = result.get("fetch")
+        if fetchResult is not None:
+            status = self._find_json_item(fetchResult, "status")
+            agency = self._find_json_item(fetchResult, "agency")
+        policy = FetchPolicy(status=status, agency=agency)
+        return policy
+
+    def parseSetBucketFetchJob(self, jsons, headers=None):
+        result = json.loads(jsons)
+        ID = self._find_json_item(result, "id")
+        wait = result.get("Wait")
+        response = SetBucketFetchJobResponse(id=ID, wait=wait)
+        return response
+
+    def parseGetBucketFetchJob(self, jsons, header=None):
+        result = json.loads(jsons)
+        err = self._find_json_item(result, "err")
+        code = self._find_json_item(result, "code")
+        status = self._find_json_item(result, "status")
+
+        job = result.get("job")
+        if job is None:
+            response = GetBucketFetchJobResponse(code=code, status=status, job=None, err=err)
+            return response
+
+        url = self._find_json_item(job, "url")
+        host = self._find_json_item(job, "host")
+        bucket = self._find_json_item(job, "bucket")
+        key = self._find_json_item(job, "key")
+        md5 = self._find_json_item(job, "md5")
+        fileType = self._find_json_item(job, "file_type")
+        ignoreSameKey = self._find_json_item(job, "ignore_same_key")
+        callBackUrl = self._find_json_item(job, "callbackurl")
+        callBackBody = self._find_json_item(job, "callbackbody")
+        callBackHost = self._find_json_item(job, "callbackhost")
+        callBackBodyType = self._find_json_item(job, "callbackbodytype")
+        fetchJobResponse = FetchJobResponse(url=url, host=host, bucket=bucket, key=key, md5=md5, fileType=fileType,
+                                            ignoreSameKey=ignoreSameKey, callBackUrl=callBackUrl,
+                                            callBackBody=callBackBody,
+                                            callBackHost=callBackHost, callBackBodyType=callBackBodyType)
+
+        response = GetBucketFetchJobResponse(code=code, status=status, job=fetchJobResponse, err=err)
+        return response

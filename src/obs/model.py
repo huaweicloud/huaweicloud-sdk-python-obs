@@ -114,7 +114,13 @@ __all__ = [
     'UploadFileHeader',
     'GetBucketRequestPaymentResponse',
     'Payer',
-    'ExtensionHeader'
+    'ExtensionHeader',
+    'FetchStatus',
+    'FetchPolicy',
+    '_FetchJob',
+    'FetchJobResponse',
+    'SetBucketFetchJobResponse',
+    'GetBucketFetchJobResponse'
 ]
 
 
@@ -1246,3 +1252,81 @@ class ExtensionHeader(BaseModel):
 
     def __init__(self, requesterPayer=None):
         self.requesterPayer = requesterPayer
+
+
+#OEF Model
+class FetchStatus(object):
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class FetchPolicy(BaseModel):
+    allowedAttr = {'status': BASESTRING, 'agency': BASESTRING}
+
+    def __init__(self, status=None, agency=None):
+        self.status = status
+        self.agency = agency
+
+
+class _FetchJob(BaseModel):
+    allowedAttr = {'url': BASESTRING, 'host': BASESTRING, 'bucket': BASESTRING, 'key': BASESTRING, 'md5': BASESTRING,
+                   'callbackurl': BASESTRING, 'callbackbody': BASESTRING, 'callbackbodytype': BASESTRING,
+                   'callbackhost': BASESTRING, 'file_type': BASESTRING, 'ignore_same_key': bool, 'objectheaders': dict,
+                   'etag': BASESTRING, 'trustname': BASESTRING}
+
+    def __init__(self, url=None, host=None, bucket=None, key=None, md5=None, callBackUrl=None,
+                 callBackBody=None, callBackBodyType=None, callBackHost=None, fileType=None,
+                 ignoreSameKey=False, objectHeaders=None, etag=None, trustName=None):
+        self.url = url
+        self.host = host
+        self.bucket = bucket
+        self.key = key
+        self.md5 = md5
+        self.callbackurl = callBackUrl
+        self.callbackbody = callBackBody
+        self.callbackbodytype = callBackBodyType
+        self.callbackhost = callBackHost
+        self.file_type = fileType
+        self.ignore_same_key = ignoreSameKey
+        self.objectheaders = objectHeaders
+        self.etag = etag
+        self.trustname = trustName
+
+
+class SetBucketFetchJobResponse(BaseModel):
+    allowedAttr = {"id": BASESTRING, "wait": int}
+
+    def __init__(self, id=None, wait=None):
+        self.id = id
+        self.wait = wait
+
+
+class FetchJobResponse(BaseModel):
+    allowedAttr = {'url': BASESTRING, 'host': BASESTRING, 'bucket': BASESTRING, 'key': BASESTRING, 'md5': BASESTRING,
+                   'callBackUrl': BASESTRING, 'callBackBody': BASESTRING, 'callBackBodyType': BASESTRING,
+                   'callBackHost': BASESTRING, 'fileType': BASESTRING, 'ignoreSameKey': bool}
+
+    def __init__(self, url=None, host=None, bucket=None, key=None, md5=None, callBackUrl=None,
+                 callBackBody=None, callBackBodyType=None, callBackHost=None, fileType=None,
+                 ignoreSameKey=False):
+        self.url = url
+        self.host = host
+        self.bucket = bucket
+        self.key = key
+        self.md5 = md5
+        self.callBackUrl = callBackUrl
+        self.callBackBody = callBackBody
+        self.callBackBodyType = callBackBodyType
+        self.callBackHost = callBackHost
+        self.fileType = fileType
+        self.ignoreSameKey = ignoreSameKey
+
+
+class GetBucketFetchJobResponse(BaseModel):
+    allowedAttr = {"code": BASESTRING, "err": BASESTRING, "status": BASESTRING, "job": FetchJobResponse}
+
+    def __init__(self, code=None, status=None, job=None, err=None):
+        self.code = code
+        self.status = status
+        self.job = job
+        self.err = err

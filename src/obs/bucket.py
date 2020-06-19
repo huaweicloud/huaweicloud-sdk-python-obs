@@ -78,7 +78,12 @@ class BucketClient(object):
         'deleteBucketEncryption',
         'headObject',
         'setBucketRequestPayment',
-        'getBucketRequestPayment'
+        'getBucketRequestPayment',
+        'setBucketFetchPolicy',
+        'getBucketFetchPolicy',
+        'deleteBucketFetchPolicy',
+        'setBucketFetchJob',
+        'getBucketFetchJob'
     ]
     
     def __init__(self, obsClient, bucketName):

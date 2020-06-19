@@ -87,7 +87,7 @@ DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 
 
-OBS_SDK_VERSION = '3.20.1'
+OBS_SDK_VERSION = '3.20.3'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -107,6 +107,9 @@ IPv4_REGEX = '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
 
 V2_SIGNATURE = 'v2'
 OBS_SIGNATURE = 'obs'
+
+FETCH_POLICY_KEY = "v1/extension_policy"
+FETCH_JOB_KEY = "v1/async-fetch/jobs"
 
 ALLOWED_RESOURCE_PARAMTER_NAMES = (
         'acl',
@@ -212,7 +215,8 @@ ALLOWED_RESPONSE_HTTP_HEADER_METADATA_NAMES = (
         'access-control-allow-methods',
         'access-control-expose-headers',
         'connection',
-        'x-reserved-indicator'
+        'x-reserved-indicator',
+        'x-oef-request-id'
 )
 
 
