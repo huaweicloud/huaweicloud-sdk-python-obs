@@ -16,6 +16,7 @@ import re
 import base64
 import hashlib
 import os
+import json
 from obs import const
 from obs import progress
 
@@ -391,3 +392,20 @@ def verify_attr_type(value, allowedAttrType):
 
 def lazyCallback(*args, **kwargs):
     pass
+
+
+def jsonLoadsForPy2(json_text):
+    return _byteify(json.loads(json_text, object_hook=_byteify), ignore_dicts=True)
+
+
+def _byteify(data, ignore_dicts=False):
+    if isinstance(data, const.UNICODE):
+        return data.encode('utf-8')
+    if isinstance(data, list):
+        return [_byteify(item, ignore_dicts=True) for item in data]
+    if isinstance(data, dict) and not ignore_dicts:
+        return {
+            _byteify(key, ignore_dicts=True): _byteify(value, ignore_dicts=True)
+            for key, value in data.iteritems()
+        }
+    return data

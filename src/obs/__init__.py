@@ -16,6 +16,7 @@ from obs.ilog import LogConf
 from obs.client import ObsClient
 from obs.model import *
 from obs.model import ExtensionHeader, FetchStatus
+from obs.workflow import WorkflowClient
 
 __all__ = [
     'LogConf',
@@ -75,6 +76,7 @@ __all__ = [
     'UploadFileHeader',
     'Payer',
     'ExtensionHeader',
-    'FetchStatus'
+    'FetchStatus',
+    'WorkflowClient'
 ]
 

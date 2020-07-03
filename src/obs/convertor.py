@@ -20,150 +20,168 @@ import json
 from obs.model import *
 from obs import util
 from obs import const
-from obs.model import FetchPolicy, SetBucketFetchJobResponse, GetBucketFetchJobResponse, FetchJobResponse
+from obs.model import FetchPolicy, SetBucketFetchJobResponse, GetBucketFetchJobResponse, FetchJobResponse, \
+    ListWorkflowTemplateResponse
+from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowResponse, \
+    AsyncAPIStartWorkflowResponse, ListWorkflowExecutionResponse, GetWorkflowExecutionResponse, \
+    RestoreFailedWorkflowExecutionResponse, GetTriggerPolicyResponse, CreateWorkflowTemplateResponse, \
+    GetWorkflowTemplateResponse, CreateWorkflowResponse
+from obs.model import DateTime, ListObjectsResponse, Content, CorsRule, ObjectVersionHead, ObjectVersion, \
+    ObjectDeleteMarker, DeleteObjectResult, NoncurrentVersionExpiration, NoncurrentVersionTransition, Rule, Condition, \
+    Redirect, FilterRule, FunctionGraphConfiguration, Upload, CompleteMultipartUploadResponse, ListPartsResponse, \
+    Grant, ReplicationRule, Transition, Grantee
+
 
 class Adapter(object):
-    
-    OBS_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'public-read-delivered', 'public-read-write-delivered', 'bucket-owner-full-control']
-    V2_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'authenticated-read', 'bucket-owner-read', 'bucket-owner-full-control', 'log-delivery-write']
-    
+    OBS_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'public-read-delivered',
+                               'public-read-write-delivered', 'bucket-owner-full-control']
+    V2_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'authenticated-read', 'bucket-owner-read',
+                              'bucket-owner-full-control', 'log-delivery-write']
+
     OBS_ALLOWED_STORAGE_CLASS = ['STANDARD', 'WARM', 'COLD']
     V2_ALLOWED_STORAGE_CLASS = ['STANDARD', 'STANDARD_IA', 'GLACIER']
-    
+
     OBS_ALLOWED_GROUP = ['Everyone']
-    V2_ALLOWED_GROUP = ['http://acs.amazonaws.com/groups/global/AllUsers', 'http://acs.amazonaws.com/groups/global/AuthenticatedUsers', 'http://acs.amazonaws.com/groups/s3/LogDelivery']
-    
+    V2_ALLOWED_GROUP = ['http://acs.amazonaws.com/groups/global/AllUsers',
+                        'http://acs.amazonaws.com/groups/global/AuthenticatedUsers',
+                        'http://acs.amazonaws.com/groups/s3/LogDelivery']
+
     OBS_ALLOWED_RESTORE_TIER = ['Expedited', 'Standard']
     V2_ALLOWED_RESTORE_TIER = ['Expedited', 'Standard', 'Bulk']
-    
-    OBS_ALLOWED_EVENT_TYPE = ['ObjectCreated:*', 'ObjectCreated:Put', 'ObjectCreated:Post', 'ObjectCreated:Copy', 
-                              'ObjectCreated:CompleteMultipartUpload', 'ObjectRemoved:*', 'ObjectRemoved:Delete', 'ObjectRemoved:DeleteMarkerCreated']
-    V2_ALLOWED_EVENT_TYPE = ['s3:ObjectCreated:*', 's3:ObjectCreated:Put', 's3:ObjectCreated:Post', 's3:ObjectCreated:Copy', 
-                              's3:ObjectCreated:CompleteMultipartUpload', 's3:ObjectRemoved:*', 's3:ObjectRemoved:Delete', 's3:ObjectRemoved:DeleteMarkerCreated']
-    
+
+    OBS_ALLOWED_EVENT_TYPE = ['ObjectCreated:*', 'ObjectCreated:Put', 'ObjectCreated:Post', 'ObjectCreated:Copy',
+                              'ObjectCreated:CompleteMultipartUpload', 'ObjectRemoved:*', 'ObjectRemoved:Delete',
+                              'ObjectRemoved:DeleteMarkerCreated']
+    V2_ALLOWED_EVENT_TYPE = ['s3:ObjectCreated:*', 's3:ObjectCreated:Put', 's3:ObjectCreated:Post',
+                             's3:ObjectCreated:Copy',
+                             's3:ObjectCreated:CompleteMultipartUpload', 's3:ObjectRemoved:*',
+                             's3:ObjectRemoved:Delete', 's3:ObjectRemoved:DeleteMarkerCreated']
+
     def __init__(self, signature):
         self.is_obs = signature.lower() == 'obs'
-    
+
     def _get_header_prefix(self):
         return const.OBS_HEADER_PREFIX if self.is_obs else const.V2_HEADER_PREFIX
-    
+
     def _get_meta_header_prefix(self):
         return const.OBS_META_HEADER_PREFIX if self.is_obs else const.V2_META_HEADER_PREFIX
-    
+
     def auth_prefix(self):
         return 'OBS' if self.is_obs else 'AWS'
-    
+
     def acl_header(self):
         return self._get_header_prefix() + 'acl'
-    
+
     def epid_header(self):
         return self._get_header_prefix() + 'epid'
-    
+
     def date_header(self):
         return self._get_header_prefix() + 'date'
-    
+
     def security_token_header(self):
         return self._get_header_prefix() + 'security-token'
-    
+
     def content_sha256_header(self):
         return self._get_header_prefix() + 'content-sha256'
-    
+
     def default_storage_class_header(self):
         return self._get_header_prefix() + 'storage-class' if self.is_obs else 'x-default-storage-class'
-    
+
     def az_redundancy_header(self):
         return 'x-obs-az-redundancy'
-    
+
     def storage_class_header(self):
         return self._get_header_prefix() + 'storage-class'
-    
+
     def request_id_header(self):
         return self._get_header_prefix() + 'request-id'
-    
+
     def indicator_header(self):
         return 'x-reserved-indicator'
-    
+
     def location_header(self):
         return self._get_header_prefix() + 'location'
-    
+
     def bucket_region_header(self):
-        return self._get_header_prefix() + 'bucket-location' if self.is_obs else self._get_header_prefix() + 'bucket-region'
-    
+        return self._get_header_prefix() + 'bucket-location' if self.is_obs \
+            else self._get_header_prefix() + 'bucket-region'
+
     def server_version_header(self):
         return 'x-obs-version'
-    
+
     def version_id_header(self):
         return self._get_header_prefix() + 'version-id'
-    
+
     def copy_source_version_id(self):
         return self._get_header_prefix() + 'copy-source-version-id'
-    
+
     def delete_marker_header(self):
         return self._get_header_prefix() + 'delete-marker'
-    
+
     def sse_kms_header(self):
         return self._get_header_prefix() + 'server-side-encryption'
-    
+
     def sse_kms_key_header(self):
-        return self._get_header_prefix() +  'server-side-encryption-kms-key-id' if self.is_obs else self._get_header_prefix() + 'server-side-encryption-aws-kms-key-id'
-    
+        return self._get_header_prefix() + 'server-side-encryption-kms-key-id' if self.is_obs \
+            else self._get_header_prefix() + 'server-side-encryption-aws-kms-key-id'
+
     def copy_source_sse_c_header(self):
         return self._get_header_prefix() + 'copy-source-server-side-encryption-customer-algorithm'
-    
+
     def copy_source_sse_c_key_header(self):
         return self._get_header_prefix() + 'copy-source-server-side-encryption-customer-key'
-    
+
     def copy_source_sse_c_key_md5_header(self):
         return self._get_header_prefix() + 'copy-source-server-side-encryption-customer-key-MD5'
-    
+
     def sse_c_header(self):
         return self._get_header_prefix() + 'server-side-encryption-customer-algorithm'
-    
+
     def sse_c_key_header(self):
         return self._get_header_prefix() + 'server-side-encryption-customer-key'
-    
+
     def sse_c_key_md5_header(self):
         return self._get_header_prefix() + 'server-side-encryption-customer-key-MD5'
-    
+
     def website_redirect_location_header(self):
         return self._get_header_prefix() + 'website-redirect-location'
-    
+
     def success_action_redirect_header(self):
         return 'success-action-redirect'
-    
+
     def restore_header(self):
         return self._get_header_prefix() + 'restore'
-    
+
     def expires_header(self):
         return 'x-obs-expires'
-    
+
     def expiration_header(self):
         return self._get_header_prefix() + 'expiration'
-    
+
     def copy_source_header(self):
         return self._get_header_prefix() + 'copy-source'
-    
+
     def copy_source_range_header(self):
         return self._get_header_prefix() + 'copy-source-range'
-    
+
     def metadata_directive_header(self):
         return self._get_header_prefix() + 'metadata-directive'
-    
+
     def copy_source_if_match_header(self):
         return self._get_header_prefix() + 'copy-source-if-match'
-    
+
     def copy_source_if_none_match_header(self):
         return self._get_header_prefix() + 'copy-source-if-none-match'
-    
+
     def copy_source_if_modified_since_header(self):
         return self._get_header_prefix() + 'copy-source-if-modified-since'
-    
+
     def copy_source_if_unmodified_since_header(self):
         return self._get_header_prefix() + 'copy-source-if-unmodified-since'
-    
+
     def next_position_header(self):
         return 'x-obs-next-append-position'
-    
+
     def object_type_header(self):
         return 'x-obs-object-type'
 
@@ -175,34 +193,43 @@ class Adapter(object):
 
     def adapt_group(self, group):
         if self.is_obs:
-            return group if group in self.OBS_ALLOWED_GROUP else 'Everyone' if group == 'http://acs.amazonaws.com/groups/global/AllUsers' or group == 'AllUsers' else None
-        return group if group in self.V2_ALLOWED_GROUP else 'http://acs.amazonaws.com/groups/global/AllUsers' if group == 'Everyone' else 'http://acs.amazonaws.com/groups/global/AuthenticatedUsers' if \
-            group == 'AuthenticatedUsers' else 'http://acs.amazonaws.com/groups/s3/LogDelivery' if group == 'LogDelivery' else None
-    
+            return self._adapt_group_is_obs(group)
+        return group if group in self.V2_ALLOWED_GROUP else 'http://acs.amazonaws.com/groups/global/AllUsers' \
+            if group == 'Everyone' else 'http://acs.amazonaws.com/groups/global/AuthenticatedUsers' if \
+            group == 'AuthenticatedUsers' else 'http://acs.amazonaws.com/groups/s3/LogDelivery' \
+            if group == 'LogDelivery' else None
+
+    def _adapt_group_is_obs(self, group):
+        return group if group in self.OBS_ALLOWED_GROUP else 'Everyone' \
+            if group in ('http://acs.amazonaws.com/groups/global/AllUsers', 'AllUsers') else None
+
     def adapt_retore_tier(self, tier):
         if self.is_obs:
             return tier if tier in self.OBS_ALLOWED_RESTORE_TIER else None
-        
+
         return tier if tier in self.V2_ALLOWED_RESTORE_TIER else None
-    
+
     def adapt_acl_control(self, aclControl):
         if self.is_obs:
             return aclControl if aclControl in self.OBS_ALLOWED_ACL_CONTROL else None
-        
+
         return aclControl if aclControl in self.V2_ALLOWED_ACL_CONTROL else None
-            
+
     def adapt_event_type(self, eventType):
         if self.is_obs:
-            return eventType if eventType in self.OBS_ALLOWED_EVENT_TYPE else eventType[3:] if eventType in self.V2_ALLOWED_EVENT_TYPE else None
-        
-        return eventType if eventType in self.V2_ALLOWED_EVENT_TYPE else 's3:' + eventType if eventType in self.OBS_ALLOWED_EVENT_TYPE else None
+            return eventType if eventType in self.OBS_ALLOWED_EVENT_TYPE \
+                else eventType[3:] if eventType in self.V2_ALLOWED_EVENT_TYPE else None
 
-    
+        return eventType if eventType in self.V2_ALLOWED_EVENT_TYPE \
+            else 's3:' + eventType if eventType in self.OBS_ALLOWED_EVENT_TYPE else None
+
     def adapt_storage_class(self, storageClass):
         if self.is_obs:
-            return storageClass if storageClass in self.OBS_ALLOWED_STORAGE_CLASS else 'WARM' if storageClass == 'STANDARD_IA' else 'COLD' if storageClass == 'GLACIER' else None
-        return storageClass if storageClass in self.V2_ALLOWED_STORAGE_CLASS else 'STANDARD_IA' if storageClass == 'WARM' else 'GLACIER' if storageClass == 'COLD' else None
-    
+            return storageClass if storageClass in self.OBS_ALLOWED_STORAGE_CLASS \
+                else 'WARM' if storageClass == 'STANDARD_IA' else 'COLD' if storageClass == 'GLACIER' else None
+        return storageClass if storageClass in self.V2_ALLOWED_STORAGE_CLASS \
+            else 'STANDARD_IA' if storageClass == 'WARM' else 'GLACIER' if storageClass == 'COLD' else None
+
     def adapt_extension_permission(self, permission, is_bucket=True):
         header = None
         if permission is not None and permission.startswith(self._get_header_prefix()):
@@ -226,11 +253,12 @@ class Adapter(object):
                 header = 'grant-full-control-delivered'
         return self._get_header_prefix() + header if header is not None else None
 
+
 class Convertor(object):
     def __init__(self, signature, ha=None):
         self.is_obs = signature.lower() == 'obs'
         self.ha = ha
-    
+
     def _put_key_value(self, headers, key, value):
         if value is not None:
             if const.IS_PYTHON2:
@@ -238,13 +266,14 @@ class Convertor(object):
             value = util.to_string(value)
             if util.is_valid(value):
                 headers[key] = value
-    
+
     def trans_create_bucket(self, **kwargs):
         headers = {}
         header = kwargs.get('header')
         if header is not None:
             self._put_key_value(headers, self.ha.acl_header(), self.ha.adapt_acl_control(header.get('aclControl')))
-            self._put_key_value(headers, self.ha.default_storage_class_header(), self.ha.adapt_storage_class(header.get('storageClass')))
+            self._put_key_value(headers, self.ha.default_storage_class_header(),
+                                self.ha.adapt_storage_class(header.get('storageClass')))
             self._put_key_value(headers, self.ha.az_redundancy_header(), header.get('availableZone'))
             self._put_key_value(headers, self.ha.epid_header(), header.get('epid'))
             extensionGrants = header.get('extensionGrants')
@@ -258,32 +287,33 @@ class Convertor(object):
                             granteeIds = set()
                             grantDict[permission] = granteeIds
                         granteeIds.add('id=%s' % util.to_string(extensionGrant['granteeId']))
-                
+
                 for key, value in grantDict:
                     self._put_key_value(headers, key, ','.join(value))
-        return {'headers' : headers, 'entity' : None if kwargs.get('location') is None else self.trans_bucket_location(kwargs.get('location'))}
+        return {'headers': headers, 'entity': None if kwargs.get('location') is None else self.trans_bucket_location(
+            kwargs.get('location'))}
 
     def trans_bucket_location(self, location):
         root = ET.Element('CreateBucketConfiguration')
         ET.SubElement(root, 'Location' if self.is_obs else 'LocationConstraint').text = util.to_string(location)
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_list_buckets(self, **kwargs):
         headers = {}
         if kwargs.get('isQueryLocation'):
             self._put_key_value(headers, self.ha.location_header(), 'true')
-        return {'headers' : headers}
-    
+        return {'headers': headers}
+
     def trans_list_objects(self, **kwargs):
         pathArgs = {}
         self._put_key_value(pathArgs, 'prefix', kwargs.get('prefix'))
         self._put_key_value(pathArgs, 'marker', kwargs.get('marker'))
         self._put_key_value(pathArgs, 'delimiter', kwargs.get('delimiter'))
         self._put_key_value(pathArgs, 'max-keys', kwargs.get('max_keys'))
-        return {'pathArgs' : pathArgs}
-    
+        return {'pathArgs': pathArgs}
+
     def trans_list_versions(self, **kwargs):
-        pathArgs = {'versions' : None}
+        pathArgs = {'versions': None}
         version = kwargs.get('version')
         if version is not None:
             self._put_key_value(pathArgs, 'prefix', version.get('prefix'))
@@ -291,60 +321,63 @@ class Convertor(object):
             self._put_key_value(pathArgs, 'max-keys', version.get('max_keys'))
             self._put_key_value(pathArgs, 'delimiter', version.get('delimiter'))
             self._put_key_value(pathArgs, 'version-id-marker', version.get('version_id_marker'))
-        return {'pathArgs' : pathArgs}
-    
+        return {'pathArgs': pathArgs}
+
     def trans_get_bucket_metadata(self, **kwargs):
         headers = {}
         self._put_key_value(headers, const.ORIGIN_HEADER, kwargs.get('origin'))
         requestHeaders = kwargs.get('requestHeaders')
-        _requestHeaders = requestHeaders[0] if isinstance(requestHeaders, list) and len(requestHeaders) == 1 else requestHeaders
+        _requestHeaders = requestHeaders[0] if isinstance(requestHeaders, list) and len(
+            requestHeaders) == 1 else requestHeaders
         self._put_key_value(headers, const.ACCESS_CONTROL_REQUEST_HEADERS_HEADER, _requestHeaders)
-        return {'headers' : headers}
-    
+        return {'headers': headers}
+
     def trans_get_bucket_storage_policy(self):
         return {
-            'pathArgs' : {'storageClass' if self.is_obs else 'storagePolicy': None},
-        } 
-    
+            'pathArgs': {'storageClass' if self.is_obs else 'storagePolicy': None},
+        }
+
     def trans_set_bucket_storage_policy(self, **kwargs):
         return {
-            'pathArgs' : {'storageClass' if self.is_obs else 'storagePolicy': None},
-            'entity' : self.trans_storage_policy(kwargs.get('storageClass'))
+            'pathArgs': {'storageClass' if self.is_obs else 'storagePolicy': None},
+            'entity': self.trans_storage_policy(kwargs.get('storageClass'))
         }
-        
+
     def trans_storage_policy(self, storageClass):
         if self.is_obs:
             root = ET.Element('StorageClass')
             root.text = util.to_string(self.ha.adapt_storage_class(util.to_string(storageClass)))
             return ET.tostring(root, 'UTF-8')
-        
+
         root = ET.Element('StoragePolicy')
-        ET.SubElement(root, 'DefaultStorageClass').text = util.to_string(self.ha.adapt_storage_class(util.to_string(storageClass)))
+        ET.SubElement(root, 'DefaultStorageClass').text = util.to_string(
+            self.ha.adapt_storage_class(util.to_string(storageClass)))
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_encryption(self, encryption, key=None):
         root = ET.Element('ServerSideEncryptionConfiguration')
         rule = ET.SubElement(root, 'Rule')
         sse = ET.SubElement(rule, 'ApplyServerSideEncryptionByDefault')
-        if encryption == 'kms' and not self.is_obs:encryption = 'aws:kms'
+        if encryption == 'kms' and not self.is_obs:
+            encryption = 'aws:kms'
         ET.SubElement(sse, 'SSEAlgorithm').text = util.to_string(encryption)
         if key is not None:
             ET.SubElement(sse, 'KMSMasterKeyID').text = util.to_string(key)
-        return ET.tostring(root, 'UTF-8')    
-            
+        return ET.tostring(root, 'UTF-8')
+
     def trans_quota(self, quota):
         root = ET.Element('Quota')
         ET.SubElement(root, 'StorageQuota').text = util.to_string(quota)
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_set_bucket_tagging(self, **kwargs):
         entity = self.trans_tag_info(kwargs.get('tagInfo'))
         return {
-            'pathArgs' : {'tagging' : None},
-            'headers' : {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))},
-            'entity' : entity
+            'pathArgs': {'tagging': None},
+            'headers': {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))},
+            'entity': entity
         }
-    
+
     def trans_tag_info(self, tagInfo):
         root = ET.Element('Tagging')
         tagSetEle = ET.SubElement(root, 'TagSet')
@@ -355,12 +388,12 @@ class Convertor(object):
                     ET.SubElement(tagEle, 'Key').text = util.safe_decode(tag['key'])
                     ET.SubElement(tagEle, 'Value').text = util.safe_decode(tag['value'])
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_set_bucket_cors(self, **kwargs):
         entity = self.trans_cors_rules(kwargs.get('corsRuleList'))
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
-        return {'pathArgs': {'cors' : None}, 'headers': headers, 'entity': entity}
-    
+        return {'pathArgs': {'cors': None}, 'headers': headers, 'entity': entity}
+
     def trans_cors_rules(self, corsRuleList):
         root = ET.Element('CORSConfiguration')
         for cors in corsRuleList:
@@ -382,12 +415,12 @@ class Convertor(object):
                 for v in cors['exposeHeader']:
                     ET.SubElement(corsRuleEle, 'ExposeHeader').text = util.to_string(v)
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_delete_objects(self, **kwargs):
         entity = self.trans_delete_objects_request(kwargs.get('deleteObjectsRequest'))
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
-        return {'pathArgs' : {'delete': None}, 'headers' : headers, 'entity' : entity}
-    
+        return {'pathArgs': {'delete': None}, 'headers': headers, 'entity': entity}
+
     def trans_delete_objects_request(self, deleteObjectsRequest):
         root = ET.Element('Delete')
         if deleteObjectsRequest is not None:
@@ -401,17 +434,17 @@ class Convertor(object):
                         if obj.get('versionId') is not None:
                             ET.SubElement(objectEle, 'VersionId').text = util.safe_decode(obj['versionId'])
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_version_status(self, status):
         root = ET.Element('VersioningConfiguration')
         ET.SubElement(root, 'Status').text = util.to_string(status)
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_set_bucket_lifecycle(self, **kwargs):
         entity = self.trans_lifecycle(kwargs.get('lifecycle'))
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
-        return {'pathArgs' : {'lifecycle':None}, 'headers': headers, 'entity':entity}
-    
+        return {'pathArgs': {'lifecycle': None}, 'headers': headers, 'entity': entity}
+
     def _transTransition(self, ruleEle, transition):
         transitionEle = ET.SubElement(ruleEle, 'Transition')
         if transition.get('days') is not None:
@@ -419,14 +452,17 @@ class Convertor(object):
         elif transition.get('date') is not None:
             date = transition['date'].ToUTMidTime() if isinstance(transition['date'], DateTime) else transition['date']
             ET.SubElement(transitionEle, 'Date').text = util.to_string(date)
-        ET.SubElement(transitionEle, 'StorageClass').text = util.to_string(self.ha.adapt_storage_class(transition.get('storageClass'))) 
+        ET.SubElement(transitionEle, 'StorageClass').text = util.to_string(
+            self.ha.adapt_storage_class(transition.get('storageClass')))
 
     def _transNoncurrentVersionTransition(self, ruleEle, noncurrentVersionTransition):
         noncurrentVersionTransitionEle = ET.SubElement(ruleEle, 'NoncurrentVersionTransition')
         if noncurrentVersionTransition.get('noncurrentDays') is not None:
-            ET.SubElement(noncurrentVersionTransitionEle, 'NoncurrentDays').text = util.to_string(noncurrentVersionTransition['noncurrentDays'])
-        ET.SubElement(noncurrentVersionTransitionEle, 'StorageClass').text = util.to_string(self.ha.adapt_storage_class(noncurrentVersionTransition['storageClass']))
-    
+            ET.SubElement(noncurrentVersionTransitionEle, 'NoncurrentDays').text = util.to_string(
+                noncurrentVersionTransition['noncurrentDays'])
+        ET.SubElement(noncurrentVersionTransitionEle, 'StorageClass').text = util.to_string(
+            self.ha.adapt_storage_class(noncurrentVersionTransition['storageClass']))
+
     def trans_lifecycle(self, lifecycle):
         root = ET.Element('LifecycleConfiguration')
         rules = lifecycle.get('rule')
@@ -438,44 +474,55 @@ class Convertor(object):
                 if item.get('prefix') is not None:
                     ET.SubElement(ruleEle, 'Prefix').text = util.safe_decode(item['prefix'])
                 ET.SubElement(ruleEle, 'Status').text = util.to_string(item.get('status'))
-                
-                if item.get('transition') is not None:
-                    _transition = item['transition']
-                    if isinstance(_transition, list):
-                        for transition in _transition:
-                            self._transTransition(ruleEle, transition)
-                    else:
-                        self._transTransition(ruleEle, _transition)
-        
-                if item.get('expiration') is not None and (item['expiration'].get('date') is not None or item['expiration'].get('days') is not None):
-                    expirationEle = ET.SubElement(ruleEle, 'Expiration')
-                    if item['expiration'].get('days') is not None:
-                        ET.SubElement(expirationEle, 'Days').text = util.to_string(item['expiration']['days'])
-                    elif item['expiration'].get('date') is not None:
-                        date = item['expiration']['date'].ToUTMidTime() if isinstance(item['expiration']['date'], DateTime) else item['expiration']['date']
-                        ET.SubElement(expirationEle, 'Date').text = util.to_string(date)
-            
+
+                ruleEle = self._trans_lifecycle_transition_expiration(item, ruleEle)
+
                 if item.get('noncurrentVersionTransition') is not None:
                     if isinstance(item['noncurrentVersionTransition'], list):
                         for noncurrentVersionTransition in item['noncurrentVersionTransition']:
                             self._transNoncurrentVersionTransition(ruleEle, noncurrentVersionTransition)
                     else:
                         self._transNoncurrentVersionTransition(ruleEle, item['noncurrentVersionTransition'])
-            
-                if item.get('noncurrentVersionExpiration') is not None and item['noncurrentVersionExpiration'].get('noncurrentDays') is not None:
+
+                if item.get('noncurrentVersionExpiration') is not None and item['noncurrentVersionExpiration'].get(
+                        'noncurrentDays') is not None:
                     noncurrentVersionExpirationEle = ET.SubElement(ruleEle, 'NoncurrentVersionExpiration')
-                    ET.SubElement(noncurrentVersionExpirationEle, 'NoncurrentDays').text = util.to_string(item['noncurrentVersionExpiration']['noncurrentDays'])
-                
-        return ET.tostring(root, 'UTF-8')    
-    
+                    ET.SubElement(noncurrentVersionExpirationEle, 'NoncurrentDays').text = util.to_string(
+                        item['noncurrentVersionExpiration']['noncurrentDays'])
+
+        return ET.tostring(root, 'UTF-8')
+
+    def _trans_lifecycle_transition_expiration(self, item, ruleEle):
+        if item.get('transition') is not None:
+            _transition = item['transition']
+            if isinstance(_transition, list):
+                for transition in _transition:
+                    self._transTransition(ruleEle, transition)
+            else:
+                self._transTransition(ruleEle, _transition)
+
+        if item.get('expiration') is not None and (
+                item['expiration'].get('date') is not None or item['expiration'].get('days') is not None):
+            expirationEle = ET.SubElement(ruleEle, 'Expiration')
+            if item['expiration'].get('days') is not None:
+                ET.SubElement(expirationEle, 'Days').text = util.to_string(item['expiration']['days'])
+            elif item['expiration'].get('date') is not None:
+                date = item['expiration']['date'].ToUTMidTime() if isinstance(item['expiration']['date'],
+                                                                              DateTime) else item['expiration'][
+                    'date']
+                ET.SubElement(expirationEle, 'Date').text = util.to_string(date)
+        return ruleEle
+
     def trans_website(self, website):
         root = ET.Element('WebsiteConfiguration')
         if website.get('redirectAllRequestTo') is not None:
             redirectAllEle = ET.SubElement(root, 'RedirectAllRequestsTo')
             if website['redirectAllRequestTo'].get('hostName') is not None:
-                ET.SubElement(redirectAllEle, 'HostName').text = util.to_string(website['redirectAllRequestTo']['hostName'])
+                ET.SubElement(redirectAllEle, 'HostName').text = util.to_string(
+                    website['redirectAllRequestTo']['hostName'])
             if website['redirectAllRequestTo'].get('protocol') is not None:
-                ET.SubElement(redirectAllEle, 'Protocol').text = util.to_string(website['redirectAllRequestTo']['protocol'])
+                ET.SubElement(redirectAllEle, 'Protocol').text = util.to_string(
+                    website['redirectAllRequestTo']['protocol'])
         else:
             if website.get('indexDocument') is not None and website['indexDocument'].get('suffix') is not None:
                 indexDocEle = ET.SubElement(root, 'IndexDocument')
@@ -483,48 +530,59 @@ class Convertor(object):
             if website.get('errorDocument') is not None and website['errorDocument'].get('key') is not None:
                 errorDocEle = ET.SubElement(root, 'ErrorDocument')
                 ET.SubElement(errorDocEle, 'Key').text = util.to_string(website['errorDocument']['key'])
-            if isinstance(website.get('routingRules'), list) and len(website['routingRules']) > 0:
-                routingRulesEle = ET.SubElement(root, 'RoutingRules')
-                for routingRule in website['routingRules']:
-                    routingRuleEle = ET.SubElement(routingRulesEle, 'RoutingRule')
-                    if routingRule.get('condition') is not None:
-                        conditionEle = ET.SubElement(routingRuleEle, 'Condition')
-                        if routingRule['condition'].get('keyPrefixEquals') is not None:
-                            ET.SubElement(conditionEle, 'KeyPrefixEquals').text = util.to_string(routingRule['condition']['keyPrefixEquals'])
-                        if routingRule['condition'].get('httpErrorCodeReturnedEquals') is not None:
-                            ET.SubElement(conditionEle, 'HttpErrorCodeReturnedEquals').text = util.to_string(routingRule['condition']['httpErrorCodeReturnedEquals'])
-                    
-                    if routingRule.get('redirect') is not None:
-                        redirectEle = ET.SubElement(routingRuleEle, 'Redirect')
-                        redirect = routingRule['redirect']
-                        if redirect.get('protocol') is not None:
-                            ET.SubElement(redirectEle, 'Protocol').text = util.to_string(redirect['protocol'])
-                        
-                        if redirect.get('hostName') is not None:
-                            ET.SubElement(redirectEle, 'HostName').text = util.to_string(redirect['hostName'])
-    
-                        if redirect.get('replaceKeyPrefixWith') is not None:
-                            ET.SubElement(redirectEle, 'ReplaceKeyPrefixWith').text = util.safe_decode(redirect['replaceKeyPrefixWith'])
-    
-                        if redirect.get('replaceKeyWith') is not None:
-                            ET.SubElement(redirectEle, 'ReplaceKeyWith').text = util.safe_decode(redirect['replaceKeyWith'])                        
-                        
-                        if redirect.get('httpRedirectCode') is not None:
-                            ET.SubElement(redirectEle, 'HttpRedirectCode').text = util.to_string(redirect['httpRedirectCode'])
+            root = self._trans_website_routingRules(root, website)
         return ET.tostring(root, 'UTF-8')
-    
+
+    def _trans_website_routingRules(self, root, website):
+        if isinstance(website.get('routingRules'), list) and bool(website['routingRules']):
+            routingRulesEle = ET.SubElement(root, 'RoutingRules')
+            for routingRule in website['routingRules']:
+                routingRuleEle = ET.SubElement(routingRulesEle, 'RoutingRule')
+                if routingRule.get('condition') is not None:
+                    conditionEle = ET.SubElement(routingRuleEle, 'Condition')
+                    if routingRule['condition'].get('keyPrefixEquals') is not None:
+                        ET.SubElement(conditionEle, 'KeyPrefixEquals').text = util.to_string(
+                            routingRule['condition']['keyPrefixEquals'])
+                    if routingRule['condition'].get('httpErrorCodeReturnedEquals') is not None:
+                        ET.SubElement(conditionEle, 'HttpErrorCodeReturnedEquals').text = util.to_string(
+                            routingRule['condition']['httpErrorCodeReturnedEquals'])
+
+                if routingRule.get('redirect') is not None:
+                    redirectEle = ET.SubElement(routingRuleEle, 'Redirect')
+                    redirect = routingRule['redirect']
+                    if redirect.get('protocol') is not None:
+                        ET.SubElement(redirectEle, 'Protocol').text = util.to_string(redirect['protocol'])
+
+                    if redirect.get('hostName') is not None:
+                        ET.SubElement(redirectEle, 'HostName').text = util.to_string(redirect['hostName'])
+
+                    if redirect.get('replaceKeyPrefixWith') is not None:
+                        ET.SubElement(redirectEle, 'ReplaceKeyPrefixWith').text = util.safe_decode(
+                            redirect['replaceKeyPrefixWith'])
+
+                    if redirect.get('replaceKeyWith') is not None:
+                        ET.SubElement(redirectEle, 'ReplaceKeyWith').text = util.safe_decode(
+                            redirect['replaceKeyWith'])
+
+                    if redirect.get('httpRedirectCode') is not None:
+                        ET.SubElement(redirectEle, 'HttpRedirectCode').text = util.to_string(
+                            redirect['httpRedirectCode'])
+        return root
+
     def trans_notification(self, notification):
         root = ET.Element('NotificationConfiguration')
-        
+
         def _set_configuration(config_type, urn_type):
-            if notification is not None and len(notification) > 0 and notification.get(config_type) is not None and len(notification[config_type]) > 0:
+            if notification is not None and bool(notification) and notification.get(config_type) is not None and bool(
+                    notification[config_type]):
                 node = config_type[:1].upper() + config_type[1:-1]
                 for topicConfiguration in notification[config_type]:
                     topicConfigurationEle = ET.SubElement(root, node)
                     if topicConfiguration.get('id') is not None:
                         ET.SubElement(topicConfigurationEle, 'Id').text = util.safe_decode(topicConfiguration['id'])
-                        
-                    if isinstance(topicConfiguration.get('filterRules'), list) and len(topicConfiguration['filterRules']) > 0:
+
+                    if isinstance(topicConfiguration.get('filterRules'), list) and bool(
+                            topicConfiguration['filterRules']):
                         filterEle = ET.SubElement(topicConfigurationEle, 'Filter')
                         filterRulesEle = ET.SubElement(filterEle, 'Object' if self.is_obs else 'S3Key')
                         for filterRule in topicConfiguration['filterRules']:
@@ -535,33 +593,36 @@ class Convertor(object):
                                 ET.SubElement(filterRuleEle, 'Value').text = util.safe_decode(filterRule['value'])
                     _urn_type = urn_type[:1].upper() + urn_type[1:]
                     if topicConfiguration.get(urn_type) is not None:
-                        ET.SubElement(topicConfigurationEle, _urn_type).text = util.to_string(topicConfiguration[urn_type])
-                    
+                        ET.SubElement(topicConfigurationEle, _urn_type).text = util.to_string(
+                            topicConfiguration[urn_type])
+
                     if isinstance(topicConfiguration.get('events'), list) and len(topicConfiguration['events']) > 0:
                         for event in topicConfiguration['events']:
-                            ET.SubElement(topicConfigurationEle, 'Event').text = util.to_string(self.ha.adapt_event_type(event))
-        
+                            ET.SubElement(topicConfigurationEle, 'Event').text = util.to_string(
+                                self.ha.adapt_event_type(event))
+
         _set_configuration('topicConfigurations', 'topic')
-        _set_configuration('functionGraphConfigurations', 'functionGraph')                    
-                    
+        _set_configuration('functionGraphConfigurations', 'functionGraph')
+
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_complete_multipart_upload_request(self, completeMultipartUploadRequest):
         root = ET.Element('CompleteMultipartUpload')
-        parts = [] if completeMultipartUploadRequest.get('parts') is None else (sorted(completeMultipartUploadRequest['parts'], key=lambda d: d.partNum))
+        parts = [] if completeMultipartUploadRequest.get('parts') is None else (
+            sorted(completeMultipartUploadRequest['parts'], key=lambda d: d.partNum))
         for obj in parts:
             partEle = ET.SubElement(root, 'Part')
             ET.SubElement(partEle, 'PartNumber').text = util.to_string(obj.get('partNum'))
             ET.SubElement(partEle, 'ETag').text = util.to_string(obj.get('etag'))
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_restore_object(self, **kwargs):
         pathArgs = {'restore': None}
         self._put_key_value(pathArgs, const.VERSION_ID_PARAM, kwargs.get('versionId'))
         entity = self.trans_restore(days=kwargs.get('days'), tier=kwargs.get('tier'))
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
-        return {'pathArgs': pathArgs, 'headers':headers, 'entity':entity}
-    
+        return {'pathArgs': pathArgs, 'headers': headers, 'entity': entity}
+
     def trans_set_bucket_acl(self, **kwargs):
         headers = {}
         aclControl = kwargs.get('aclControl')
@@ -571,14 +632,14 @@ class Convertor(object):
         else:
             acl = kwargs.get('acl')
             entity = None if acl is None or len(acl) == 0 else self.trans_acl(acl)
-        return {'pathArgs' : {'acl': None}, 'headers': headers, 'entity': entity}
-    
+        return {'pathArgs': {'acl': None}, 'headers': headers, 'entity': entity}
+
     def trans_set_object_acl(self, **kwargs):
         pathArgs = {'acl': None}
         versionId = kwargs.get('versionId')
         if versionId:
             pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
-        
+
         headers = {}
         aclControl = kwargs.get('aclControl')
         if aclControl is not None:
@@ -586,9 +647,9 @@ class Convertor(object):
             entity = None
         else:
             acl = kwargs.get('acl')
-            entity = None if acl is None or len(acl) == 0 else self.trans_acl(acl, False)     
-        return {'pathArgs' : pathArgs, 'headers': headers, 'entity': entity}
-    
+            entity = None if acl is None or not bool(acl) else self.trans_acl(acl, False)
+        return {'pathArgs': pathArgs, 'headers': headers, 'entity': entity}
+
     def trans_acl(self, acl, is_bucket=True):
         root = ET.Element('AccessControlPolicy')
         if acl.get('owner') is not None:
@@ -597,10 +658,10 @@ class Convertor(object):
             ET.SubElement(ownerEle, 'ID').text = util.to_string(owner.get('owner_id'))
             if owner.get('owner_name') is not None and not self.is_obs:
                 ET.SubElement(ownerEle, 'DisplayName').text = util.safe_decode(owner['owner_name'])
-        
+
         if not is_bucket and self.is_obs and acl.get('delivered') is not None:
             ET.SubElement(root, 'Delivered').text = util.to_string(acl['delivered']).lower()
-        
+
         grants = acl.get('grants')
         if grants is not None and len(grants) > 0:
             aclEle = ET.SubElement(root, 'AccessControlList')
@@ -611,34 +672,38 @@ class Convertor(object):
         for grant in grants:
             grantEle = ET.SubElement(aclEle, 'Grant')
             if grant.get('grantee') is not None:
-                attrib = {'xmlns:xsi' : 'http://www.w3.org/2001/XMLSchema-instance'}
+                attrib = {'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance'}
                 grantee = grant['grantee']
                 if grantee.get('group') is not None:
                     attrib['xsi:type'] = 'Group'
                     group_val = self.ha.adapt_group(util.to_string(grantee['group']))
                     if group_val:
-                        granteeEle = ET.SubElement(grantEle, 'Grantee', {} if self.is_obs else attrib)
+                        granteeEle = ET.SubElement(grantEle, 'Grantee', self._trans_grantee_is_obs(attrib))
                         ET.SubElement(granteeEle, 'Canned' if self.is_obs else 'URI').text = group_val
                     else:
                         aclEle.remove(grantEle)
                         continue
                 elif grantee.get('grantee_id') is not None:
                     attrib['xsi:type'] = 'CanonicalUser'
-                    granteeEle = ET.SubElement(grantEle, 'Grantee', {} if self.is_obs else attrib)
+                    granteeEle = ET.SubElement(grantEle, 'Grantee', self._trans_grantee_is_obs(attrib))
                     ET.SubElement(granteeEle, 'ID').text = util.to_string(grantee['grantee_id'])
                     if grantee.get('grantee_name') is not None and not self.is_obs:
                         ET.SubElement(granteeEle, 'DisplayName').text = util.safe_decode(grantee['grantee_name'])
             if grant.get('permission') is not None:
                 ET.SubElement(grantEle, 'Permission').text = util.to_string(grant['permission'])
-            
+
             if grant.get('delivered') is not None and self.is_obs:
                 ET.SubElement(grantEle, 'Delivered').text = util.to_string(grant['delivered']).lower()
-    
+
+    def _trans_grantee_is_obs(self, attrib):
+        return {} if self.is_obs else attrib
+
     def trans_logging(self, logging):
         root = ET.Element('BucketLoggingStatus')
         if self.is_obs and logging.get('agency') is not None:
             ET.SubElement(root, 'Agency').text = util.to_string(logging['agency'])
-        if logging.get('targetBucket') is not None or logging.get('targetPrefix') is not None or (logging.get('targetGrants') is not None and len(logging['targetGrants']) > 0):
+        if logging.get('targetBucket') is not None or logging.get('targetPrefix') is not None or (
+                logging.get('targetGrants') is not None and bool(logging['targetGrants'])):
             loggingEnableEle = ET.SubElement(root, 'LoggingEnabled')
             if logging.get('targetBucket') is not None:
                 ET.SubElement(loggingEnableEle, 'TargetBucket').text = util.to_string(logging['targetBucket'])
@@ -648,16 +713,17 @@ class Convertor(object):
                 grantsEle = ET.SubElement(loggingEnableEle, 'TargetGrants')
                 self.trans_grantee(grantsEle, logging['targetGrants'])
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_restore(self, days, tier):
         root = ET.Element('RestoreRequest')
         ET.SubElement(root, 'Days').text = util.to_string(days)
         tier = self.ha.adapt_retore_tier(tier)
         if tier is not None:
-            glacierJobEle = ET.SubElement(root, 'RestoreJob') if self.is_obs else ET.SubElement(root, 'GlacierJobParameters')
+            glacierJobEle = ET.SubElement(root, 'RestoreJob') if self.is_obs else ET.SubElement(root,
+                                                                                                'GlacierJobParameters')
             ET.SubElement(glacierJobEle, 'Tier').text = util.to_string(tier)
         return ET.tostring(root, 'UTF-8')
-    
+
     def trans_put_object(self, **kwargs):
         _headers = {}
         metadata = kwargs.get('metadata')
@@ -673,13 +739,15 @@ class Convertor(object):
             self._put_key_value(_headers, self.ha.website_redirect_location_header(), headers.get('location'))
             self._put_key_value(_headers, const.CONTENT_TYPE_HEADER, headers.get('contentType'))
             self._set_sse_header(headers.get('sseHeader'), _headers)
-            self._put_key_value(_headers, self.ha.storage_class_header(), self.ha.adapt_storage_class(headers.get('storageClass')))
+            self._put_key_value(_headers, self.ha.storage_class_header(),
+                                self.ha.adapt_storage_class(headers.get('storageClass')))
             self._put_key_value(_headers, const.CONTENT_LENGTH_HEADER, headers.get('contentLength'))
             self._put_key_value(_headers, self.ha.expires_header(), headers.get('expires'))
-            
+
             if self.is_obs:
-                self._put_key_value(_headers, self.ha.success_action_redirect_header(), headers.get('successActionRedirect'))
-                
+                self._put_key_value(_headers, self.ha.success_action_redirect_header(),
+                                    headers.get('successActionRedirect'))
+
             if headers.get('extensionGrants') is not None and len(headers['extensionGrants']) > 0:
                 grantDict = {}
                 for extensionGrant in headers['extensionGrants']:
@@ -690,15 +758,16 @@ class Convertor(object):
                             granteeIds = set()
                             grantDict[permission] = granteeIds
                         granteeIds.add('id=%s' % util.to_string(extensionGrant['granteeId']))
-                
+
                 for key, value in grantDict:
                     self._put_key_value(_headers, key, ','.join(value))
         return _headers
-    
+
     def trans_initiate_multipart_upload(self, **kwargs):
         headers = {}
         self._put_key_value(headers, self.ha.acl_header(), self.ha.adapt_acl_control(kwargs.get('acl')))
-        self._put_key_value(headers, self.ha.storage_class_header(), self.ha.adapt_storage_class(kwargs.get('storageClass')))
+        self._put_key_value(headers, self.ha.storage_class_header(),
+                            self.ha.adapt_storage_class(kwargs.get('storageClass')))
         metadata = kwargs.get('metadata')
         if metadata is not None:
             for k, v in metadata.items():
@@ -709,7 +778,7 @@ class Convertor(object):
         self._put_key_value(headers, const.CONTENT_TYPE_HEADER, kwargs.get('contentType'))
         self._put_key_value(headers, self.ha.expires_header(), kwargs.get('expires'))
         self._set_sse_header(kwargs.get('sseHeader'), headers)
-        
+
         extensionGrants = kwargs.get('extensionGrants')
         if extensionGrants is not None and len(extensionGrants) > 0:
             grantDict = {}
@@ -721,17 +790,17 @@ class Convertor(object):
                         granteeIds = set()
                         grantDict[permission] = granteeIds
                     granteeIds.add('id=%s' % util.to_string(extensionGrant['granteeId']))
-            
+
             for key, value in grantDict:
                 self._put_key_value(headers, key, ','.join(value))
         return {'pathArgs': {'uploads': None}, 'headers': headers}
-    
+
     def trans_set_object_metadata(self, **kwargs):
         versionId = kwargs.get('versionId')
-        pathArgs = {'metadata' : None}
+        pathArgs = {'metadata': None}
         if versionId is not None:
             pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
-        
+
         _headers = {}
         metadata = kwargs.get('metadata')
         if metadata is not None:
@@ -739,12 +808,13 @@ class Convertor(object):
                 if not util.to_string(k).lower().startswith(self.ha._get_header_prefix()):
                     k = self.ha._get_meta_header_prefix() + k
                 self._put_key_value(_headers, k, v)
-                
+
         headers = kwargs.get('headers')
         if headers is not None and len(headers) > 0:
             directive = 'REPLACE_NEW' if headers.get('removeUnset') is None or not headers['removeUnset'] else 'REPLACE'
             self._put_key_value(_headers, self.ha.metadata_directive_header(), directive)
-            self._put_key_value(_headers, self.ha.storage_class_header(), self.ha.adapt_storage_class(headers.get('storageClass')))
+            self._put_key_value(_headers, self.ha.storage_class_header(),
+                                self.ha.adapt_storage_class(headers.get('storageClass')))
             self._put_key_value(_headers, self.ha.website_redirect_location_header(), headers.get('location'))
             self._put_key_value(_headers, const.CACHE_CONTROL_HEADER, headers.get('cacheControl'))
             self._put_key_value(_headers, const.CONTENT_DISPOSITION_HEADER, headers.get('contentDisposition'))
@@ -752,40 +822,40 @@ class Convertor(object):
             self._put_key_value(_headers, const.CONTENT_LANGUAGE_HEADER, headers.get('contentLanguage'))
             self._put_key_value(_headers, const.CONTENT_TYPE_HEADER, headers.get('contentType'))
             self._put_key_value(_headers, const.EXPIRES_HEADER, headers.get('expires'))
-        
-            
-        return {'pathArgs' : pathArgs, 'headers' : _headers}
-    
+
+        return {'pathArgs': pathArgs, 'headers': _headers}
+
     def trans_copy_object(self, **kwargs):
-        _headers = {}
-        metadata = kwargs.get('metadata')
-        if metadata is not None:
-            for k, v in metadata.items():
-                if not util.to_string(k).lower().startswith(self.ha._get_header_prefix()):
-                    k = self.ha._get_meta_header_prefix() + k
-                self._put_key_value(_headers, k, v)
-        
-        copy_source = '/%s/%s' % (util.to_string(kwargs.get('sourceBucketName')), util.to_string(kwargs.get('sourceObjectKey')))
+        _headers = self._trans_copy_object_handle_metadata(kwargs)
+        copy_source = '/%s/%s' % (
+            util.to_string(kwargs.get('sourceBucketName')), util.to_string(kwargs.get('sourceObjectKey')))
         versionId = kwargs.get('versionId')
         if versionId is not None:
             copy_source = '%s?versionId=%s' % (copy_source, versionId)
         _headers[self.ha.copy_source_header()] = copy_source
-        
+
         headers = kwargs.get('headers')
         if headers is not None and len(headers) > 0:
             self._put_key_value(_headers, self.ha.acl_header(), self.ha.adapt_acl_control(headers.get('acl')))
-            self._put_key_value(_headers, self.ha.storage_class_header(), self.ha.adapt_storage_class(headers.get('storageClass')))
-            
+            self._put_key_value(_headers, self.ha.storage_class_header(),
+                                self.ha.adapt_storage_class(headers.get('storageClass')))
+
             self._put_key_value(_headers, self.ha.metadata_directive_header(), headers.get('directive'))
             self._put_key_value(_headers, self.ha.copy_source_if_match_header(), headers.get('if_match'))
             self._put_key_value(_headers, self.ha.copy_source_if_none_match_header(), headers.get('if_none_match'))
-            self._put_key_value(_headers, self.ha.copy_source_if_modified_since_header(), headers['if_modified_since'].ToGMTTime() if isinstance(headers.get('if_modified_since'), DateTime) else headers.get('if_modified_since'))
-            self._put_key_value(_headers, self.ha.copy_source_if_unmodified_since_header(), headers['if_unmodified_since'].ToGMTTime() if isinstance(headers.get('if_unmodified_since'), DateTime) else headers.get('if_unmodified_since'))
-                
+            self._put_key_value(_headers, self.ha.copy_source_if_modified_since_header(),
+                                headers['if_modified_since'].ToGMTTime() if isinstance(headers.get('if_modified_since'),
+                                                                                       DateTime) else headers.get(
+                                    'if_modified_since'))
+            self._put_key_value(_headers, self.ha.copy_source_if_unmodified_since_header(),
+                                headers['if_unmodified_since'].ToGMTTime() if isinstance(
+                                    headers.get('if_unmodified_since'), DateTime) else headers.get(
+                                    'if_unmodified_since'))
+
             self._put_key_value(_headers, self.ha.website_redirect_location_header(), headers.get('location'))
             self._put_key_value(_headers, const.CACHE_CONTROL_HEADER, headers.get('cacheControl'))
             self._put_key_value(_headers, const.CONTENT_DISPOSITION_HEADER, headers.get('contentDisposition'))
-            
+
             self._put_key_value(_headers, const.CONTENT_ENCODING_HEADER, headers.get('contentEncoding'))
             self._put_key_value(_headers, const.CONTENT_LANGUAGE_HEADER, headers.get('contentLanguage'))
             self._put_key_value(_headers, const.CONTENT_TYPE_HEADER, headers.get('contentType'))
@@ -793,10 +863,11 @@ class Convertor(object):
 
             self._set_sse_header(headers.get('destSseHeader'), _headers)
             self._set_source_sse_header(headers.get('sourceSseHeader'), _headers)
-                
+
             if self.is_obs:
-                self._put_key_value(_headers, self.ha.success_action_redirect_header(), headers.get('successActionRedirect'))
-                
+                self._put_key_value(_headers, self.ha.success_action_redirect_header(),
+                                    headers.get('successActionRedirect'))
+
             if headers.get('extensionGrants') is not None:
                 grantDict = {}
                 for extensionGrant in headers['extensionGrants']:
@@ -807,32 +878,47 @@ class Convertor(object):
                             granteeIds = set()
                             grantDict[permission] = granteeIds
                         granteeIds.add('id=%s' % util.to_string(extensionGrant['granteeId']))
-                
+
                 for key, value in grantDict:
                     self._put_key_value(_headers, key, ','.join(value))
-                
-        return {'headers' : _headers}
-    
+
+        return {'headers': _headers}
+
+    def _trans_copy_object_handle_metadata(self, kwargs):
+        _headers = {}
+        metadata = kwargs.get('metadata')
+        if metadata is not None:
+            for k, v in metadata.items():
+                if not util.to_string(k).lower().startswith(self.ha._get_header_prefix()):
+                    k = self.ha._get_meta_header_prefix() + k
+                self._put_key_value(_headers, k, v)
+        return _headers
+
     def trans_copy_part(self, **kwargs):
         headers = {}
         headers[self.ha.copy_source_header()] = util.to_string(kwargs.get('copySource'))
         copySourceRange = kwargs.get('copySourceRange')
         if copySourceRange is not None:
             copySourceRange = util.to_string(copySourceRange)
-            self._put_key_value(headers, self.ha.copy_source_range_header(), copySourceRange if copySourceRange.startswith('bytes=') else 'bytes=' + copySourceRange)
+            self._put_key_value(headers, self.ha.copy_source_range_header(),
+                                copySourceRange if copySourceRange.startswith('bytes=') else 'bytes=' + copySourceRange)
         self._set_sse_header(kwargs.get('destSseHeader'), headers)
         self._set_source_sse_header(kwargs.get('sourceSseHeader'), headers)
-            
-        return {'headers' : headers, 'pathArgs' : {'partNumber': kwargs.get('partNumber'), 'uploadId': kwargs.get('uploadId')}}
-    
+
+        return {'headers': headers,
+                'pathArgs': {'partNumber': kwargs.get('partNumber'), 'uploadId': kwargs.get('uploadId')}}
+
     def trans_get_object(self, **kwargs):
         pathArgs = {}
         getObjectRequest = kwargs.get('getObjectRequest')
         if getObjectRequest is not None and len(getObjectRequest) > 0:
             self._put_key_value(pathArgs, const.RESPONSE_CACHE_CONTROL_PARAM, getObjectRequest.get('cache_control'))
-            self._put_key_value(pathArgs, const.RESPONSE_CONTENT_DISPOSITION_PARAM, getObjectRequest.get('content_disposition'))
-            self._put_key_value(pathArgs, const.RESPONSE_CONTENT_ENCODING_PARAM, getObjectRequest.get('content_encoding'))
-            self._put_key_value(pathArgs, const.RESPONSE_CONTENT_LANGUAGE_PARAM, getObjectRequest.get('content_language'))
+            self._put_key_value(pathArgs, const.RESPONSE_CONTENT_DISPOSITION_PARAM,
+                                getObjectRequest.get('content_disposition'))
+            self._put_key_value(pathArgs, const.RESPONSE_CONTENT_ENCODING_PARAM,
+                                getObjectRequest.get('content_encoding'))
+            self._put_key_value(pathArgs, const.RESPONSE_CONTENT_LANGUAGE_PARAM,
+                                getObjectRequest.get('content_language'))
             self._put_key_value(pathArgs, const.RESPONSE_CONTENT_TYPE_PARAM, getObjectRequest.get('content_type'))
             self._put_key_value(pathArgs, const.RESPONSE_EXPIRES_PARAM, getObjectRequest.get('expires'))
             self._put_key_value(pathArgs, const.VERSION_ID_PARAM, getObjectRequest.get('versionId'))
@@ -843,18 +929,25 @@ class Convertor(object):
         if headers is not None and len(headers) > 0:
             if headers.get('range') is not None:
                 _range = util.to_string(headers['range'])
-                self._put_key_value(_headers, const.RANGE_HEADER, _range if _range.startswith('bytes=') else 'bytes=' + _range)
-            self._put_key_value(_headers, const.IF_MODIFIED_SINCE, headers['if_modified_since'].ToGMTTime() if isinstance(headers.get('if_modified_since'), DateTime) else headers.get('if_modified_since'))
-            self._put_key_value(_headers, const.IF_UNMODIFIED_SINCE, headers['if_unmodified_since'].ToGMTTime() if isinstance(headers.get('if_unmodified_since'), DateTime) else headers.get('if_unmodified_since'))
+                self._put_key_value(_headers, const.RANGE_HEADER,
+                                    _range if _range.startswith('bytes=') else 'bytes=' + _range)
+            self._put_key_value(_headers, const.IF_MODIFIED_SINCE,
+                                headers['if_modified_since'].ToGMTTime() if isinstance(headers.get('if_modified_since'),
+                                                                                       DateTime) else headers.get(
+                                    'if_modified_since'))
+            self._put_key_value(_headers, const.IF_UNMODIFIED_SINCE,
+                                headers['if_unmodified_since'].ToGMTTime() if isinstance(
+                                    headers.get('if_unmodified_since'), DateTime) else headers.get(
+                                    'if_unmodified_since'))
             self._put_key_value(_headers, const.IF_MATCH, headers.get('if_match'))
             self._put_key_value(_headers, const.IF_NONE_MATCH, headers.get('if_none_match'))
             self._put_key_value(_headers, const.ORIGIN_HEADER, headers.get('origin'))
             self._put_key_value(_headers, const.ACCESS_CONTROL_REQUEST_HEADERS_HEADER, headers.get('requestHeaders'))
             self._set_sse_header(headers.get('sseHeader'), _headers, True)
         return {'pathArgs': pathArgs, 'headers': _headers}
-    
+
     def trans_list_multipart_uploads(self, **kwargs):
-        pathArgs = {'uploads' : None}
+        pathArgs = {'uploads': None}
         multipart = kwargs.get('multipart')
         if multipart is not None:
             self._put_key_value(pathArgs, 'delimiter', multipart.get('delimiter'))
@@ -863,7 +956,7 @@ class Convertor(object):
             self._put_key_value(pathArgs, 'key-marker', multipart.get('key_marker'))
             self._put_key_value(pathArgs, 'upload-id-marker', multipart.get('upload_id_marker'))
         return {'pathArgs': pathArgs}
-    
+
     def _set_source_sse_header(self, sseHeader, headers=None):
         if headers is None:
             headers = {}
@@ -871,9 +964,10 @@ class Convertor(object):
             self._put_key_value(headers, self.ha.copy_source_sse_c_header(), sseHeader.get('encryption'))
             key = util.to_string(sseHeader.get('key'))
             self._put_key_value(headers, self.ha.copy_source_sse_c_key_header(), util.base64_encode(key))
-            self._put_key_value(headers, self.ha.copy_source_sse_c_key_md5_header(), util.base64_encode(util.md5_encode(key)))
+            self._put_key_value(headers, self.ha.copy_source_sse_c_key_md5_header(),
+                                util.base64_encode(util.md5_encode(key)))
         return headers
-    
+
     def _set_sse_header(self, sseHeader, headers=None, onlySseCHeader=False):
         if headers is None:
             headers = {}
@@ -883,21 +977,23 @@ class Convertor(object):
             self._put_key_value(headers, self.ha.sse_c_key_header(), util.base64_encode(key))
             self._put_key_value(headers, self.ha.sse_c_key_md5_header(), util.base64_encode(util.md5_encode(key)))
         elif isinstance(sseHeader, SseKmsHeader) and not onlySseCHeader:
-            self._put_key_value(headers, self.ha.sse_kms_header(), sseHeader.get('encryption') if self.is_obs else 'aws:' + util.to_string(sseHeader.get('encryption')))
+            self._put_key_value(headers, self.ha.sse_kms_header(),
+                                sseHeader.get('encryption') if self.is_obs else 'aws:' + util.to_string(
+                                    sseHeader.get('encryption')))
             if sseHeader.get('key') is not None:
                 self._put_key_value(headers, self.ha.sse_kms_key_header(), sseHeader['key'])
         return headers
-    
+
     def trans_set_bucket_replication(self, **kwargs):
         entity = self.trans_replication(kwargs.get('replication'))
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
         return {'pathArgs': {'replication': None}, 'headers': headers, 'entity': entity}
-    
+
     def trans_replication(self, replication):
         root = ET.Element('ReplicationConfiguration')
         if self.is_obs and replication.get('agency') is not None:
             ET.SubElement(root, 'Agency').text = util.to_string(replication['agency'])
-        
+
         if replication.get('replicationRules') is not None:
             for replicationRule in replication['replicationRules']:
                 ruleEle = ET.SubElement(root, 'Rule')
@@ -907,14 +1003,16 @@ class Convertor(object):
                     ET.SubElement(ruleEle, 'Prefix').text = util.safe_decode(replicationRule['prefix'])
                 if replicationRule.get('status') is not None:
                     ET.SubElement(ruleEle, 'Status').text = util.to_string(replicationRule['status'])
-                
+
                 if replication.get('bucket') is not None:
                     destinationEle = ET.SubElement(ruleEle, 'Destination')
                     bucket_name = util.to_string(replicationRule['bucket'])
-                    bucket_name = bucket_name if self.is_obs else bucket_name if bucket_name.startswith('arn:aws:s3:::') else 'arn:aws:s3:::' + bucket_name
+                    bucket_name = bucket_name if self.is_obs else bucket_name if bucket_name.startswith(
+                        'arn:aws:s3:::') else 'arn:aws:s3:::' + bucket_name
                     ET.SubElement(destinationEle, 'Bucket').text = bucket_name
                     if replicationRule.get('storageClass') is not None:
-                        ET.SubElement(destinationEle, 'Bucket').text = self.ha.adapt_storage_class(replicationRule['storageClass'])
+                        ET.SubElement(destinationEle, 'Bucket').text = self.ha.adapt_storage_class(
+                            replicationRule['storageClass'])
         return ET.tostring(root, 'UTF-8')
 
     def trans_bucket_request_payment(self, payer):
@@ -962,8 +1060,7 @@ class Convertor(object):
         if const.IS_PYTHON2:
             result = util.safe_encode(result)
         return util.to_string(result)
-    
-    
+
     def parseListBuckets(self, xml, headers=None):
         root = ET.fromstring(xml)
         owner = root.find('Owner')
@@ -972,10 +1069,10 @@ class Convertor(object):
             ID = self._find_item(owner, 'ID')
             DisplayName = None if self.is_obs else self._find_item(owner, 'DisplayName')
             Owners = Owner(owner_id=ID, owner_name=DisplayName)
-    
+
         buckets = root.find('Buckets').findall('Bucket')
         entries = []
-    
+
         for bucket in buckets:
             name = self._find_item(bucket, 'Name')
             d = self._find_item(bucket, 'CreationDate')
@@ -984,7 +1081,7 @@ class Convertor(object):
             curr_bucket = Bucket(name=name, create_date=create_date, location=location)
             entries.append(curr_bucket)
         return ListBucketsResponse(buckets=entries, owner=Owners)
-    
+
     def parseErrorResult(self, xml, headers=None):
         root = ET.fromstring(xml)
         code = self._find_item(root, 'Code')
@@ -993,10 +1090,10 @@ class Convertor(object):
         hostId = self._find_item(root, 'HostId')
         resource = self._find_item(root, 'Resource')
         return code, message, requestId, hostId, resource
-    
+
     def parseListObjects(self, xml, headers=None):
         root = ET.fromstring(xml)
-    
+
         name = self._find_item(root, 'Name')
         prefix = self._find_item(root, 'Prefix')
         marker = self._find_item(root, 'Marker')
@@ -1004,7 +1101,7 @@ class Convertor(object):
         max_keys = self._find_item(root, 'MaxKeys')
         is_truncated = self._find_item(root, 'IsTruncated')
         next_marker = self._find_item(root, 'NextMarker')
-    
+
         key_entries = []
         contents = root.findall('Contents')
         if contents is not None:
@@ -1021,10 +1118,11 @@ class Convertor(object):
                     DisplayName = None if self.is_obs else self._find_item(owner, 'DisplayName')
                     Owners = Owner(owner_id=ID, owner_name=DisplayName)
                 isAppendable = self._find_item(node, 'Type')
-                key_entry = Content(key=key, lastModified=DateTime.UTCToLocal(lastmodified), etag=etag, size=util.to_long(size), owner=Owners, storageClass=storage, 
+                key_entry = Content(key=key, lastModified=DateTime.UTCToLocal(lastmodified), etag=etag,
+                                    size=util.to_long(size), owner=Owners, storageClass=storage,
                                     isAppendable=isAppendable == 'Appendable')
                 key_entries.append(key_entry)
-        
+
         commonprefixs = []
         prefixes = root.findall('CommonPrefixes')
         if prefixes is not None:
@@ -1032,11 +1130,13 @@ class Convertor(object):
                 pre = self._find_item(p, 'Prefix')
                 commonprefix = CommonPrefix(prefix=pre)
                 commonprefixs.append(commonprefix)
-                
+
         location = headers.get(self.ha.bucket_region_header())
-        return ListObjectsResponse(name=name, location=location, prefix=prefix, marker=marker, delimiter=delimiter, max_keys=util.to_int(max_keys),
-                                   is_truncated=util.to_bool(is_truncated), next_marker=next_marker, contents=key_entries, commonPrefixs=commonprefixs)
-    
+        return ListObjectsResponse(name=name, location=location, prefix=prefix, marker=marker, delimiter=delimiter,
+                                   max_keys=util.to_int(max_keys),
+                                   is_truncated=util.to_bool(is_truncated), next_marker=next_marker,
+                                   contents=key_entries, commonPrefixs=commonprefixs)
+
     def parseGetBucketMetadata(self, headers):
         option = GetBucketMetadataResponse()
         option.accessContorlAllowOrigin = headers.get('access-control-allow-origin')
@@ -1050,31 +1150,31 @@ class Convertor(object):
         option.availableZone = headers.get(self.ha.az_redundancy_header())
         option.epid = headers.get(self.ha.epid_header())
         return option
-    
+
     def parseGetBucketLocation(self, xml, headers=None):
         root = ET.fromstring(xml)
         location = root.text if self.is_obs else self._find_item(root, 'LocationConstraint')
         return LocationResponse(location=location)
-    
+
     def parseGetBucketStorageInfo(self, xml, headers=None):
         root = ET.fromstring(xml)
         size = self._find_item(root, 'Size')
         objectNumber = self._find_item(root, 'ObjectNumber')
         return GetBucketStorageInfoResponse(size=util.to_long(size), objectNumber=util.to_int(objectNumber))
-    
+
     def parseGetBucketPolicy(self, json_str, headers=None):
         return Policy(policyJSON=json_str)
-    
+
     def parseGetBucketStoragePolicy(self, xml, headers=None):
         root = ET.fromstring(xml)
-        storageClass = root.text if self.is_obs else self._find_item(root, 'DefaultStorageClass') 
+        storageClass = root.text if self.is_obs else self._find_item(root, 'DefaultStorageClass')
         return GetBucketStoragePolicyResponse(storageClass=storageClass)
-    
+
     def parseGetBucketQuota(self, xml, headers=None):
         root = ET.fromstring(xml)
         quota = self._find_item(root, 'StorageQuota')
         return GetBucketQuotaResponse(quota=util.to_long(quota))
-    
+
     def parseGetBucketEncryption(self, xml, headers=None):
         result = GetBucketEncryptionResponse()
         root = ET.fromstring(xml)
@@ -1083,10 +1183,9 @@ class Convertor(object):
             encryption = self._find_item(sse, 'SSEAlgorithm')
             result.encryption = encryption.replace('aws:', '')
             result.key = self._find_item(sse, 'KMSMasterKeyID')
-        
+
         return result
-        
-    
+
     def parseGetBucketTagging(self, xml, headers=None):
         result = TagInfo()
         root = ET.fromstring(xml)
@@ -1099,7 +1198,7 @@ class Convertor(object):
                 value = util.safe_encode(value.text) if value is not None else None
                 result.addTag(key, value)
         return result
-    
+
     def parseGetBucketCors(self, xml, headers=None):
         root = ET.fromstring(xml)
         corsList = []
@@ -1109,7 +1208,7 @@ class Convertor(object):
                 _id = self._find_item(rule, 'ID')
                 maxAgeSecond = rule.find('MaxAgeSeconds')
                 maxAgeSecond = util.to_int(maxAgeSecond.text) if maxAgeSecond is not None else None
-    
+
                 method = rule.findall('AllowedMethod')
                 allowMethod = []
                 if method is not None:
@@ -1130,11 +1229,12 @@ class Convertor(object):
                 if method is not None:
                     for v in method:
                         exposeHeader.append(util.to_string(v.text))
-    
-                corsList.append(CorsRule(id=_id, allowedMethod=allowMethod, allowedOrigin=allowedOrigin, 
-                                         allowedHeader=allowedHeader, maxAgeSecond=maxAgeSecond, exposeHeader=exposeHeader))
+
+                corsList.append(CorsRule(id=_id, allowedMethod=allowMethod, allowedOrigin=allowedOrigin,
+                                         allowedHeader=allowedHeader, maxAgeSecond=maxAgeSecond,
+                                         exposeHeader=exposeHeader))
         return corsList
-    
+
     def parseListVersions(self, xml, headers=None):
         root = ET.fromstring(xml)
         Name = self._find_item(root, 'Name')
@@ -1147,10 +1247,12 @@ class Convertor(object):
         MaxKeys = self._find_item(root, 'MaxKeys')
         IsTruncated = self._find_item(root, 'IsTruncated')
         location = headers.get(self.ha.bucket_region_header())
-        head = ObjectVersionHead(name=Name, location=location, prefix=Prefix, delimiter=Delimiter, keyMarker=KeyMarker, versionIdMarker=VersionIdMarker,
-                                 nextKeyMarker=NextKeyMarker, nextVersionIdMarker=NextVersionIdMarker, maxKeys=util.to_int(MaxKeys),
+        head = ObjectVersionHead(name=Name, location=location, prefix=Prefix, delimiter=Delimiter, keyMarker=KeyMarker,
+                                 versionIdMarker=VersionIdMarker,
+                                 nextKeyMarker=NextKeyMarker, nextVersionIdMarker=NextVersionIdMarker,
+                                 maxKeys=util.to_int(MaxKeys),
                                  isTruncated=util.to_bool(IsTruncated))
-    
+
         version_list = []
         versions = root.findall('Version')
         for version in versions:
@@ -1168,10 +1270,12 @@ class Convertor(object):
                 Owners = Owner(owner_id=ID, owner_name=DisplayName)
             StorageClass = self._find_item(version, 'StorageClass')
             isAppendable = self._find_item(version, 'Type')
-            Version = ObjectVersion(key=Key, versionId=VersionId, isLatest=util.to_bool(IsLatest), lastModified=DateTime.UTCToLocal(LastModified), etag=ETag, size=util.to_long(Size), owner=Owners,
-                                    storageClass=StorageClass, isAppendable=(isAppendable=='Appendable'))
+            Version = ObjectVersion(key=Key, versionId=VersionId, isLatest=util.to_bool(IsLatest),
+                                    lastModified=DateTime.UTCToLocal(LastModified), etag=ETag, size=util.to_long(Size),
+                                    owner=Owners,
+                                    storageClass=StorageClass, isAppendable=(isAppendable == 'Appendable'))
             version_list.append(Version)
-    
+
         marker_list = []
         markers = root.findall('DeleteMarker')
         for marker in markers:
@@ -1185,9 +1289,10 @@ class Convertor(object):
                 ID = self._find_item(owner, 'ID')
                 DisplayName = None if self.is_obs else self._find_item(owner, 'DisplayName')
                 Owners = Owner(owner_id=ID, owner_name=DisplayName)
-            Marker = ObjectDeleteMarker(key=Key, versionId=VersionId, isLatest=util.to_bool(IsLatest), lastModified=DateTime.UTCToLocal(LastModified), owner=Owners)
+            Marker = ObjectDeleteMarker(key=Key, versionId=VersionId, isLatest=util.to_bool(IsLatest),
+                                        lastModified=DateTime.UTCToLocal(LastModified), owner=Owners)
             marker_list.append(Marker)
-    
+
         prefixs = root.findall('CommonPrefixes')
         prefix_list = []
         for prefix in prefixs:
@@ -1195,7 +1300,7 @@ class Convertor(object):
             Pre = CommonPrefix(prefix=Prefix)
             prefix_list.append(Pre)
         return ObjectVersions(head=head, markers=marker_list, commonPrefixs=prefix_list, versions=version_list)
-    
+
     def parseOptionsBucket(self, headers):
         option = OptionsResponse()
         option.accessContorlAllowOrigin = headers.get('access-control-allow-origin')
@@ -1204,7 +1309,7 @@ class Convertor(object):
         option.accessContorlExposeHeaders = headers.get('access-control-expose-headers')
         option.accessContorlMaxAge = util.to_int(headers.get('access-control-max-age'))
         return option
-    
+
     def parseDeleteObjects(self, xml, headers=None):
         root = ET.fromstring(xml)
         deleted_list = []
@@ -1217,7 +1322,8 @@ class Convertor(object):
                 deleteMarker = d.find('DeleteMarker')
                 deleteMarker = util.to_bool(deleteMarker.text) if deleteMarker is not None else None
                 deleteMarkerVersionId = self._find_item(d, 'DeleteMarkerVersionId')
-                deleted_list.append(DeleteObjectResult(key=key, deleteMarker=deleteMarker, versionId=versionId, deleteMarkerVersionId=deleteMarkerVersionId))
+                deleted_list.append(DeleteObjectResult(key=key, deleteMarker=deleteMarker, versionId=versionId,
+                                                       deleteMarkerVersionId=deleteMarkerVersionId))
         errors = root.findall('Error')
         if errors:
             for e in errors:
@@ -1227,18 +1333,18 @@ class Convertor(object):
                 _message = self._find_item(e, 'Message')
                 error_list.append(ErrorResult(key=_key, versionId=_versionId, code=_code, message=_message))
         return DeleteObjectsResponse(deleted=deleted_list, error=error_list)
-    
+
     def parseDeleteObject(self, headers):
         deleteObjectResponse = DeleteObjectResponse()
         delete_marker = headers.get(self.ha.delete_marker_header())
         deleteObjectResponse.deleteMarker = util.to_bool(delete_marker) if delete_marker is not None else None
         deleteObjectResponse.versionId = headers.get(self.ha.version_id_header())
         return deleteObjectResponse
-    
+
     def parseGetBucketVersioning(self, xml, headers=None):
         root = ET.fromstring(xml)
         return self._find_item(root, 'Status')
-    
+
     def parseGetBucketLifecycle(self, xml, headers=None):
         root = ET.fromstring(xml)
         rules = root.findall('Rule')
@@ -1255,22 +1361,15 @@ class Convertor(object):
                 day = expira.find('Days')
                 days = util.to_int(day.text) if day is not None else None
                 expiration = Expiration(date=date, days=days)
-    
+
             nocurrentExpira = rule.find('NoncurrentVersionExpiration')
-            noncurrentVersionExpiration = NoncurrentVersionExpiration(noncurrentDays=util.to_int(nocurrentExpira.find('NoncurrentDays').text)) if nocurrentExpira is not None else None
-    
+            noncurrentVersionExpiration = NoncurrentVersionExpiration(noncurrentDays=util.to_int(
+                nocurrentExpira.find('NoncurrentDays').text)) if nocurrentExpira is not None else None
+
             transis = rule.findall('Transition')
-            transitions = []
-            if transis is not None:
-                for transi in transis:
-                    d = transi.find('Date')
-                    date = DateTime.UTCToLocalMid(d.text) if d is not None else None
-                    days = transi.find('Days')
-                    days = util.to_int(days.text) if days is not None else None
-                    storageClass = self._find_item(transi, 'StorageClass')
-                    transition = Transition(storageClass, date=date, days=days)
-                    transitions.append(transition)
-            
+
+            transitions = self._parseGetBucketLifecycleTransis(transis)
+
             noncurrentVersionTransis = rule.findall('NoncurrentVersionTransition')
             noncurrentVersionTransitions = []
             if noncurrentVersionTransis is not None:
@@ -1278,15 +1377,30 @@ class Convertor(object):
                     storageClass = self._find_item(noncurrentVersionTransis, 'StorageClass')
                     noncurrentDays = noncurrentVersionTransis.find('NoncurrentDays')
                     noncurrentDays = util.to_int(noncurrentDays.text) if noncurrentDays is not None else None
-                    noncurrentVersionTransition = NoncurrentVersionTransition(storageClass=storageClass, noncurrentDays=noncurrentDays)
+                    noncurrentVersionTransition = NoncurrentVersionTransition(storageClass=storageClass,
+                                                                              noncurrentDays=noncurrentDays)
                     noncurrentVersionTransitions.append(noncurrentVersionTransition)
-                    
-            rule = Rule(id=_id, prefix=prefix, status=status, expiration=expiration, noncurrentVersionExpiration=noncurrentVersionExpiration)
-            rule.transition = transitions 
+
+            rule = Rule(id=_id, prefix=prefix, status=status, expiration=expiration,
+                        noncurrentVersionExpiration=noncurrentVersionExpiration)
+            rule.transition = transitions
             rule.noncurrentVersionTransition = noncurrentVersionTransitions
             entries.append(rule)
         return LifecycleResponse(lifecycleConfig=Lifecycle(rule=entries))
-    
+
+    def _parseGetBucketLifecycleTransis(self, transis):
+        transitions = []
+        if transis is not None:
+            for transi in transis:
+                d = transi.find('Date')
+                date = DateTime.UTCToLocalMid(d.text) if d is not None else None
+                days = transi.find('Days')
+                days = util.to_int(days.text) if days is not None else None
+                storageClass = self._find_item(transi, 'StorageClass')
+                transition = Transition(storageClass, date=date, days=days)
+                transitions.append(transition)
+        return transitions
+
     def parseGetBucketWebsite(self, xml, headers=None):
         root = ET.fromstring(xml)
         redirectAll = None
@@ -1296,19 +1410,19 @@ class Convertor(object):
             protocol = self._find_item(redirectAllRequestTo, 'Protocol')
             redirectAll = RedirectAllRequestTo(hostName=hostname, protocol=protocol)
             return WebsiteConfiguration(redirectAllRequestTo=redirectAll)
-            
+
         index = None
         indexDocument = root.find('IndexDocument')
         if indexDocument is not None:
             Suffix = self._find_item(indexDocument, 'Suffix')
             index = IndexDocument(suffix=Suffix)
-    
+
         error = None
         errorDocument = root.find('ErrorDocument')
         if errorDocument is not None:
             Key = self._find_item(errorDocument, 'Key')
             error = ErrorDocument(key=Key)
-    
+
         routs = None
         routingRules = root.findall('RoutingRules/RoutingRule')
         if routingRules is not None and len(routingRules) > 0:
@@ -1317,26 +1431,30 @@ class Convertor(object):
                 KeyPrefixEquals = rout.find('Condition/KeyPrefixEquals')
                 KeyPrefixEquals = util.to_string(KeyPrefixEquals.text) if KeyPrefixEquals is not None else None
                 HttpErrorCodeReturnedEquals = rout.find('Condition/HttpErrorCodeReturnedEquals')
-                HttpErrorCodeReturnedEquals = util.to_int(HttpErrorCodeReturnedEquals.text) if HttpErrorCodeReturnedEquals is not None else None
-    
-                condition = Condition(keyPrefixEquals=KeyPrefixEquals, httpErrorCodeReturnedEquals=HttpErrorCodeReturnedEquals)
-    
+                HttpErrorCodeReturnedEquals = util.to_int(
+                    HttpErrorCodeReturnedEquals.text) if HttpErrorCodeReturnedEquals is not None else None
+
+                condition = Condition(keyPrefixEquals=KeyPrefixEquals,
+                                      httpErrorCodeReturnedEquals=HttpErrorCodeReturnedEquals)
+
                 Protocol = self._find_item(rout, 'Redirect/Protocol')
                 HostName = self._find_item(rout, 'Redirect/HostName')
                 ReplaceKeyPrefixWith = self._find_item(rout, 'Redirect/ReplaceKeyPrefixWith')
                 ReplaceKeyWith = self._find_item(rout, 'Redirect/ReplaceKeyWith')
                 HttpRedirectCode = rout.find('Redirect/HttpRedirectCode')
                 HttpRedirectCode = util.to_int(HttpRedirectCode.text) if HttpRedirectCode is not None else None
-                redirect = Redirect(protocol=Protocol, hostName=HostName, replaceKeyPrefixWith=ReplaceKeyPrefixWith, replaceKeyWith=ReplaceKeyWith,
+                redirect = Redirect(protocol=Protocol, hostName=HostName, replaceKeyPrefixWith=ReplaceKeyPrefixWith,
+                                    replaceKeyWith=ReplaceKeyWith,
                                     httpRedirectCode=HttpRedirectCode)
                 routingRule = RoutingRule(condition=condition, redirect=redirect)
                 routs.append(routingRule)
-    
+
         return WebsiteConfiguration(indexDocument=index, errorDocument=error, routingRules=routs)
-    
+
     def parseGetBucketNotification(self, xml, headers=None):
         notification = Notification()
         root = ET.fromstring(xml)
+
         def _get_configuration(config_class, config_type, urn_type):
             topicConfigurations = root.findall(config_type)
             if topicConfigurations is not None:
@@ -1350,26 +1468,29 @@ class Convertor(object):
                     if events is not None:
                         for event in events:
                             event_list.append(util.to_string(event.text))
-        
+
                     tc.events = event_list
                     filterRule_list = []
-                    filterRules = topicConfiguration.findall('Filter/Object/FilterRule' if self.is_obs else 'Filter/S3Key/FilterRule')
+                    filterRules = topicConfiguration.findall(
+                        'Filter/Object/FilterRule' if self.is_obs else 'Filter/S3Key/FilterRule')
                     if filterRules is not None:
                         for filterRule in filterRules:
                             name = filterRule.find('Name')
                             value = filterRule.find('Value')
-                            fr = FilterRule(name=util.to_string(name.text) if name is not None else None, value=util.to_string(value.text)
+                            fr = FilterRule(name=util.to_string(name.text) if name is not None else None,
+                                            value=util.to_string(value.text)
                                             if value is not None else None)
                             filterRule_list.append(fr)
                     tc.filterRules = filterRule_list
                     tc_list.append(tc)
                 return tc_list
-    
+
         notification.topicConfigurations = _get_configuration(TopicConfiguration, 'TopicConfiguration', 'Topic')
-        notification.functionGraphConfigurations = _get_configuration(FunctionGraphConfiguration, 'FunctionGraphConfiguration', 'FunctionGraph')
-        
+        notification.functionGraphConfigurations = _get_configuration(FunctionGraphConfiguration,
+                                                                      'FunctionGraphConfiguration', 'FunctionGraph')
+
         return notification
-    
+
     def parseListMultipartUploads(self, xml, headers=None):
         root = ET.fromstring(xml)
         bucket = self._find_item(root, 'Bucket')
@@ -1377,37 +1498,38 @@ class Convertor(object):
         UploadIdMarker = self._find_item(root, 'UploadIdMarker')
         NextKeyMarker = self._find_item(root, 'NextKeyMarker')
         NextUploadIdMarker = self._find_item(root, 'NextUploadIdMarker')
-    
+
         MaxUploads = root.find('MaxUploads')
         MaxUploads = util.to_int(MaxUploads.text) if MaxUploads is not None else None
-    
+
         IsTruncated = root.find('IsTruncated')
         IsTruncated = util.to_bool(IsTruncated.text) if IsTruncated is not None else None
-    
+
         prefix = self._find_item(root, 'Prefix')
         delimiter = self._find_item(root, 'Delimiter')
-    
+
         rules = root.findall('Upload')
         uploadlist = []
         if rules:
             for rule in rules:
                 Key = self._find_item(rule, 'Key')
                 UploadId = self._find_item(rule, 'UploadId')
-    
+
                 ID = self._find_item(rule, 'Initiator/ID')
-    
+
                 DisplayName = None if self.is_obs else self._find_item(rule, 'Initiator/DisplayName')
                 initiator = Initiator(id=ID, name=DisplayName)
-    
+
                 owner_id = self._find_item(rule, 'Owner/ID')
                 owner_name = None if self.is_obs else self._find_item(rule, 'Owner/DisplayName')
                 ower = Owner(owner_id=owner_id, owner_name=owner_name)
-    
+
                 StorageClass = self._find_item(rule, 'StorageClass')
-    
+
                 Initiated = rule.find('Initiated')
                 Initiated = DateTime.UTCToLocal(Initiated.text) if Initiated is not None else None
-                upload = Upload(key=Key, uploadId=UploadId, initiator=initiator, owner=ower, storageClass=StorageClass, initiated=Initiated)
+                upload = Upload(key=Key, uploadId=UploadId, initiator=initiator, owner=ower, storageClass=StorageClass,
+                                initiated=Initiated)
                 uploadlist.append(upload)
         common = root.findall('CommonPrefixes')
         commonlist = []
@@ -1417,30 +1539,33 @@ class Convertor(object):
                 Comm_Prefix = CommonPrefix(prefix=comm_prefix)
                 commonlist.append(Comm_Prefix)
         return ListMultipartUploadsResponse(bucket=bucket, keyMarker=KeyMarker, uploadIdMarker=UploadIdMarker,
-                                            nextKeyMarker=NextKeyMarker, nextUploadIdMarker=NextUploadIdMarker, maxUploads=MaxUploads,
-                                            isTruncated=IsTruncated, prefix=prefix, delimiter=delimiter, upload=uploadlist, commonPrefixs=commonlist)
-    
+                                            nextKeyMarker=NextKeyMarker, nextUploadIdMarker=NextUploadIdMarker,
+                                            maxUploads=MaxUploads,
+                                            isTruncated=IsTruncated, prefix=prefix, delimiter=delimiter,
+                                            upload=uploadlist, commonPrefixs=commonlist)
+
     def parseCompleteMultipartUpload(self, xml, headers=None):
         root = ET.fromstring(xml)
         location = self._find_item(root, 'Location')
         bucket = self._find_item(root, 'Bucket')
         key = self._find_item(root, 'Key')
         eTag = self._find_item(root, 'ETag')
-        completeMultipartUploadResponse = CompleteMultipartUploadResponse(location=location, bucket=bucket, key=key, etag=eTag)
+        completeMultipartUploadResponse = CompleteMultipartUploadResponse(location=location, bucket=bucket, key=key,
+                                                                          etag=eTag)
         completeMultipartUploadResponse.versionId = headers.get(self.ha.version_id_header())
         completeMultipartUploadResponse.sseKms = headers.get(self.ha.sse_kms_header())
         completeMultipartUploadResponse.sseKmsKey = headers.get(self.ha.sse_kms_key_header())
         completeMultipartUploadResponse.sseC = headers.get(self.ha.sse_c_header())
         completeMultipartUploadResponse.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
-    
+
         return completeMultipartUploadResponse
-    
+
     def parseListParts(self, xml, headers=None):
         root = ET.fromstring(xml)
         bucketName = self._find_item(root, 'Bucket')
         objectKey = self._find_item(root, 'Key')
         uploadId = self._find_item(root, 'UploadId')
-    
+
         storageClass = self._find_item(root, 'StorageClass')
         partNumbermarker = root.find('PartNumberMarker')
         partNumbermarker = util.to_int(partNumbermarker.text) if partNumbermarker is not None else None
@@ -1450,17 +1575,24 @@ class Convertor(object):
         maxParts = util.to_int(maxParts) if maxParts is not None else None
         isTruncated = root.find('IsTruncated')
         isTruncated = util.to_bool(isTruncated.text) if isTruncated is not None else None
-    
+
         initiatorid = self._find_item(root, 'Initiator/ID')
         displayname = None if self.is_obs else self._find_item(root, 'Initiator/DisplayName')
-    
+
         initiator = Initiator(id=initiatorid, name=displayname)
-    
+
         ownerid = self._find_item(root, 'Owner/ID')
         ownername = self._find_item(root, 'Owner/DisplayName')
-    
         owner = Owner(owner_id=ownerid, owner_name=ownername)
-    
+
+        parts = self._parseListPartsHandleParts(root)
+
+        return ListPartsResponse(bucketName=bucketName, objectKey=objectKey, uploadId=uploadId, initiator=initiator,
+                                 owner=owner, storageClass=storageClass,
+                                 partNumberMarker=partNumbermarker, nextPartNumberMarker=nextPartNumberMarker,
+                                 maxParts=maxParts, isTruncated=isTruncated, parts=parts)
+
+    def _parseListPartsHandleParts(self, root):
         part_list = root.findall('Part')
         parts = []
         if part_list:
@@ -1473,11 +1605,8 @@ class Convertor(object):
                 size = part.find('Size')
                 size = util.to_long(size.text) if size is not None else None
                 parts.append(Part(partNumber=partnumber, lastModified=modifieddate, etag=etag, size=size))
-    
-        return ListPartsResponse(bucketName=bucketName, objectKey=objectKey, uploadId=uploadId, initiator=initiator, owner=owner, storageClass=storageClass,
-                                 partNumberMarker=partNumbermarker, nextPartNumberMarker=nextPartNumberMarker, maxParts=maxParts, isTruncated=isTruncated, parts=parts)
-    
-    
+        return parts
+
     def parseGetBucketAcl(self, xml, headers=None):
         root = ET.fromstring(xml)
         owner_id = self._find_item(root, 'Owner/ID')
@@ -1490,20 +1619,10 @@ class Convertor(object):
         grant_list = []
         if grants is not None:
             if self.is_obs:
-                for grant in grants:
-                    group1 = grant.find('Grantee/Canned')
-                    if group1 is not None:
-                        grantee = Grantee(group=util.to_string(group1.text))
-                    else:
-                        _id = grant.find('Grantee/ID')
-                        grantee = Grantee(grantee_id=_id.text if _id is not None else None)
-                    permission = self._find_item(grant, 'Permission')
-                    delivered = grant.find('Delivered')
-                    delivered = util.to_string(delivered.text) if delivered is not None else None
-                    cur_grant = Grant(grantee=grantee, permission=permission, delivered=True if delivered == 'true' else False)
-                    grant_list.append(cur_grant)
+                grant_list = self._parseGrantsIsObs(grants, grant_list)
             else:
                 ns = '{http://www.w3.org/2001/XMLSchema-instance}'
+                grantee = None
                 for grant in grants:
                     if grant.find('Grantee').attrib.get('{0}type'.format(ns)) == 'Group':
                         group1 = self._find_item(grant, 'Grantee/URI')
@@ -1512,12 +1631,28 @@ class Convertor(object):
                         owner_id = self._find_item(grant, 'Grantee/ID')
                         owner_name = None if self.is_obs else self._find_item(grant, 'Grantee/DisplayName')
                         grantee = Grantee(grantee_id=owner_id, grantee_name=owner_name)
-        
+
                     permission = self._find_item(grant, 'Permission')
                     cur_grant = Grant(grantee=grantee, permission=permission)
                     grant_list.append(cur_grant)
         return grant_list
-    
+
+    def _parseGrantsIsObs(self, grants, grant_list):
+        for grant in grants:
+            group1 = grant.find('Grantee/Canned')
+            if group1 is not None:
+                grantee = Grantee(group=util.to_string(group1.text))
+            else:
+                _id = grant.find('Grantee/ID')
+                grantee = Grantee(grantee_id=_id.text if _id is not None else None)
+            permission = self._find_item(grant, 'Permission')
+            delivered = grant.find('Delivered')
+            delivered = util.to_string(delivered.text) if delivered is not None else None
+            cur_grant = Grant(grantee=grantee, permission=permission,
+                              delivered=delivered == 'true')
+            grant_list.append(cur_grant)
+        return grant_list
+
     def parseGetBucketLogging(self, xml, headers=None):
         root = ET.fromstring(xml)
         bucket = self._find_item(root, 'LoggingEnabled/TargetBucket')
@@ -1535,11 +1670,11 @@ class Convertor(object):
             delivered = None
         else:
             delivered = self._find_item(root, 'Delivered')
-            
+
         owner = Owner(owner_id=owner_id, owner_name=owner_name)
         grants = root.findall('AccessControlList/Grant')
         return ACL(owner=owner, grants=self.parseGrants(grants), delivered=True if delivered == 'true' else False)
-    
+
     def parsePutContent(self, headers):
         option = PutContentResponse()
         option.storageClass = headers.get(self.ha.storage_class_header())
@@ -1550,7 +1685,7 @@ class Convertor(object):
         option.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
         option.etag = headers.get(const.ETAG_HEADER.lower())
         return option
-    
+
     def parseAppendObject(self, headers):
         option = AppendObjectResponse()
         option.storageClass = headers.get(self.ha.storage_class_header())
@@ -1561,7 +1696,7 @@ class Convertor(object):
         option.etag = headers.get(const.ETAG_HEADER.lower())
         option.nextPosition = util.to_long(headers.get(self.ha.next_position_header()))
         return option
-    
+
     def parseInitiateMultipartUpload(self, xml, headers=None):
         root = ET.fromstring(xml)
         bucketName = self._find_item(root, 'Bucket')
@@ -1573,7 +1708,7 @@ class Convertor(object):
         response.sseC = headers.get(self.ha.sse_c_header())
         response.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
         return response
-    
+
     def parseCopyObject(self, xml, headers=None):
         root = ET.fromstring(xml)
         lastModified = root.find('LastModified')
@@ -1587,7 +1722,7 @@ class Convertor(object):
         copyObjectResponse.sseC = headers.get(self.ha.sse_c_header())
         copyObjectResponse.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
         return copyObjectResponse
-    
+
     def _parseGetObjectCommonHeader(self, headers, option):
         option.accessContorlAllowOrigin = headers.get('access-control-allow-origin')
         option.accessContorlAllowHeaders = headers.get('access-control-allow-headers')
@@ -1607,7 +1742,7 @@ class Convertor(object):
         option.contentLength = util.to_long(headers.get(const.CONTENT_LENGTH_HEADER.lower()))
         option.contentType = headers.get(const.CONTENT_TYPE_HEADER.lower())
         option.lastModified = headers.get(const.LAST_MODIFIED_HEADER.lower())
-    
+
     def parseGetObjectMetadata(self, headers):
         option = GetObjectMetadataResponse()
         self._parseGetObjectCommonHeader(headers, option)
@@ -1615,7 +1750,7 @@ class Convertor(object):
         if option.isAppendable:
             option.nextPosition = util.to_long(headers.get(self.ha.next_position_header()))
         return option
-    
+
     def parseSetObjectMetadata(self, headers):
         option = SetObjectMetadataResponse()
         self._parseGetObjectCommonHeader(headers, option)
@@ -1623,7 +1758,7 @@ class Convertor(object):
         if option.isAppendable:
             option.nextPosition = util.to_long(headers.get(self.ha.next_position_header()))
         return option
-    
+
     def parseGetObject(self, headers, option):
         self._parseGetObjectCommonHeader(headers, option)
         option.deleteMarker = headers.get(self.ha.delete_marker_header())
@@ -1642,7 +1777,7 @@ class Convertor(object):
         uploadPartResponse.sseC = headers.get(self.ha.sse_c_header())
         uploadPartResponse.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
         return uploadPartResponse
-    
+
     def parseCopyPart(self, xml, headers=None):
         root = ET.fromstring(xml)
         lastModified = root.find('LastModified')
@@ -1654,7 +1789,7 @@ class Convertor(object):
         copyPartResponse.sseC = headers.get(self.ha.sse_c_header())
         copyPartResponse.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
         return copyPartResponse
-    
+
     def parseGetBucketReplication(self, xml, headers=None):
         root = ET.fromstring(xml)
         agency = None
@@ -1669,17 +1804,17 @@ class Convertor(object):
                 status = self._find_item(rule, 'Status')
                 bucket = self._find_item(rule, 'Destination/Bucket')
                 storageClass = self._find_item(rule, 'Destination/StorageClass')
-                _rules.append(ReplicationRule(id=_id, prefix=prefix, status=status, bucket=bucket, storageClass=storageClass))
+                _rules.append(
+                    ReplicationRule(id=_id, prefix=prefix, status=status, bucket=bucket, storageClass=storageClass))
         replication = Replication(agency=agency, replicationRules=_rules)
         return replication
 
     def parseGetBucketRequestPayment(self, xml, headers=None):
         root = ET.fromstring(xml)
-        payer =self._find_item(root, 'Payer')
+        payer = self._find_item(root, 'Payer')
         payment = GetBucketRequestPaymentResponse(payer=payer)
         return payment
 
-    #OEF parse func
     def _find_json_item(self, value, itemname):
         result = value.get(itemname)
         if result is None:
@@ -1695,6 +1830,7 @@ class Convertor(object):
         requestId = self._find_json_item(result, "request_id")
         return code, message, requestId
 
+    # OEF parse func
     def parseGetBucketFetchPolicy(self, jsons, headers=None):
         result = json.loads(jsons)
         status = None
@@ -1730,7 +1866,7 @@ class Convertor(object):
         key = self._find_json_item(job, "key")
         md5 = self._find_json_item(job, "md5")
         fileType = self._find_json_item(job, "file_type")
-        ignoreSameKey = self._find_json_item(job, "ignore_same_key")
+        ignoreSameKey = job.get('ignore_same_key')
         callBackUrl = self._find_json_item(job, "callbackurl")
         callBackBody = self._find_json_item(job, "callbackbody")
         callBackHost = self._find_json_item(job, "callbackhost")
@@ -1742,3 +1878,108 @@ class Convertor(object):
 
         response = GetBucketFetchJobResponse(code=code, status=status, job=fetchJobResponse, err=err)
         return response
+
+    # begin workflow related
+    # begin workflow related
+    # begin workflow related
+
+    def parseGetJsonResponse(self, jsons, header=None):
+        return jsons
+
+    def parseCreateWorkflowTemplateResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        templateName = result.get('template_name')
+        return CreateWorkflowTemplateResponse(templateName=templateName)
+
+    def parseGetWorkflowTemplateResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        templateName = result.get('template_name')
+        description = result.get('description')
+        states = result.get('states')
+        inputs = result.get('inputs')
+        tags = result.get('tags')
+        createTime = result.get('create_time')
+        lastModifyTime = result.get('last_modify_time')
+        return GetWorkflowTemplateResponse(templateName=templateName, description=description, states=states,
+                                           inputs=inputs, tags=tags, createTime=createTime,
+                                           lastModifyTime=lastModifyTime)
+
+    def parseListWorkflowTemplateResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        count = result.get('count')
+        templates = result.get('templates')
+        nextStart = result.get('next_start')
+        isTruncated = result.get('is_truncated')
+        return ListWorkflowTemplateResponse(templates=templates, count=count, nextStart=nextStart,
+                                            isTruncated=isTruncated)
+
+    def parseCreateWorkflowResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        graphName = result.get('graph_name')
+        graphUrn = result.get('graph_urn')
+        createdAt = result.get('created_at')
+        return CreateWorkflowResponse(graphName=graphName, graphUrn=graphUrn, createdAt=createdAt)
+
+    def parseGetWorkflowResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        name = result.get('name')
+        createdAt = result.get('created_at')
+        definition = result.get('definition')
+        graphUrn = result.get('graph_urn')
+        description = result.get('description')
+        return GetWorkflowResponse(name=name, createdAt=createdAt, definition=definition, graphUrn=graphUrn,
+                                   description=description)
+
+    def parseUpdateWorkflowResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        graphName = result.get('graph_name')
+        graphUrn = result.get('graph_urn')
+        lastModified = result.get('last_modified')
+        return UpdateWorkflowResponse(graphName=graphName, graphUrn=graphUrn, lastModified=lastModified)
+
+    def parseListWorkflowResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        count = result.get('count')
+        graphs = result.get('graphs')
+        nextStart = result.get('next_start')
+        isTruncated = result.get('is_truncated')
+        return ListWorkflowResponse(graphs=graphs, count=count, nextStart=nextStart, isTruncated=isTruncated)
+
+    def parseAsyncAPIStartWorkflowResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        executionUrn = result.get('execution_urn')
+        startedAt = result.get('started_at')
+        executionName = result.get('execution_name')
+        return AsyncAPIStartWorkflowResponse(executionUrn=executionUrn, startedAt=startedAt,
+                                             executionName=executionName)
+
+    def parseListWorkflowExecutionResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        count = result.get('count')
+        nextMarker = result.get('next_marker')
+        isTruncated = result.get('is_truncated')
+        executions = result.get('executions')
+        return ListWorkflowExecutionResponse(count=count, nextMarker=nextMarker, isTruncated=isTruncated,
+                                             executions=executions)
+
+    def parseGetWorkflowExecutionResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        executionInfo = result.get('execution_info')
+        return GetWorkflowExecutionResponse(executionInfo=executionInfo)
+
+    def parseRestoreFailedWorkflowExecutionResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        executionUrn = result.get('execution_urn')
+        restoredAt = result.get('restored_at')
+        executionName = result.get('execution_name')
+        return RestoreFailedWorkflowExecutionResponse(executionUrn=executionUrn, restoredAt=restoredAt,
+                                                      executionName=executionName)
+
+    def parseGetTriggerPolicyResponse(self, jsons, header=None):
+        result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
+        rules = result.get('rules')
+        return GetTriggerPolicyResponse(rules=rules)
+
+    # end workflow related
+    # end workflow related
+    # end workflow related

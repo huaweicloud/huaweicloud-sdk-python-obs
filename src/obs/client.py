@@ -77,64 +77,89 @@ class _SecurityProvider(object):
         self.security_token = security_token
 
 
+def _isCopyOrList(name, obsClient, *args, **kwargs):
+    key = ''
+    if name == 'copyObject':
+        if kwargs.get('destBucketName'):
+            key = kwargs['destBucketName']
+        elif len(args) >= 4:
+            key = args[3]
+
+        if not obsClient.is_cname:
+            obsClient._assert_not_null(key, 'destBucketName is empty')
+
+    elif name != 'listBuckets':
+        if len(args) > 1:
+            key = args[1]
+        elif kwargs.get('bucketName'):
+            key = kwargs['bucketName']
+
+        if not obsClient.is_cname:
+            obsClient._assert_not_null(key, 'bucketName is empty')
+    return key
+
+
+def _wrapperFinally(obsClient, name, start):
+    if obsClient:
+        obsClient.log_client.log(INFO, '%s cost %s ms' % (name, int((time.time() - start) * 1000)))
+        if obsClient.is_signature_negotiation and hasattr(obsClient.thread_local, 'signature'):
+            del obsClient.thread_local.signature
+
+
+def _getObsClient(*args):
+    obsClient = args[0] if isinstance(args[0], ObsClient) else None
+    return obsClient
+
+
+def _isCreateBucket(obsClient, name, key):
+    return obsClient._getApiVersion() if name == 'createBucket' else obsClient._getApiVersion(key)
+
+
+def _is_signature_negotiation(obsClient, name, key):
+    caches = obsClient.cache
+    if name == 'listBuckets':
+        authType, resp = obsClient._getApiVersion()
+        if not authType:
+            return authType, resp
+        obsClient.thread_local.signature = authType
+        return authType, resp
+    else:
+        result_dic = caches.get(key)
+        if not result_dic:
+            with locks.get_lock(hash(key) % locks.LOCK_COUNT):
+                result_dic = caches.get(key)
+                if not result_dic:
+                    authType, resp = _isCreateBucket(obsClient, name, key)
+                    if not authType:
+                        return authType, resp
+                    result_dic = {'signature': authType, 'expire': random.randint(900, 1200) + caches.nowTime()}
+                    if name != 'createBucket':
+                        caches.set(key, result_dic)
+        obsClient.thread_local.signature = result_dic['signature']
+        return True, ""
+
 def funcCache(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         start = time.time()
         ret = None
-        obsClient = args[0] if isinstance(args[0], ObsClient) else None
+        obsClient = _getObsClient(*args)
         try:
             if obsClient:
                 obsClient.log_client.log(INFO, 'enter %s ...' % func.__name__)
-                key = ''
-                if func.__name__ == 'copyObject':
-                    if 'destBucketName' in kwargs:
-                        key = kwargs['destBucketName']
-                    elif len(args) >= 4:
-                        key = args[3]
-                    
-                    if not obsClient.is_cname:
-                        obsClient._assert_not_null(key, 'destBucketName is empty')
-
-                elif func.__name__ != 'listBuckets':
-                    if len(args) > 1:
-                        key = args[1]
-                    elif 'bucketName' in kwargs:
-                        key = kwargs['bucketName']
-                    
-                    if not obsClient.is_cname: 
-                        obsClient._assert_not_null(key, 'bucketName is empty')
+                key = _isCopyOrList(func.__name__, obsClient, *args, **kwargs)
                         
                 if obsClient.is_signature_negotiation:
-                    caches = obsClient.cache
-                    if func.__name__ == 'listBuckets':
-                        authType, resp = obsClient._getApiVersion()
-                        if not authType:
-                            return resp
-                        obsClient.thread_local.signature = authType
-                    else:
-                        result_dic = caches.get(key)
-                        if not result_dic:
-                            with locks.get_lock(hash(key) % locks.LOCK_COUNT):
-                                result_dic = caches.get(key)
-                                if not result_dic:
-                                    authType, resp = obsClient._getApiVersion() if func.__name__ == 'createBucket' else obsClient._getApiVersion(key)
-                                    if not authType :
-                                        return resp
-                                    result_dic = {'signature' : authType, 'expire' : random.randint(900, 1200) + caches.nowTime()}
-                                    if func.__name__ != 'createBucket':
-                                        caches.set(key, result_dic)
-                        obsClient.thread_local.signature = result_dic['signature']
+                    authType, resp = _is_signature_negotiation(obsClient, func.__name__, key)
+                    if not authType:
+                        return resp
             ret = func(*args, **kwargs)
         except Exception as e:
             if obsClient and obsClient.log_client:
                 obsClient.log_client.log(INFO, traceback.format_exc())
             raise e
         finally:
-            if obsClient:
-                obsClient.log_client.log(INFO, '%s cost %s ms' % (func.__name__, int((time.time() - start) * 1000)))
-                if obsClient.is_signature_negotiation and hasattr(obsClient.thread_local, 'signature'):
-                    del obsClient.thread_local.signature
+            _wrapperFinally(obsClient, func.__name__, start)
         return ret
     return wrapper
 
@@ -174,57 +199,29 @@ class _BasicClient(object):
                  long_conn_mode=False, proxy_host=None, proxy_port=None,
                  proxy_username=None, proxy_password=None, security_token=None,
                  custom_ciphers=None, use_http2=False, is_signature_negotiation=True, is_cname=False,
-                 max_redirect_count=10, security_providers=None, security_provider_policy=None):
+                 max_redirect_count=10, security_providers=None, security_provider_policy=None, client_mode='obs'):
         self.securityProvider = _SecurityProvider(access_key_id, secret_access_key, security_token)
         server = server if server is not None else ''
         server = util.to_string(util.safe_encode(server))
 
         _server = urlparse(server)
 
-        hostname = _server.netloc if util.is_valid(_server.netloc) else _server.path
-
-        if not util.is_valid(hostname):
-            raise Exception('server is not set correctly')
-
-        if util.is_valid(_server.scheme):
-            if _server.scheme == 'https':
-                is_secure = True
-            elif _server.scheme == 'http':
-                is_secure = False
-
-        host_port = hostname.split(':')
-        if len(host_port) == 2:
-            port = util.to_int(host_port[1])
-
+        hostname = self._parse_server_hostname(_server)
+        is_secure = self._check_server_secure(_server, is_secure)
+        host_port, port = self._split_host_port(hostname, port)
         self.security_provider_policy = security_provider_policy
-        
-        if security_providers is None:
-            self.security_providers = [loadtoken.ENV, loadtoken.ECS]
-        else:
-            self.security_providers = security_providers    
-
-        try:
-            if security_providers == []:
-                raise ValueError('no available security_providers')
-            for method in self.security_providers:
-                getattr(method, '__name__')
-                if not isfunction(method.search):
-                    raise AttributeError(method+'has no function called search')
-        except Exception:
-            self.security_provider_policy = None
-            print(traceback.format_exc())        
+        self._parse_security_providers(security_providers)
 
         self.is_secure = is_secure
         self.server = host_port[0]
 
-        path_style = True if util.is_ipaddress(self.server) else path_style
-
+        path_style = self._check_path_style(path_style)
         self.signature = util.to_string(util.safe_encode(signature))
         self.region = region
         self.path_style = path_style
         self.ssl_verify = ssl_verify
-        self.calling_format = util.RequestFormat.get_pathformat() if self.path_style else util.RequestFormat.get_subdomainformat()
-        self.port = port if port is not None else const.DEFAULT_SECURE_PORT if is_secure else const.DEFAULT_INSECURE_PORT
+        self.calling_format = self._parse_calling_format()
+        self.port = self._parse_port(port, is_secure)
 
         self.max_retry_count = max_retry_count
         self.timeout = timeout
@@ -235,11 +232,14 @@ class _BasicClient(object):
         self.is_cname = is_cname
         self.max_redirect_count = max_redirect_count
 
-        if self.path_style or self.is_cname:
+        if client_mode == 'obs':
+            if self.path_style or self.is_cname:
+                self.is_signature_negotiation = False
+                if self.signature == 'obs':
+                    self.signature = 'v2'
+        elif client_mode == 'workflow':
             self.is_signature_negotiation = False
-            if self.signature == 'obs':
-                self.signature = 'v2'
-        
+
         self.context = None
         if self.is_secure:
             if self.use_http2:
@@ -268,6 +268,59 @@ class _BasicClient(object):
         else:
             self.ha = convertor.Adapter(self.signature)
             self.convertor = convertor.Convertor(self.signature, self.ha)
+
+    def _parse_server_hostname(self, server):
+        hostname = server.netloc if util.is_valid(server.netloc) else server.path
+        if not util.is_valid(hostname):
+            raise Exception('server is not set correctly')
+        return hostname
+
+    def _check_server_secure(self, server, is_secure):
+        if util.is_valid(server.scheme):
+            if server.scheme == 'https':
+                is_secure = True
+            elif server.scheme == 'http':
+                is_secure = False
+        return is_secure
+
+    def _parse_security_providers(self, security_providers):
+        if security_providers is None:
+            self.security_providers = [loadtoken.ENV, loadtoken.ECS]
+        else:
+            self.security_providers = security_providers
+        try:
+            if security_providers == []:
+                raise ValueError('no available security_providers')
+            for method in self.security_providers:
+                getattr(method, '__name__')
+                if not isfunction(method.search):
+                    raise AttributeError(method + 'has no function called search')
+        except Exception:
+            self.security_provider_policy = None
+            print(traceback.format_exc())
+
+    def _split_host_port(self, hostname, port):
+        host_port = hostname.split(':')
+        if len(host_port) == 2:
+            port = util.to_int(host_port[1])
+        return host_port, port
+
+    def _check_path_style(self, path_style):
+        return True if util.is_ipaddress(self.server) else path_style
+
+    def _parse_port(self, port, is_secure):
+        if port is None:
+            if is_secure:
+                port = const.DEFAULT_SECURE_PORT
+            else:
+                port = const.DEFAULT_INSECURE_PORT
+        return port
+
+    def _parse_calling_format(self):
+        if self.path_style:
+            return util.RequestFormat.get_pathformat()
+        else:
+            return util.RequestFormat.get_subdomainformat()
 
     def _get_token(self):
         from obs.searchmethod import get_token
@@ -413,7 +466,8 @@ class _BasicClient(object):
             break
 
     def _make_request_internal(self, method, bucketName='', objectKey=None, pathArgs=None, headers=None, entity=None,
-                               chunkedMode=False, redirectLocation=None, skipAuthentication=False, redirectFlag=False, extensionHeaders=None):
+                               chunkedMode=False, redirectLocation=None, skipAuthentication=False, redirectFlag=False,
+                               extensionHeaders=None):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
@@ -424,7 +478,7 @@ class _BasicClient(object):
             redirectLocation = urlparse(redirectLocation)
             connect_server = redirectLocation.hostname
             scheme = redirectLocation.scheme
-            port = redirectLocation.port if redirectLocation.port is not None else const.DEFAULT_INSECURE_PORT if scheme.lower() == 'http' else const.DEFAULT_SECURE_PORT
+            port = self._parse_port(redirectLocation.port, scheme.lower() == 'https')
             redirect = True
             _path = redirectLocation.path
             query = redirectLocation.query
@@ -437,33 +491,20 @@ class _BasicClient(object):
             connect_server = self.server if self.is_cname else self.calling_format.get_server(self.server, bucketName)
             redirect = False
             port = self.port
-        
+
         if self.is_cname:
             bucketName = ''
-        
-        if not path:    
+
+        if not path:
             path = self.calling_format.get_url(bucketName, objectKey, pathArgs)
 
         extension_headers = self.convertor.trans_get_extension_headers(extensionHeaders)
-        if len(extension_headers) > 0:
-            if headers is None or not isinstance(headers, dict):
-                headers = {}
-            else:
-                headers = headers.copy()
-            for key, value in extension_headers.items():
-                headers[key] = value
-
+        headers = self._parse_extension_headers(headers, extension_headers)
         headers = self._rename_request_headers(headers, method)
 
-        if entity is not None and not callable(entity):
-            entity = util.safe_encode(entity)
-            if not isinstance(entity, str) and not isinstance(entity, bytes):
-                entity = util.to_string(entity)
-            if not const.IS_PYTHON2:
-                entity = entity.encode('UTF-8') if not isinstance(entity, bytes) else entity
-            headers[const.CONTENT_LENGTH_HEADER] = util.to_string(len(entity))
+        entity, headers = self._parse_entity(entity, headers)
 
-        headers[const.HOST_HEADER] = '%s:%s' % (connect_server, port) if port != 443 and port != 80 else connect_server
+        headers[const.HOST_HEADER] = '%s:%s' % (connect_server, port) if port not in (443, 80) else connect_server
         header_config = self._add_auth_headers(headers, method, bucketName, objectKey, pathArgs, skipAuthentication)
 
         header_log = header_config.copy()
@@ -472,8 +513,29 @@ class _BasicClient(object):
         if self.ha.security_token_header() in header_log:
             header_log[self.ha.security_token_header()] = "******"
         self.log_client.log(DEBUG, 'method:%s, path:%s, header:%s', method, path, header_log)
-        conn = self._send_request(connect_server, method, path, header_config, entity, port, scheme, redirect, chunkedMode)
+        conn = self._send_request(connect_server, method, path, header_config, entity, port, scheme, redirect,
+                                  chunkedMode)
         return conn
+
+    def _parse_extension_headers(self, headers, extension_headers):
+        if len(extension_headers) > 0:
+            if headers is None or not isinstance(headers, dict):
+                headers = {}
+            else:
+                headers = headers.copy()
+            for key, value in extension_headers.items():
+                headers[key] = value
+        return headers
+
+    def _parse_entity(self, entity, headers):
+        if entity is not None and not callable(entity):
+            entity = util.safe_encode(entity)
+            if not isinstance(entity, str) and not isinstance(entity, bytes):
+                entity = util.to_string(entity)
+            if not const.IS_PYTHON2:
+                entity = entity.encode('UTF-8') if not isinstance(entity, bytes) else entity
+            headers[const.CONTENT_LENGTH_HEADER] = util.to_string(len(entity))
+        return entity, headers
 
     def _add_auth_headers(self, headers, method, bucketName, objectKey, pathArgs, skipAuthentication=False):
         from datetime import datetime
@@ -523,28 +585,33 @@ class _BasicClient(object):
             for k, v in headers.items():
                 if k is not None and v is not None:
                     k = util.to_string(k).strip()
-                    if k.lower() not in const.ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES and not k.lower().startswith(const.V2_HEADER_PREFIX) and not k.lower().startswith(const.OBS_HEADER_PREFIX):
+                    if k.lower() not in const.ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES and not k.lower().startswith(
+                            const.V2_HEADER_PREFIX) and not k.lower().startswith(const.OBS_HEADER_PREFIX):
                         if method not in (const.HTTP_METHOD_PUT, const.HTTP_METHOD_POST):
                             continue
                         k = self.ha._get_meta_header_prefix() + k
 
-                    if(k.lower().startswith(self.ha._get_meta_header_prefix())):
+                    if k.lower().startswith(self.ha._get_meta_header_prefix()):
                         k = util.encode_item(k, ' ;/?:@&=+$,')
 
-                    if(k.lower() == self.ha._get_header_prefix() + 'copy-source'):
-                        index = v.rfind('?versionId=')
-                        if index > 0:
-                            new_headers[k] = util.encode_item(v[0:index], '/') + v[index:]
-                        else:
-                            new_headers[k] = util.encode_item(v, '/')
-                    else:
-                        new_headers[k] = v if (isinstance(v, list)) else util.encode_item(v, ' ;/?:@&=+$,\'*')
+                    new_headers = self._rename_request_headers_handle(k, v, new_headers)
+        return new_headers
+
+    def _rename_request_headers_handle(self, k, v, new_headers):
+        if k.lower() == self.ha._get_header_prefix() + 'copy-source':
+            index = v.rfind('?versionId=')
+            if index > 0:
+                new_headers[k] = util.encode_item(v[0:index], '/') + v[index:]
+            else:
+                new_headers[k] = util.encode_item(v, '/')
+        else:
+            new_headers[k] = v if (isinstance(v, list)) else util.encode_item(v, ' ;/?:@&=+$,\'*')
         return new_headers
     
     def _get_server_connection(self, server, port=None, scheme=None, redirect=False, proxy_host=None, proxy_port=None):
-        
+
         is_secure = self.is_secure if scheme is None else True if scheme == 'https' else False
-                
+
         if self.connHolder is not None and not self.connHolder['connSet'].empty() and not redirect:
             try:
                 return self.connHolder['connSet'].get_nowait()
@@ -555,46 +622,38 @@ class _BasicClient(object):
             from obs import http2
             conn = http2._get_server_connection(server, port, self.context, is_secure, proxy_host, proxy_port)
         else:
-            if proxy_host is not None and proxy_port is not None:
-                server = proxy_host
-                port = proxy_port
-            
-            if is_secure:
-                if const.IS_PYTHON2:
-                    try:
-                        conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout, context=self.context)
-                    except Exception:
-                        conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout)
-                else:
-                    conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout, context=self.context, check_hostname=False)
-            else:
-                conn = httplib.HTTPConnection(server, port=port, timeout=self.timeout)
-        
+            conn = self._get_server_connection_use_http1x(is_secure, server, port, proxy_host, proxy_port)
+
         if redirect:
             conn._clear = True
+
         return conn
 
-    def _send_request(self, server, method, path, header, entity=None, port=None, scheme=None, redirect=False, chunkedMode=False):
+    def _get_server_connection_use_http1x(self, is_secure, server, port, proxy_host, proxy_port):
+        if proxy_host is not None and proxy_port is not None:
+            server = proxy_host
+            port = proxy_port
+
+        if is_secure:
+            if const.IS_PYTHON2:
+                try:
+                    conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout, context=self.context)
+                except Exception:
+                    conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout)
+            else:
+                conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout, context=self.context,
+                                               check_hostname=False)
+        else:
+            conn = httplib.HTTPConnection(server, port=port, timeout=self.timeout)
+
+        return conn
+
+    def _send_request(self, server, method, path, header, entity=None, port=None, scheme=None, redirect=False,
+                      chunkedMode=False):
         conn = None
         header = header or {}
         connection_key = const.CONNECTION_HEADER
-        if self.proxy_host is not None and self.proxy_port is not None:
-            conn = self._get_server_connection(server, port, scheme, redirect, util.to_string(self.proxy_host), util.to_int(self.proxy_port))
-            _header = {}
-            if self.proxy_username is not None and self.proxy_password is not None:
-                _header[const.PROXY_AUTHORIZATION_HEADER] = 'Basic %s' % (util.base64_encode(util.to_string(self.proxy_username) + ':' + util.to_string(self.proxy_password)))
-            if not self.use_http2:
-                conn.set_tunnel(server, port, _header)
-            else:
-                header[const.PROXY_AUTHORIZATION_HEADER] = _header[const.PROXY_AUTHORIZATION_HEADER]
-            connection_key = const.PROXY_CONNECTION_HEADER
-        else:
-            conn = self._get_server_connection(server, port, scheme, redirect)
-            
-        if self.long_conn_mode:
-            header[connection_key] = const.CONNECTION_KEEP_ALIVE_VALUE
-        else:
-            header[const.CONNECTION_HEADER] = const.CONNECTION_CLOSE_VALUE
+        conn, header = self._parse_request_connection(server, port, scheme, connection_key, redirect, header)
 
         header[const.USER_AGENT_HEADER] = 'obs-sdk-python/' + const.OBS_SDK_VERSION
 
@@ -610,17 +669,11 @@ class _BasicClient(object):
         else:
             if chunkedMode:
                 header[const.TRANSFER_ENCODING_HEADER] = const.TRANSFER_ENCODING_VALUE
-            
+
             if self.use_http2:
                 conn.request(method, path, body=entity, headers=header)
             else:
-                if chunkedMode:
-                    conn.putrequest(method, path, skip_host=1)
-                    for k, v in header.items():
-                        conn.putheader(k, v)
-                    conn.endheaders()
-                else:
-                    conn.request(method, path, headers=header)
+                self._parse_connection_chunked_mode(conn, chunkedMode, method, path, header)
                 if entity is not None:
                     if callable(entity):
                         entity(util.conn_delegate(conn))
@@ -628,6 +681,40 @@ class _BasicClient(object):
                         conn.send(entity)
                         self.log_client.log(DEBUG, 'request content:%s', util.to_string(entity))
         return conn
+
+    def _parse_request_connection(self, server, port, scheme, connection_key, redirect, header):
+        if self.proxy_host is not None and self.proxy_port is not None:
+            conn = self._get_server_connection(server, port, scheme, redirect, util.to_string(self.proxy_host),
+                                               util.to_int(self.proxy_port))
+            _header = {}
+            if self.proxy_username is not None and self.proxy_password is not None:
+                _header[const.PROXY_AUTHORIZATION_HEADER] = 'Basic ' \
+                                                            '%s' % (
+                                                                util.base64_encode(util.to_string(
+                                                                    self.proxy_username) + ':' + util.to_string(
+                                                                    self.proxy_password))
+                                                            )
+            if not self.use_http2:
+                conn.set_tunnel(server, port, _header)
+            else:
+                header[const.PROXY_AUTHORIZATION_HEADER] = _header[const.PROXY_AUTHORIZATION_HEADER]
+            connection_key = const.PROXY_CONNECTION_HEADER
+        else:
+            conn = self._get_server_connection(server, port, scheme, redirect)
+        if self.long_conn_mode:
+            header[connection_key] = const.CONNECTION_KEEP_ALIVE_VALUE
+        else:
+            header[const.CONNECTION_HEADER] = const.CONNECTION_CLOSE_VALUE
+        return conn, header
+
+    def _parse_connection_chunked_mode(self, conn, chunkedMode, method, path, header):
+        if chunkedMode:
+            conn.putrequest(method, path, skip_host=1)
+            for k, v in header.items():
+                conn.putheader(k, v)
+            conn.endheaders()
+        else:
+            conn.request(method, path, headers=header)
     
     def _getNoneResult(self, message='None Result'):
         raise Exception(message)
@@ -698,7 +785,7 @@ class _BasicClient(object):
             if close_conn_flag:
                 util.do_close(result, conn, self.connHolder, self.log_client)
         
-            
+
     def _parse_content(self, conn, objectKey, downloadPath=None, chuckSize=65536, loadStreamInMemory=False, progressCallback=None):
         if not conn:
             return self._getNoneResult('connection is none')
@@ -719,20 +806,12 @@ class _BasicClient(object):
             
             content_length = headers.get('content-length')
             content_length = util.to_long(content_length) if content_length is not None else None
-            notifier = progress.ProgressNotifier(progressCallback, content_length) if content_length is not None and content_length > 0 and progressCallback is not None else progress.NONE_NOTIFIER
+            notifier = self._get_notifier(content_length, progressCallback)
             notifier.start()
             resultWrapper = ResponseWrapper(conn, result, self.connHolder, content_length, notifier)
             if loadStreamInMemory:
                 self.log_client.log(DEBUG, 'loadStreamInMemory is True, read stream into memory')
-                buf = None
-                while True:
-                    chunk = resultWrapper.read(chuckSize)
-                    if not chunk:
-                        break
-                    if buf is None:
-                        buf = chunk
-                    else:
-                        buf += chunk
+                buf = self._get_buffer_data(resultWrapper, chuckSize)
                 body = ObjectStream(buffer=buf, size=util.to_long(len(buf)) if buf is not None else 0)
             elif downloadPath is None:
                 self.log_client.log(DEBUG, 'DownloadPath is none, return conn directly')
@@ -762,7 +841,28 @@ class _BasicClient(object):
                     resultWrapper.close()
                 else:
                     util.do_close(result, conn, self.connHolder, self.log_client)
-    
+
+    def _get_buffer_data(self, resultWrapper, chuckSize):
+        buf = None
+        appendList = []
+        while True:
+            chunk = resultWrapper.read(chuckSize)
+            if not chunk:
+                if bool(appendList):
+                    tempStr = ""
+                    if not const.IS_PYTHON2:
+                        tempStr = b""
+                    buf = tempStr.join(appendList)
+                    del appendList[:]
+                break
+            appendList.append(chunk)
+        return buf
+
+    def _get_notifier(self, content_length, progressCallback):
+        return progress.ProgressNotifier(progressCallback,
+                                         content_length) if content_length is not None and content_length > 0 \
+                                         and progressCallback is not None else progress.NONE_NOTIFIER
+
     def _get_data(self, resultWrapper, downloadPath, chuckSize):
         origin_file_path = downloadPath
         readed_count = 0
@@ -813,7 +913,48 @@ class _BasicClient(object):
             if flag:
                 header.append((k, v))
         return header
-    
+
+    def _prepare_response_data(self, result, chuckSize):
+        responseData = None
+        while True:
+            chunk = result.read(chuckSize)
+            if not chunk:
+                break
+            responseData = chunk if responseData is None else responseData + chunk
+        return responseData
+
+    def _prepare_body(self, methodName, responseData, isJson, headers):
+        body = None
+        if methodName is not None:
+            parseMethod = getattr(self.convertor, 'parse' + methodName[:1].upper() + methodName[1:])
+            if parseMethod is not None:
+                try:
+                    if responseData:
+                        responseData = responseData if const.IS_PYTHON2 else responseData.decode('UTF-8')
+                        self.log_client.log(DEBUG, 'recv Msg:%s', responseData)
+                        if not isJson:
+                            search = self.pattern.search(responseData)
+                            responseData = responseData if search is None else responseData.replace(search.group(),
+                                                                                                    '')
+                        body = parseMethod(responseData, headers)
+                    else:
+                        body = parseMethod(headers)
+                except Exception as e:
+                    self.log_client.log(ERROR, util.to_string(e))
+                    self.log_client.log(ERROR, traceback.format_exc())
+        return responseData, body
+
+    def _prepare_request_id(self, requestId, headers):
+        if requestId is None:
+            requestId = headers.get('x-obs-request-id')
+        if requestId is None:
+            requestId = headers.get('x-amz-request-id')
+        return requestId
+
+    def _is_redirect_exception(self, status, headers):
+        return status >= 300 and status < 400 and status != 304 and const.LOCATION_HEADER.lower() in headers
+
+
     def _parse_xml_internal(self, result, methodName=None, chuckSize=65536, readable=False):
         status = util.to_int(result.status)
         reason = result.reason
@@ -826,51 +967,30 @@ class _BasicClient(object):
         headers = {}
         for k, v in result.getheaders():
             headers[k.lower()] = v
-        xml = None
-        while True:
-            chunk = result.read(chuckSize)
-            if not chunk:
-                break
-            xml = chunk if xml is None else xml + chunk
+        responseData = self._prepare_response_data(result, chuckSize)
+
         header = self._rename_response_headers(headers)
+        isJson = headers.get(const.CONTENT_TYPE_HEADER.lower(), 'xml') == const.MIME_TYPES.get('json')
         indicator = headers.get(self.ha.indicator_header())
+
         if status < 300:
-            if methodName is not None:
-                parseMethod = getattr(self.convertor, 'parse' + methodName[:1].upper() + methodName[1:])
-                if parseMethod is not None:
-                    try:
-                        if xml:
-                            xml = xml if const.IS_PYTHON2 else xml.decode('UTF-8')
-                            self.log_client.log(DEBUG, 'recv Msg:%s', xml)
-                            search = self.pattern.search(xml)
-                            xml = xml if search is None else xml.replace(search.group(), '')
-                            body = parseMethod(xml, headers)
-                        else:
-                            body = parseMethod(headers)
-                    except Exception as e:
-                        self.log_client.log(ERROR, util.to_string(e))
-                        self.log_client.log(ERROR, traceback.format_exc())
-                    
-            requestId = headers.get('x-obs-request-id')
-            if requestId is None:
-                requestId = headers.get('x-amz-request-id')
-        elif xml:
-            xml = xml if const.IS_PYTHON2 else xml.decode('UTF-8')
+            responseData, body = self._prepare_body(methodName, responseData, isJson, headers)
+            requestId = self._prepare_request_id(None, headers)
+
+        elif responseData:
+            responseData = responseData if const.IS_PYTHON2 else responseData.decode('UTF-8')
             try:
-                search = self.pattern.search(xml)
-                xml = xml if search is None else xml.replace(search.group(), '')
-                if headers.get("content-type", "not exsited") == const.MIME_TYPES.get("json"):
-                    code, message, requestId = self.convertor.parseJsonErrorResult(xml)
+                if isJson:
+                    code, message, requestId = self.convertor.parseJsonErrorResult(responseData)
                 else:
-                    code, message, requestId, hostId, resource = self.convertor.parseErrorResult(xml)
+                    search = self.pattern.search(responseData)
+                    responseData = responseData if search is None else responseData.replace(search.group(), '')
+                    code, message, requestId, hostId, resource = self.convertor.parseErrorResult(responseData)
             except Exception as ee:
                 self.log_client.log(ERROR, util.to_string(ee))
                 self.log_client.log(ERROR, traceback.format_exc())
                 
-        if requestId is None:
-            requestId = headers.get('x-obs-request-id')
-        if requestId is None:
-            requestId = headers.get('x-amz-request-id')
+        requestId = self._prepare_request_id(requestId, headers)
           
         self.log_client.log(DEBUG, 'http response result:status:%d,reason:%s,code:%s,message:%s,headers:%s',
                             status, reason, code, message, header)
@@ -883,7 +1003,7 @@ class _BasicClient(object):
                          requestId=requestId, hostId=hostId, resource=resource, header=header, indicator=indicator)
         
         if not readable:
-            if status >= 300 and status < 400 and status != 304 and const.LOCATION_HEADER.lower() in headers:
+            if self._is_redirect_exception(status, headers):
                 location = headers.get(const.LOCATION_HEADER.lower())
                 self.log_client.log(WARNING, 'http code is %d, need to redirect to %s', status, location)
                 raise _RedirectException('http code is {0}, need to redirect to {1}'.format(status, location), location, ret)
@@ -904,29 +1024,36 @@ class ObsClient(_BasicClient):
 
     def __init__(self, *args, **kwargs):
         super(ObsClient, self).__init__(*args, **kwargs)
-    
+
     def _prepareParameterForSignedUrl(self, specialParam, expires, headers, queryParams):
-        
+
         headers = {} if headers is None or not isinstance(headers, dict) else headers.copy()
         queryParams = {} if queryParams is None or not isinstance(queryParams, dict) else queryParams.copy()
-        
+
         _headers = {}
         for k, v in headers.items():
             if k is not None and k != '':
                 _headers[k] = v
-                
-        _queryParams = {}
-        for k, v in queryParams.items():
-            if k is not None and k != '':
-                _queryParams[k] = v
-        
-        if specialParam is not None:
-            specialParam = 'storageClass' if self.signature.lower() == 'obs' and specialParam == 'storagePolicy' else 'storagePolicy' if self.signature.lower() != 'obs' and specialParam == 'storageClass' else specialParam
-            _queryParams[specialParam] = None
+
+        _queryParams = self._prepareParameterForSignedUrlQuery(queryParams, specialParam)
 
         expires = 300 if expires is None else util.to_int(expires)
 
         return _headers, _queryParams, expires, self.calling_format
+
+    def _prepareParameterForSignedUrlQuery(self, queryParams, specialParam):
+        _queryParams = {}
+        for k, v in queryParams.items():
+            if k is not None and k != '':
+                _queryParams[k] = v
+
+        if specialParam is not None:
+            specialParam = 'storageClass' if self.signature.lower() == 'obs' and specialParam == 'storagePolicy' \
+                else 'storagePolicy' if self.signature.lower() != 'obs' and specialParam == 'storageClass' \
+                else specialParam
+            _queryParams[specialParam] = None
+
+        return _queryParams
     
     def createSignedUrl(self, method, bucketName=None, objectKey=None, specialParam=None, expires=300, headers=None, queryParams=None):
         delegate = self._createV4SignedUrl if self.signature.lower() == 'v4' else self._createV2SignedUrl
@@ -1024,7 +1151,7 @@ class ObsClient(_BasicClient):
     
     def createPostSignature(self, bucketName=None, objectKey=None, expires=300, formParams=None):
         return self._createPostSignature(bucketName, objectKey, expires, formParams, self.signature.lower() == 'v4')
-    
+
     def _createPostSignature(self, bucketName=None, objectKey=None, expires=300, formParams=None, is_v4=False):
         from datetime import datetime, timedelta
 
@@ -1038,21 +1165,8 @@ class ObsClient(_BasicClient):
 
         expires = expires.strftime(const.EXPIRATION_DATE_FORMAT)
 
-        formParams = {} if formParams is None or not isinstance(formParams, dict) else formParams.copy()
-
-        if securityProvider.security_token is not None and self.ha.security_token_header() not in formParams:
-            formParams[self.ha.security_token_header()] = securityProvider.security_token
-        
-        if is_v4:
-            formParams['X-Amz-Algorithm'] = 'AWS4-HMAC-SHA256'
-            formParams['X-Amz-Date'] = longDate
-            formParams['X-Amz-Credential'] = '%s/%s/%s/s3/aws4_request' % (securityProvider.access_key_id, shortDate, self.region)
-
-        if bucketName:
-            formParams['bucket'] = bucketName
-
-        if objectKey:
-            formParams['key'] = objectKey
+        formParams = self._parse_post_params(formParams, securityProvider, is_v4,
+                                             bucketName, objectKey, longDate, shortDate)
 
         policy = ['{"expiration":"']
         policy.append(expires)
@@ -1072,13 +1186,15 @@ class ObsClient(_BasicClient):
                 elif key == 'key':
                     matchAnyKey = False
 
-                if key not in const.ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES and not key.startswith(self.ha._get_header_prefix()) and not key.startswith(const.OBS_HEADER_PREFIX) and key not in conditionAllowKeys:
+                if key not in const.ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES and not key.startswith(
+                        self.ha._get_header_prefix()) and not key.startswith(
+                        const.OBS_HEADER_PREFIX) and key not in conditionAllowKeys:
                     continue
 
                 policy.append('{"')
                 policy.append(key)
                 policy.append('":"')
-                policy.append(util.to_string(value) if value is not None else '')
+                policy.append(util.to_string(value))
                 policy.append('"},')
 
         if matchAnyBucket:
@@ -1092,18 +1208,50 @@ class ObsClient(_BasicClient):
         originPolicy = ''.join(policy)
 
         policy = util.base64_encode(originPolicy)
-        
+
+        result = self._parse_post_signature_type(is_v4, securityProvider, originPolicy,
+                                                 policy, formParams, shortDate, longDate)
+        return _CreatePostSignatureResponse(**result)
+
+    def _parse_post_params(self, formParams, securityProvider, is_v4, bucketName, objectKey, longDate, shortDate):
+        formParams = {} if formParams is None or not isinstance(formParams,
+                                                                dict) else formParams.copy()
+
+        if securityProvider.security_token is not None and self.ha.security_token_header() not in formParams:
+            formParams[
+                self.ha.security_token_header()] = securityProvider.security_token
+
         if is_v4:
-            v4Auth = auth.V4Authentication(securityProvider.access_key_id, securityProvider.secret_access_key, self.region, shortDate, longDate,
+            formParams['X-Amz-Algorithm'] = 'AWS4-HMAC-SHA256'
+            formParams['X-Amz-Date'] = longDate
+            formParams['X-Amz-Credential'] = '%s/%s/%s/s3/aws4_request' % (
+                securityProvider.access_key_id, shortDate, self.region)
+
+        if bucketName:
+            formParams['bucket'] = bucketName
+
+        if objectKey:
+            formParams['key'] = objectKey
+        return formParams
+
+    def _parse_post_signature_type(self, is_v4, securityProvider, originPolicy, policy, formParams,
+                                   shortDate, longDate):
+        if is_v4:
+            v4Auth = auth.V4Authentication(securityProvider.access_key_id, securityProvider.secret_access_key,
+                                           self.region, shortDate, longDate,
                                            self.path_style, self.ha)
             signingKey = v4Auth.getSigningKey_python2() if const.IS_PYTHON2 else v4Auth.getSigningKey_python3()
             signature = v4Auth.hmacSha256(signingKey, policy if const.IS_PYTHON2 else policy.encode('UTF-8'))
-            result = {'originPolicy': originPolicy, 'policy': policy, 'algorithm': formParams['X-Amz-Algorithm'], 'credential': formParams['X-Amz-Credential'], 'date': formParams['X-Amz-Date'], 'signature': signature}
+            result = {'originPolicy': originPolicy, 'policy': policy, 'algorithm': formParams['X-Amz-Algorithm'],
+                      'credential': formParams['X-Amz-Credential'], 'date': formParams['X-Amz-Date'],
+                      'signature': signature}
         else:
-            v2Auth = auth.Authentication(securityProvider.access_key_id, securityProvider.secret_access_key, self.path_style, self.ha, self.server, self.is_cname)
+            v2Auth = auth.Authentication(securityProvider.access_key_id, securityProvider.secret_access_key,
+                                         self.path_style, self.ha, self.server, self.is_cname)
             signature = v2Auth.hmacSha128(policy)
-            result = {'originPolicy': originPolicy, 'policy': policy, 'signature': signature, 'accessKeyId': securityProvider.access_key_id}
-        return _CreatePostSignatureResponse(**result)
+            result = {'originPolicy': originPolicy, 'policy': policy, 'signature': signature,
+                      'accessKeyId': securityProvider.access_key_id}
+        return result
 
     def bucketClient(self, bucketName):
         return BucketClient(self, bucketName)
@@ -1351,21 +1499,70 @@ class ObsClient(_BasicClient):
             return _parse_content_with_notifier(conn, objectKey, CHUNKSIZE, downloadPath, notifier)
         
         return self._make_get_request(bucketName, objectKey, parseMethod=parseMethod, readable=readable, extensionHeaders=extensionHeaders, **self.convertor.trans_get_object(getObjectRequest=getObjectRequest, headers=headers))
-    
-    @funcCache
-    def appendObject(self, bucketName, objectKey, content=None, metadata=None, headers=None, progressCallback=None, autoClose=True, extensionHeaders=None):
+
+    def _preapare_append_object_input(self, objectKey, headers, content):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
-            
+
         if headers is None:
             headers = AppendObjectHeader()
-            
+
         if content is None:
             content = AppendObjectContent()
-            
+
         if headers.get('contentType') is None:
             headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
+
+        return objectKey, headers, content
+
+    def _prepare_file_notifier_and_entiy(self, offset, file_size, headers, progressCallback, file_path, readable):
+        if offset is not None and 0 < offset < file_size:
+            headers['contentLength'] = headers['contentLength'] if 0 < headers['contentLength'] <= (
+                        file_size - offset) else file_size - offset
+            totalCount = headers['contentLength']
+            if totalCount > 0 and progressCallback is not None:
+                readable = True
+                notifier = progress.ProgressNotifier(progressCallback, totalCount)
+            else:
+                notifier = progress.NONE_NOTIFIER
+            entity = util.get_file_entity_by_offset_partsize(file_path, offset, totalCount, self.chunk_size, notifier)
+        else:
+            totalCount = headers['contentLength']
+            if totalCount > 0 and progressCallback is not None:
+                readable = True
+                notifier = progress.ProgressNotifier(progressCallback, totalCount)
+            else:
+                notifier = progress.NONE_NOTIFIER
+            entity = util.get_file_entity_by_totalcount(file_path, totalCount, self.chunk_size, notifier)
+
+        return headers, readable, notifier, entity
+
+    def _prepare_content_notifier_and_entiy(self, entity, headers, progressCallback, autoClose, readable, chunkedMode,
+                                            notifier):
+        if entity is None:
+            entity = ''
+        elif hasattr(entity, 'read') and callable(entity.read):
+            readable = True
+            if headers.get('contentLength') is None:
+                chunkedMode = True
+                notifier = progress.ProgressNotifier(progressCallback,
+                                                     -1) if progressCallback is not None else progress.NONE_NOTIFIER
+                entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose)
+            else:
+                totalCount = util.to_long(headers.get('contentLength'))
+                notifier = progress.ProgressNotifier(progressCallback,
+                                                     totalCount) if totalCount > 0 and progressCallback is not None \
+                                                     else progress.NONE_NOTIFIER
+                entity = util.get_readable_entity_by_totalcount(entity, totalCount, self.chunk_size, notifier,
+                                                                autoClose)
+
+        return entity, readable, chunkedMode, notifier
+
+    @funcCache
+    def appendObject(self, bucketName, objectKey, content=None, metadata=None, headers=None, progressCallback=None,
+                     autoClose=True, extensionHeaders=None):
+        objectKey, headers, content = self._preapare_append_object_input(objectKey, headers, content)
         
         chunkedMode = False
         readable = False
@@ -1382,41 +1579,20 @@ class ObsClient(_BasicClient):
             
             file_size = util.to_long(os.path.getsize(file_path))
             headers['contentLength'] = util.to_long(headers.get('contentLength'))
-            headers['contentLength'] = headers['contentLength'] if headers.get('contentLength') is not None and headers['contentLength'] <= file_size else file_size
+            headers['contentLength'] = headers['contentLength'] if headers.get('contentLength') is not None and headers[
+                'contentLength'] <= file_size else file_size
             offset = util.to_long(content.get('offset'))
-            if offset is not None and 0 < offset < file_size:
-                headers['contentLength'] = headers['contentLength'] if 0 < headers['contentLength'] <= (file_size - offset) else file_size - offset
-                totalCount = headers['contentLength']
-                if totalCount > 0 and progressCallback is not None:
-                    readable = True
-                    notifier = progress.ProgressNotifier(progressCallback, totalCount) 
-                else: 
-                    notifier = progress.NONE_NOTIFIER
-                entity = util.get_file_entity_by_offset_partsize(file_path, offset, totalCount, self.chunk_size, notifier)
-            else:
-                totalCount = headers['contentLength']
-                if totalCount > 0 and progressCallback is not None:
-                    readable = True
-                    notifier = progress.ProgressNotifier(progressCallback, totalCount) 
-                else:
-                    notifier = progress.NONE_NOTIFIER
-                entity = util.get_file_entity_by_totalcount(file_path, totalCount, self.chunk_size, notifier)
+            headers, readable, notifier, entity = self._prepare_file_notifier_and_entiy(offset, file_size, headers,
+                                                                                        progressCallback, file_path,
+                                                                                        readable)
             headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
             self.log_client.log(DEBUG, 'send Path:%s' % file_path)
         else:
             entity = content.get('content')
-            if entity is None:
-                entity = ''
-            elif hasattr(entity, 'read') and callable(entity.read):
-                readable = True
-                if headers.get('contentLength') is None:
-                    chunkedMode = True
-                    notifier = progress.ProgressNotifier(progressCallback, -1) if progressCallback is not None else progress.NONE_NOTIFIER
-                    entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose)
-                else:
-                    totalCount = util.to_long(headers.get('contentLength'))
-                    notifier = progress.ProgressNotifier(progressCallback, totalCount) if totalCount > 0 and progressCallback is not None else progress.NONE_NOTIFIER
-                    entity = util.get_readable_entity_by_totalcount(entity, totalCount, self.chunk_size, notifier, autoClose)
+            entity, readable, chunkedMode, notifier = self._prepare_content_notifier_and_entiy(entity, headers,
+                                                                                               progressCallback,
+                                                                                               autoClose, readable,
+                                                                                               chunkedMode, notifier)
                     
             headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
         
@@ -1473,7 +1649,8 @@ class ObsClient(_BasicClient):
         return self.putContent(bucketName, objectKey, content, metadata, headers, progressCallback, autoClose, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def putFile(self, bucketName, objectKey, file_path, metadata=None, headers=None, progressCallback=None, extensionHeaders=None):
+    def putFile(self, bucketName, objectKey, file_path, metadata=None, headers=None, progressCallback=None,
+                extensionHeaders=None):
         file_path = util.safe_encode(file_path)
         if not os.path.exists(file_path):
             file_path = util.safe_trans_to_gb2312(file_path)
@@ -1498,7 +1675,8 @@ class ObsClient(_BasicClient):
                     key = util.safe_trans_to_gb2312('{0}/'.format(os.path.split(file_path)[1]) + f)
                 else:
                     key = '{0}/'.format(objectKey) + util.safe_trans_to_gb2312(f)
-                result = self.putFile(bucketName, key, __file_path, metadata, headers, extensionHeaders=extensionHeaders)
+                result = self.putFile(bucketName, key, __file_path, metadata, headers,
+                                      extensionHeaders=extensionHeaders)
                 results.append((key, result))
             return results
 
@@ -1506,23 +1684,16 @@ class ObsClient(_BasicClient):
             objectKey = os.path.split(file_path)[1]
 
         size = util.to_long(os.path.getsize(file_path))
-        headers['contentLength'] = util.to_long(headers.get('contentLength'))
-        if headers.get('contentLength') is not None:
-            headers['contentLength'] = size if headers['contentLength'] > size else headers['contentLength']
 
-        if headers.get('contentType') is None:
-            headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
-
-        if headers.get('contentType') is None:
-            headers['contentType'] = const.MIME_TYPES.get(file_path[file_path.rfind('.') + 1:].lower())
+        headers = self._putFileHandleHeader(headers, size, objectKey, file_path)
 
         _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
         if const.CONTENT_LENGTH_HEADER not in _headers:
             _headers[const.CONTENT_LENGTH_HEADER] = util.to_string(size)
         self.log_client.log(DEBUG, 'send Path:%s' % file_path)
-        
-        
-        totalCount = util.to_long(headers['contentLength']) if headers.get('contentLength') is not None else os.path.getsize(file_path)
+
+        totalCount = util.to_long(headers['contentLength']) if headers.get('contentLength') is not None \
+            else os.path.getsize(file_path)
         if totalCount > 0 and progressCallback is not None:
             notifier = progress.ProgressNotifier(progressCallback, totalCount)
             readable = True
@@ -1532,11 +1703,69 @@ class ObsClient(_BasicClient):
         entity = util.get_file_entity_by_totalcount(file_path, totalCount, self.chunk_size, notifier)
         try:
             notifier.start()
-            ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity, methodName='putContent', readable=readable, extensionHeaders=extensionHeaders)
+            ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity,
+                                         methodName='putContent', readable=readable, extensionHeaders=extensionHeaders)
         finally:
             notifier.end()
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
+
+    def _putFileHandleHeader(self, headers, size, objectKey, file_path):
+        headers['contentLength'] = util.to_long(headers.get('contentLength'))
+        if headers.get('contentLength') is not None:
+            headers['contentLength'] = size if headers['contentLength'] > size else headers['contentLength']
+
+        if headers.get('contentType') is None:
+            headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
+
+        if headers.get('contentType') is None:
+            headers['contentType'] = const.MIME_TYPES.get(file_path[file_path.rfind('.') + 1:].lower())
+        return headers
+
+    def _get_offset(self, offset, file_size):
+        offset = offset if offset is not None and 0 <= offset < file_size else 0
+        return offset
+
+    def _get_partsize(self, partSize, file_size, offset):
+        partSize = partSize if partSize is not None and 0 < partSize <= (file_size - offset) else file_size - offset
+        return partSize
+
+    def _prepare_headers(self, md5, isAttachMd5, file_path, partSize, offset, sseHeader, headers):
+        if md5:
+            headers[const.CONTENT_MD5_HEADER] = md5
+        elif isAttachMd5:
+            headers[const.CONTENT_MD5_HEADER] = util.base64_encode(
+                util.md5_file_encode_by_size_offset(file_path, partSize, offset, self.chunk_size))
+
+        if sseHeader is not None:
+            self.convertor._set_sse_header(sseHeader, headers, True)
+
+        return headers
+
+    def _prepare_uploadpart_notifier(self, partSize, progressCallback, readable):
+        if partSize > 0 and progressCallback is not None:
+            readable = True
+            notifier = progress.ProgressNotifier(progressCallback, partSize)
+        else:
+            notifier = progress.NONE_NOTIFIER
+
+        return readable, notifier
+
+    def _get_headers(self, md5, sseHeader, headers):
+        if md5:
+            headers[const.CONTENT_MD5_HEADER] = md5
+        if sseHeader is not None:
+            self.convertor._set_sse_header(sseHeader, headers, True)
+
+        return headers
+
+    def _get_notifier_without_size(self, progressCallback):
+        return progress.ProgressNotifier(progressCallback,
+                                         -1) if progressCallback is not None else progress.NONE_NOTIFIER
+
+    def _get_notifier_with_size(self, progressCallback, totalCount):
+        return progress.ProgressNotifier(progressCallback,
+                        totalCount) if totalCount > 0 and progressCallback is not None else progress.NONE_NOTIFIER
 
     @funcCache
     def uploadPart(self, bucketName, objectKey, partNumber, uploadId, object=None, isFile=False, partSize=None,
@@ -1558,53 +1787,36 @@ class ObsClient(_BasicClient):
                     raise Exception('file [%s] does not exist' % file_path)
             file_size = util.to_long(os.path.getsize(file_path))
             offset = util.to_long(offset)
-            offset = offset if offset is not None and 0 <= offset < file_size else 0
+            offset = self._get_offset(offset, file_size)
             partSize = util.to_long(partSize)
-            partSize = partSize if partSize is not None and 0 < partSize <= (file_size - offset) else file_size - offset
+            partSize = self._get_partsize(partSize, file_size, offset)
 
-            headers = {const.CONTENT_LENGTH_HEADER : util.to_string(partSize)}
+            headers = {const.CONTENT_LENGTH_HEADER: util.to_string(partSize)}
+            headers = self._prepare_headers(md5, isAttachMd5, file_path, partSize, offset, sseHeader, headers)
 
-            if md5:
-                headers[const.CONTENT_MD5_HEADER] = md5
-            elif isAttachMd5:
-                headers[const.CONTENT_MD5_HEADER] = util.base64_encode(util.md5_file_encode_by_size_offset(file_path, partSize, offset, self.chunk_size))
-
-            if sseHeader is not None:
-                self.convertor._set_sse_header(sseHeader, headers, True)
-            
-            if partSize > 0 and progressCallback is not None:
-                readable = True
-                notifier = progress.ProgressNotifier(progressCallback, partSize)
-            else: 
-                notifier = progress.NONE_NOTIFIER
+            readable, notifier = self._prepare_uploadpart_notifier(partSize, progressCallback, readable)
             entity = util.get_file_entity_by_offset_partsize(file_path, offset, partSize, self.chunk_size, notifier)    
         else:
             headers = {}
             if content is not None and hasattr(content, 'read') and callable(content.read):
                 readable = True
-                if md5:
-                    headers[const.CONTENT_MD5_HEADER] = md5
-                if sseHeader is not None:
-                    self.convertor._set_sse_header(sseHeader, headers, True)
+                headers = self._get_headers(md5, sseHeader, headers)
 
                 if partSize is None:
                     self.log_client.log(DEBUG, 'missing partSize when uploading a readable stream')
                     chunkedMode = True
-                    notifier = progress.ProgressNotifier(progressCallback, -1) if progressCallback is not None else progress.NONE_NOTIFIER
+                    notifier = self._get_notifier_without_size(progressCallback)
                     entity = util.get_readable_entity(content, self.chunk_size, notifier, autoClose)
                 else:
                     headers[const.CONTENT_LENGTH_HEADER] = util.to_string(partSize)
                     totalCount = util.to_long(partSize)
-                    notifier = progress.ProgressNotifier(progressCallback, totalCount) if totalCount > 0 and progressCallback is not None else progress.NONE_NOTIFIER
+                    notifier = self._get_notifier_with_size(progressCallback, totalCount)
                     entity = util.get_readable_entity_by_totalcount(content, totalCount, self.chunk_size, notifier, autoClose)
             else:
                 entity = content
                 if entity is None:
                     entity = ''
-                if md5:
-                    headers[const.CONTENT_MD5_HEADER] = md5
-                if sseHeader:
-                    self.convertor._set_sse_header(sseHeader, headers, True)
+                headers = self._get_headers(md5, sseHeader, headers)
         
         try:
             if notifier is not None:
@@ -1632,19 +1844,12 @@ class ObsClient(_BasicClient):
                     raise Exception('file [%s] does not exist' % file_path)
             file_size = util.to_long(os.path.getsize(file_path))
             offset = util.to_long(offset)
-            offset = offset if offset is not None and 0 <= offset < file_size else 0
+            offset = self._get_offset(offset, file_size)
             partSize = util.to_long(partSize)
-            partSize = partSize if partSize is not None and 0 < partSize <= (file_size - offset) else file_size - offset
+            partSize = self._get_partsize(partSize, file_size, offset)
 
             headers = {const.CONTENT_LENGTH_HEADER : util.to_string(partSize)}
-
-            if md5:
-                headers[const.CONTENT_MD5_HEADER] = md5
-            elif isAttachMd5:
-                headers[const.CONTENT_MD5_HEADER] = util.base64_encode(util.md5_file_encode_by_size_offset(file_path, partSize, offset, self.chunk_size))
-
-            if sseHeader is not None:
-                self.convertor._set_sse_header(sseHeader, headers, True)
+            headers = self._prepare_headers(md5, isAttachMd5, file_path, partSize, offset, sseHeader, headers)
             
             if notifier is not None and not isinstance(notifier, progress.NoneNotifier):
                 readable = True
@@ -1653,10 +1858,7 @@ class ObsClient(_BasicClient):
             headers = {}
             if content is not None and hasattr(content, 'read') and callable(content.read):
                 readable = True
-                if md5:
-                    headers[const.CONTENT_MD5_HEADER] = md5
-                if sseHeader is not None:
-                    self.convertor._set_sse_header(sseHeader, headers, True)
+                headers = self._get_headers(md5, sseHeader, headers)
 
                 if partSize is None:
                     chunkedMode = True
@@ -1668,10 +1870,7 @@ class ObsClient(_BasicClient):
                 entity = content
                 if entity is None:
                     entity = ''
-                if md5:
-                    headers[const.CONTENT_MD5_HEADER] = md5
-                if sseHeader:
-                    self.convertor._set_sse_header(sseHeader, headers, True)
+                headers = self._get_headers(md5, sseHeader, headers)
                     
         ret = self._make_put_request(bucketName, objectKey, pathArgs={'partNumber': partNumber, 'uploadId': uploadId}, 
                                       headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='uploadPart', readable=readable, extensionHeaders=extensionHeaders)

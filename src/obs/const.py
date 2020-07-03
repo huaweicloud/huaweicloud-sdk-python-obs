@@ -87,7 +87,7 @@ DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 
 
-OBS_SDK_VERSION = '3.20.3'
+OBS_SDK_VERSION = '3.20.5'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -110,6 +110,10 @@ OBS_SIGNATURE = 'obs'
 
 FETCH_POLICY_KEY = "v1/extension_policy"
 FETCH_JOB_KEY = "v1/async-fetch/jobs"
+
+WORKFLOW_TEMPLATES = 'workflowtemplates'
+WORKFLOWS = 'workflows'
+WORKFLOWEXECUTIONS = 'workflowexecutions'
 
 ALLOWED_RESOURCE_PARAMTER_NAMES = (
         'acl',
@@ -161,7 +165,18 @@ ALLOWED_RESOURCE_PARAMTER_NAMES = (
         'x-image-save-bucket',
         'x-image-save-object',
         'x-image-process',
-        'x-oss-process'
+        'x-oss-process',
+
+        # workflow api
+        'x-workflow-prefix',
+        'x-workflow-start',
+        'x-workflow-limit',
+        'x-workflow-template-name',
+        'x-workflow-graph-name',
+        'x-workflow-execution-state',
+        'x-workflow-execution-type',
+        'x-workflow-next-marker',
+        'triggerpolicy'
 )
 
 ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES = (
