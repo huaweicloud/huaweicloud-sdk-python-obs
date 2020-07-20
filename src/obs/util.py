@@ -26,11 +26,13 @@ else:
     import urllib.parse as urllib
 from obs.ilog import INFO, ERROR
 
+
 def to_bool(item):
     try:
         return True if item is not None and str(item).lower() == 'true' else False
     except Exception:
         return None
+
 
 def to_int(item):
     try:
@@ -38,11 +40,13 @@ def to_int(item):
     except Exception:
         return None
 
+
 def to_long(item):
     try:
         return const.LONG(item)
     except Exception:
         return None
+
 
 def to_float(item):
     try:
@@ -50,14 +54,17 @@ def to_float(item):
     except Exception:
         return None
 
+
 def to_string(item):
     try:
         return str(item) if item is not None else ''
     except Exception:
         return ''
 
+
 def is_valid(item):
     return item is not None and item.strip() != ''
+
 
 class RequestFormat(object):
 
@@ -97,6 +104,7 @@ class RequestFormat(object):
     def get_url(self, bucket, key, path_args):
         return
 
+
 class PathFormat(RequestFormat):
 
     def get_server(self, server, bucket):
@@ -105,7 +113,7 @@ class PathFormat(RequestFormat):
     def get_pathbase(self, bucket, key):
         if bucket:
             return '/' + bucket + '/' + encode_object_key(key) if key else '/' + bucket
-        return '/' + encode_object_key(key) if key else '/'    
+        return '/' + encode_object_key(key) if key else '/'
 
     def get_endpoint(self, server, port, bucket):
         if port == 80 or port == 443:
@@ -122,6 +130,7 @@ class PathFormat(RequestFormat):
         url += self.get_endpoint(server, port, bucket)
         url += self.get_url(bucket, key, path_args)
         return url
+
 
 class SubdomainFormat(RequestFormat):
 
@@ -148,19 +157,23 @@ class SubdomainFormat(RequestFormat):
         url += self.get_url(bucket, key, path_args)
         return url
 
+
 class delegate(object):
     def __init__(self, conn):
         self.conn = conn
-    
+
     def send(self, data, final=False, stream_id=None):
         self.conn.send(data)
-        
+
+
 def conn_delegate(conn):
     return delegate(conn)
+
 
 def get_readable_entity(readable, chunk_size=65536, notifier=None, auto_close=True):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
+
     def entity(conn):
         try:
             while True:
@@ -179,11 +192,14 @@ def get_readable_entity(readable, chunk_size=65536, notifier=None, auto_close=Tr
         finally:
             if hasattr(readable, 'close') and callable(readable.close) and auto_close:
                 readable.close()
+
     return entity
+
 
 def get_readable_entity_by_totalcount(readable, totalCount, chunk_size=65536, notifier=None, auto_close=True):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
+
     def entity(conn):
         try:
             readCount = 0
@@ -201,11 +217,14 @@ def get_readable_entity_by_totalcount(readable, totalCount, chunk_size=65536, no
         finally:
             if hasattr(readable, 'close') and callable(readable.close) and auto_close:
                 readable.close()
+
     return entity
+
 
 def get_file_entity(file_path, chunk_size=65536, notifier=None):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
+
     def entity(conn):
         fileSize = os.path.getsize(file_path)
         readCount = 0
@@ -220,11 +239,14 @@ def get_file_entity(file_path, chunk_size=65536, notifier=None):
                     conn.send(chunk, final=True)
                     break
                 conn.send(chunk)
+
     return entity
+
 
 def get_file_entity_by_totalcount(file_path, totalCount, chunk_size=65536, notifier=None):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
+
     def entity(conn):
         readCount = 0
         with open(file_path, 'rb') as f:
@@ -239,11 +261,14 @@ def get_file_entity_by_totalcount(file_path, totalCount, chunk_size=65536, notif
                     conn.send(chunk, final=True)
                     break
                 conn.send(chunk)
+
     return entity
+
 
 def get_file_entity_by_offset_partsize(file_path, offset, partSize, chunk_size=65536, notifier=None):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
+
     def entity(conn):
         readCount = 0
         with open(file_path, 'rb') as f:
@@ -259,21 +284,28 @@ def get_file_entity_by_offset_partsize(file_path, offset, partSize, chunk_size=6
                     conn.send(chunk, final=True)
                     break
                 conn.send(chunk)
+
     return entity
+
 
 def is_ipaddress(item):
     return re.match(const.IPv4_REGEX, item)
 
+
 def md5_encode(unencoded):
     m = hashlib.md5()
-    unencoded = unencoded if const.IS_PYTHON2 else (unencoded.encode('UTF-8') if not isinstance(unencoded, bytes) else unencoded)
+    unencoded = unencoded if const.IS_PYTHON2 else (
+        unencoded.encode('UTF-8') if not isinstance(unencoded, bytes) else unencoded)
     m.update(unencoded)
     return m.digest()
 
+
 def base64_encode(unencoded):
-    unencoded = unencoded if const.IS_PYTHON2 else (unencoded.encode('UTF-8') if not isinstance(unencoded, bytes) else unencoded)
+    unencoded = unencoded if const.IS_PYTHON2 else (
+        unencoded.encode('UTF-8') if not isinstance(unencoded, bytes) else unencoded)
     encodeestr = base64.b64encode(unencoded, altchars=None)
     return encodeestr if const.IS_PYTHON2 else encodeestr.decode('UTF-8')
+
 
 def encode_object_key(key):
     return encode_item(key, '/~')
@@ -281,6 +313,7 @@ def encode_object_key(key):
 
 def encode_item(item, safe='/'):
     return urllib.quote(to_string(item), safe)
+
 
 def decode_item(item):
     return urllib.unquote(item)
@@ -297,6 +330,7 @@ def safe_trans_to_utf8(item):
             return item
     return None
 
+
 def safe_trans_to_gb2312(item):
     if not const.IS_PYTHON2:
         return item
@@ -307,6 +341,7 @@ def safe_trans_to_gb2312(item):
         except Exception:
             return item
     return None
+
 
 def safe_decode(item):
     if not const.IS_PYTHON2:
@@ -321,6 +356,7 @@ def safe_decode(item):
                 item = None
     return item
 
+
 def safe_encode(item):
     if not const.IS_PYTHON2:
         return item
@@ -333,6 +369,7 @@ def safe_encode(item):
             except Exception:
                 item = None
     return item
+
 
 def md5_file_encode_by_size_offset(file_path=None, size=None, offset=None, chuckSize=None):
     if file_path is not None and size is not None and offset is not None:
@@ -369,7 +406,7 @@ def do_close(result, conn, connHolder, log_client=None):
                 connHolder['connSet'].put_nowait(conn)
             except:
                 close_conn(conn, log_client)
-        
+
 
 def close_conn(conn, log_client=None):
     try:
@@ -379,7 +416,10 @@ def close_conn(conn, log_client=None):
         if log_client:
             log_client.log(ERROR, ex)
 
+
 SKIP_VERIFY_ATTR_TYPE = False
+
+
 def verify_attr_type(value, allowedAttrType):
     if SKIP_VERIFY_ATTR_TYPE:
         return True
@@ -389,6 +429,7 @@ def verify_attr_type(value, allowedAttrType):
                 return True
         return False
     return isinstance(value, allowedAttrType)
+
 
 def lazyCallback(*args, **kwargs):
     pass

@@ -12,11 +12,15 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to download an object concurrently
  from OBS using the OBS SDK for Python.
-'''
+"""
 
+import multiprocessing
+import os
+import platform
+import threading
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -26,8 +30,8 @@ objectKey = 'my-obs-object-key-demo'
 localFilePath = '/temp/' + objectKey
 sampleFilePath = '*** Provide your local file path ***'
 
-import platform, os, threading, multiprocessing
 IS_WINDOWS = platform.system() == 'Windows' or os.name == 'nt'
+
 
 def createSampleFile(sampleFilePath):
     if not os.path.exists(sampleFilePath):
@@ -43,7 +47,9 @@ def createSampleFile(sampleFilePath):
                 index -= 1
     return sampleFilePath
 
+
 from obs import *
+
 
 def doGetObject(lock, completedBlocks, bucketName, objectKey, startPos, endPos, i):
     if IS_WINDOWS:
@@ -63,11 +69,12 @@ def doGetObject(lock, completedBlocks, bucketName, objectKey, startPos, endPos, 
                         break
                     f.write(chunk)
                 response.close()
-        print('Part#' + str(i+1) + 'done\n')
+        print('Part#' + str(i + 1) + 'done\n')
         with lock:
             completedBlocks.value += 1
     else:
-        print('\tPart#' + str(i+1) + ' failed\n')            
+        print('\tPart#' + str(i + 1) + ' failed\n')
+
 
 if __name__ == '__main__':
     # Constructs a obs client instance with your account for accessing OBS
@@ -112,8 +119,10 @@ if __name__ == '__main__':
     lock = threading.Lock() if IS_WINDOWS else multiprocessing.Lock()
     proc = threading.Thread if IS_WINDOWS else multiprocessing.Process
 
+
     class Temp(object):
         pass
+
 
     completedBlocks = Temp() if IS_WINDOWS else multiprocessing.Value('i', 0)
 
@@ -121,9 +130,9 @@ if __name__ == '__main__':
         completedBlocks.value = 0
 
     processes = []
-    
+
     with open(localFilePath, 'wb') as f:
-        pass 
+        pass
 
     for i in range(blockCount):
         startPos = i * blockSize
@@ -131,7 +140,6 @@ if __name__ == '__main__':
         p = proc(target=doGetObject, args=(lock, completedBlocks, bucketName, objectKey, startPos, endPos, i))
         p.daemon = True
         processes.append(p)
-
 
     for p in processes:
         p.start()
@@ -149,4 +157,4 @@ if __name__ == '__main__':
     if resp.status < 300:
         print('Deleting object ' + objectKey + ' Succeed\n')
     else:
-        raise Exception('Deleting object failed')    
+        raise Exception('Deleting object failed')

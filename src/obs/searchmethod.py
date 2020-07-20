@@ -14,27 +14,28 @@
 
 from obs.loadtoken import NoneTokenException
 
+
 def get_token(security_providers, name='OBS_DEFAULT'):
     if name == 'OBS_DEFAULT':
         for method in security_providers:
             try:
                 value = method.search()
             except Exception:
-               pass
+                pass
             else:
-                return {'accessKey':value.get('accessKey'),
-                        'secretKey':value.get('secretKey'),
-                        'securityToken':value.get('securityToken')}                
+                return {'accessKey': value.get('accessKey'),
+                        'secretKey': value.get('secretKey'),
+                        'securityToken': value.get('securityToken')}
         raise NoneTokenException('get token failed')
 
     for method in security_providers:
-        if getattr(method,'__name__') == name:
+        if getattr(method, '__name__') == name:
             try:
                 value = method.search()
             except Exception:
                 raise
             else:
-                return {'accessKey':value.get('accessKey'),
-                        'secretKey':value.get('secretKey'),
-                        'securityToken':value.get('securityToken')}        
+                return {'accessKey': value.get('accessKey'),
+                        'secretKey': value.get('secretKey'),
+                        'securityToken': value.get('securityToken')}
     raise ValueError('No such method: ' + name)

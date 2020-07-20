@@ -12,16 +12,17 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-LOCK_COUNT = 16
-
-lock_list = []
 import threading
+
+LOCK_COUNT = 16
+lock_list = []
+
 for i in range(LOCK_COUNT):
     lock_list.append(threading.RLock())
- 
+
+
 def get_lock(index):
     if index < 0 or index >= LOCK_COUNT:
         raise Exception('cannot find a valid lock')
-    
-    return lock_list[index]
 
+    return lock_list[index]

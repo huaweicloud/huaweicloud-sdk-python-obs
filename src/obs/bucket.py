@@ -14,7 +14,6 @@
 
 
 class BucketClient(object):
-    
     allowedMethod = [
         'createBucket',
         'deleteBucket',
@@ -85,12 +84,11 @@ class BucketClient(object):
         'setBucketFetchJob',
         'getBucketFetchJob'
     ]
-    
+
     def __init__(self, obsClient, bucketName):
         self.__obsClient = obsClient
         self.__bucketName = bucketName
-        
-    
+
     def __getattr__(self, key):
         if key in self.allowedMethod and hasattr(self.__obsClient, key):
             orignalMethod = getattr(self.__obsClient, key)
@@ -107,6 +105,6 @@ class BucketClient(object):
                         if 'bucketName' not in kwargs:
                             _args.insert(0, self.__bucketName)
                     return orignalMethod(*_args, **kwargs)
+
                 return delegate
         return super(BucketClient, self).__getattribute__(key)
-

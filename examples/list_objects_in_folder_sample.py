@@ -12,10 +12,12 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
- This sample demonstrates how to list objects under a specified folder of a bucket 
+"""
+ This sample demonstrates how to list objects under a specified folder of a bucket
  from OBS using the OBS SDK for Python.
-'''
+"""
+
+from obs import ObsClient, Object, DeleteObjectsRequest
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -23,7 +25,6 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 
-from obs import *
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
 
@@ -36,7 +37,6 @@ keyPrefix = 'MyObjectKey'
 folderPrefix = 'src'
 subFolderPrefix = 'test'
 
-
 keys = []
 
 # First prepare folders and sub folders
@@ -46,7 +46,7 @@ for i in range(5):
     keys.append(Object(key))
 
     for j in range(3):
-        subKey = key + subFolderPrefix + str(j) + '/';
+        subKey = key + subFolderPrefix + str(j) + '/'
         obsClient.putContent(bucketName, subKey)
         keys.append(Object(subKey))
 
@@ -82,6 +82,7 @@ for content in resp.body.contents:
 
 print('\n')
 
+
 # List all objects group by folder
 
 def listObjectsByPrefix(resp):
@@ -92,6 +93,7 @@ def listObjectsByPrefix(resp):
             print('\t' + content.key)
         listObjectsByPrefix(subresp)
 
+
 print('List all objects group by folder \n')
 resp = obsClient.listObjects(bucketName, delimiter='/')
 print('Root path:')
@@ -101,7 +103,6 @@ for content in resp.body.contents:
 listObjectsByPrefix(resp)
 
 print('\n')
-
 
 # Delete all the objects created
 

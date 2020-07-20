@@ -23,7 +23,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='esdk-obs-python',
-    version='3.20.5',
+    version='3.20.7',
     packages=find_packages(),
     zip_safe=False,
     description='OBS Python SDK',

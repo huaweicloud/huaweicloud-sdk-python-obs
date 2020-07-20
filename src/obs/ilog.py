@@ -18,6 +18,7 @@ import logging.handlers
 from obs.const import IS_WINDOWS, IS_PYTHON2
 
 import threading
+
 _lock = threading.Lock()
 
 if IS_PYTHON2:
@@ -33,7 +34,8 @@ WARNING = logging.WARNING
 INFO = logging.INFO
 DEBUG = logging.DEBUG
 
-LOG_LEVEL_DICT = {'CRITICAL':CRITICAL, 'ERROR':ERROR, 'WARNING':WARNING, 'INFO':INFO, 'DEBUG':DEBUG}
+LOG_LEVEL_DICT = {'CRITICAL': CRITICAL, 'ERROR': ERROR, 'WARNING': WARNING, 'INFO': INFO, 'DEBUG': DEBUG}
+
 
 class LogConf(object):
     def __init__(self, config_file=None, sec='LOGCONF'):
@@ -66,12 +68,14 @@ class LogConf(object):
                 self.print_log_level = LOG_LEVEL_DICT.get(print_log_level, DEBUG)
                 self.disable = False
 
+
 class NoneLogClient(object):
     def log(self, level, msg, *args, **kwargs):
         pass
 
     def close(self):
         pass
+
 
 class LogClient(object):
     def __init__(self, log_config, log_name='OBS_LOGGER', display_name=None):
@@ -99,10 +103,12 @@ class LogClient(object):
         sep = '\\' if IS_WINDOWS else '/'
         logfilepath = self.log_config.log_file_dir + sep + self.log_config.log_file_name
         encoding = None if IS_PYTHON2 else 'UTF-8'
-        formatter_handle = _handler(filename=logfilepath, encoding=encoding, maxBytes=1024 * 1024 * self.log_config.log_file_size,
+        formatter_handle = _handler(filename=logfilepath, encoding=encoding,
+                                    maxBytes=1024 * 1024 * self.log_config.log_file_size,
                                     backupCount=self.log_config.log_file_number)
         formatter_handle.setLevel(self.log_config.log_file_level)
-        formatter = logging.Formatter('%(asctime)s|process:%(process)d|thread:%(thread)d|%(levelname)s|HTTP(s)+XML|%(message)s|')
+        formatter = logging.Formatter(
+            '%(asctime)s|process:%(process)d|thread:%(thread)d|%(levelname)s|HTTP(s)+XML|%(message)s|')
         formatter_handle.setFormatter(formatter)
 
         self.logger.addHandler(formatter_handle)
@@ -127,7 +133,8 @@ class LogClient(object):
             base_back = base_back.f_back
             funcname = base_back.f_code.co_name
         line = base_back.f_lineno
-        msg = '%(logger)s|%(name)s,%(lineno)d|' % {'logger': self.display_name, 'name': funcname, 'lineno': int(line)} + str(msg)
+        msg = '%(logger)s|%(name)s,%(lineno)d|' % {'logger': self.display_name, 'name': funcname,
+                                                   'lineno': int(line)} + str(msg)
 
         if level == CRITICAL:
             self.logger.critical(msg, *args, **kwargs)
@@ -139,4 +146,3 @@ class LogClient(object):
             self.logger.info(msg, *args, **kwargs)
         elif level == DEBUG:
             self.logger.debug(msg, *args, **kwargs)
-            

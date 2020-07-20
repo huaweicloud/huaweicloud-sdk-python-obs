@@ -283,7 +283,7 @@ class WorkflowClient(_BasicClient):
 
             resp = self._make_get_request(
                 bucketName=None,
-                objectKey=self.__resource + const.WORKFLOWEXECUTIONS,
+                objectKey=self.__resource + const.WORKFLOW_EXECUTIONS,
                 pathArgs=pathArgs,
                 headers=prepareHeader(),
                 methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defualtMethodName)
@@ -311,7 +311,7 @@ class WorkflowClient(_BasicClient):
                     pathArgs['x-workflow-next-marker'] = nextMarker
                     tempResp = self._make_get_request(
                         bucketName=None,
-                        objectKey=self.__resource + const.WORKFLOWEXECUTIONS,
+                        objectKey=self.__resource + const.WORKFLOW_EXECUTIONS,
                         pathArgs=pathArgs,
                         headers=prepareHeader(),
                         methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defualtMethodName)
@@ -341,7 +341,7 @@ class WorkflowClient(_BasicClient):
         else:
             return self._make_get_request(
                 bucketName=None,
-                objectKey=self.__resource + const.WORKFLOWEXECUTIONS,
+                objectKey=self.__resource + const.WORKFLOW_EXECUTIONS,
                 pathArgs=pathArgs,
                 headers=prepareHeader(),
                 methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defualtMethodName)
@@ -355,7 +355,7 @@ class WorkflowClient(_BasicClient):
 
         return self._make_get_request(
             bucketName=None,
-            objectKey=self.__resource + combine(const.WORKFLOWEXECUTIONS, executionName),
+            objectKey=self.__resource + combine(const.WORKFLOW_EXECUTIONS, executionName),
             pathArgs=pathArgs,
             headers=prepareHeader(),
             methodName='GetWorkflowExecutionResponse' if not self.__isJsonResult else self.__defualtMethodName
@@ -369,7 +369,7 @@ class WorkflowClient(_BasicClient):
 
         return self._make_put_request(
             bucketName=None,
-            objectKey=self.__resource + combine(const.WORKFLOWEXECUTIONS, executionName),
+            objectKey=self.__resource + combine(const.WORKFLOW_EXECUTIONS, executionName),
             pathArgs=pathArgs,
             headers=prepareHeader(),
             methodName='RestoreFailedWorkflowExecutionResponse' if not self.__isJsonResult else self.__defualtMethodName
@@ -378,7 +378,7 @@ class WorkflowClient(_BasicClient):
     @entrance
     def putTriggerPolicy(self, bucketName, rules):
         pathArgs = {
-            'triggerpolicy': None
+            const.WORKFLOW_TRIGGERPOLICY: None
         }
 
         return self._make_put_request(
@@ -393,7 +393,7 @@ class WorkflowClient(_BasicClient):
     @entrance
     def getTriggerPolicy(self, bucketName):
         pathArgs = {
-            'triggerpolicy': None
+            const.WORKFLOW_TRIGGERPOLICY: None
         }
 
         return self._make_get_request(
@@ -407,7 +407,7 @@ class WorkflowClient(_BasicClient):
     @entrance
     def deleteTriggerPolicy(self, bucketName):
         pathArgs = {
-            'triggerpolicy': None
+            const.WORKFLOW_TRIGGERPOLICY: None
         }
 
         return self._make_delete_request(

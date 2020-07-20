@@ -44,7 +44,6 @@ IF_UNMODIFIED_SINCE = 'If-Unmodified-Since'
 IF_MATCH = 'If-Match'
 IF_NONE_MATCH = 'If-None-Match'
 
-
 CONNECTION_KEEP_ALIVE_VALUE = 'Keep-Alive'
 CONNECTION_CLOSE_VALUE = 'close'
 ACCESS_CONTROL_REQUEST_METHOD_HEADER = 'Access-Control-Request-Method'
@@ -86,8 +85,7 @@ DEFAULT_TASK_INTTERVAL = 100
 DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 
-
-OBS_SDK_VERSION = '3.20.5'
+OBS_SDK_VERSION = '3.20.7'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -113,127 +111,126 @@ FETCH_JOB_KEY = "v1/async-fetch/jobs"
 
 WORKFLOW_TEMPLATES = 'workflowtemplates'
 WORKFLOWS = 'workflows'
-WORKFLOWEXECUTIONS = 'workflowexecutions'
+WORKFLOW_EXECUTIONS = 'workflowexecutions'
+WORKFLOW_TRIGGERPOLICY = 'obsworkflowtriggerpolicy'
 
 ALLOWED_RESOURCE_PARAMTER_NAMES = (
-        'acl',
-        'backtosource',
-        'policy',
-        'torrent',
-        'logging',
-        'location',
-        'storageinfo',
-        'quota',
-        'storageclass',
-        'storagepolicy',
-        'requestpayment',
-        'versions',
-        'versioning',
-        'versionid',
-        'uploads',
-        'uploadid',
-        'partnumber',
-        'website',
-        'notification',
-        'lifecycle',
-        'deletebucket',
-        'delete',
-        'cors',
-        'restore',
-        'tagging',
-        'replication',
-        'metadata',
-        'encryption',
-        
-        # File System API
-        'append',
-        'position',
-        'truncate',
-        'modify',
-        'rename',
-        'length',
-        'name',
-        'fileinterface',
-        
-        
-        'response-content-type',
-        'response-content-language',
-        'response-expires',
-        'response-cache-control',
-        'response-content-disposition',
-        'response-content-encoding',
-        'x-image-save-bucket',
-        'x-image-save-object',
-        'x-image-process',
-        'x-oss-process',
+    'acl',
+    'backtosource',
+    'policy',
+    'torrent',
+    'logging',
+    'location',
+    'storageinfo',
+    'quota',
+    'storageclass',
+    'storagepolicy',
+    'requestpayment',
+    'versions',
+    'versioning',
+    'versionid',
+    'uploads',
+    'uploadid',
+    'partnumber',
+    'website',
+    'notification',
+    'lifecycle',
+    'deletebucket',
+    'delete',
+    'cors',
+    'restore',
+    'tagging',
+    'replication',
+    'metadata',
+    'encryption',
 
-        # workflow api
-        'x-workflow-prefix',
-        'x-workflow-start',
-        'x-workflow-limit',
-        'x-workflow-template-name',
-        'x-workflow-graph-name',
-        'x-workflow-execution-state',
-        'x-workflow-execution-type',
-        'x-workflow-next-marker',
-        'triggerpolicy'
+    # File System API
+    'append',
+    'position',
+    'truncate',
+    'modify',
+    'rename',
+    'length',
+    'name',
+    'fileinterface',
+
+    'response-content-type',
+    'response-content-language',
+    'response-expires',
+    'response-cache-control',
+    'response-content-disposition',
+    'response-content-encoding',
+    'x-image-save-bucket',
+    'x-image-save-object',
+    'x-image-process',
+    'x-oss-process',
+
+    # workflow api
+    'x-workflow-prefix',
+    'x-workflow-start',
+    'x-workflow-limit',
+    'x-workflow-template-name',
+    'x-workflow-graph-name',
+    'x-workflow-execution-state',
+    'x-workflow-execution-type',
+    'x-workflow-next-marker',
+    'obsworkflowtriggerpolicy'
 )
 
 ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES = (
-        'content-type',
-        'content-md5',
-        'content-length',
-        'content-language',
-        'expires',
-        'origin',
-        'cache-control',
-        'content-disposition',
-        'content-encoding',
-        'access-control-request-method',
-        'access-control-request-headers',
-        'success-action-redirect',
-        'x-default-storage-class',
-        'location',
-        'date',
-        'etag',
-        'range',
-        'host',
-        'if-modified-since',
-        'if-unmodified-since',
-        'if-match',
-        'if-none-match',
-        'last-modified',
-        'content-range'
+    'content-type',
+    'content-md5',
+    'content-length',
+    'content-language',
+    'expires',
+    'origin',
+    'cache-control',
+    'content-disposition',
+    'content-encoding',
+    'access-control-request-method',
+    'access-control-request-headers',
+    'success-action-redirect',
+    'x-default-storage-class',
+    'location',
+    'date',
+    'etag',
+    'range',
+    'host',
+    'if-modified-since',
+    'if-unmodified-since',
+    'if-match',
+    'if-none-match',
+    'last-modified',
+    'content-range'
 )
 
 ALLOWED_RESPONSE_HTTP_HEADER_METADATA_NAMES = (
-        'content-type',
-        'content-md5',
-        'content-length',
-        'content-language',
-        'expires',
-        'origin',
-        'cache-control',
-        'content-disposition',
-        'content-encoding',
-        'x-default-storage-class',
-        'location',
-        'date',
-        'etag',
-        'host',
-        'last-modified',
-        'content-range',
-        'x-reserved',
-        'access-control-allow-origin',
-        'access-control-allow-headers',
-        'access-control-max-age',
-        'access-control-allow-methods',
-        'access-control-expose-headers',
-        'connection',
-        'x-reserved-indicator',
-        'x-oef-request-id'
+    'content-type',
+    'content-md5',
+    'content-length',
+    'content-language',
+    'expires',
+    'origin',
+    'cache-control',
+    'content-disposition',
+    'content-encoding',
+    'x-default-storage-class',
+    'location',
+    'date',
+    'etag',
+    'host',
+    'last-modified',
+    'content-range',
+    'x-reserved',
+    'access-control-allow-origin',
+    'access-control-allow-headers',
+    'access-control-max-age',
+    'access-control-allow-methods',
+    'access-control-expose-headers',
+    'connection',
+    'x-reserved-indicator',
+    'x-oef-request-id'
 )
-
 
 MIME_TYPES = {
     '7z': 'application/x-7z-compressed',

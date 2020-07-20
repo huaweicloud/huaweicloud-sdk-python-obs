@@ -12,18 +12,18 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to delete objects under specified bucket
  from OBS using the OBS SDK for Python.
+"""
 
-'''
+from obs import ObsClient, Object, DeleteObjectsRequest
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
 server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 
-from obs import *
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
 

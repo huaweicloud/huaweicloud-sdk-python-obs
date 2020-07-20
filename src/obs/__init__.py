@@ -14,7 +14,15 @@
 
 from obs.ilog import LogConf
 from obs.client import ObsClient
-from obs.model import *
+from obs.model import CompletePart, Permission, StorageClass, EventType, RestoreTier, Group, Grantee, Grant
+from obs.model import ExtensionGrant, Owner, ACL, Condition, DateTime, SseCHeader, SseKmsHeader, CopyObjectHeader
+from obs.model import SetObjectMetadataHeader, CorsRule, CreateBucketHeader, ErrorDocument, IndexDocument, Expiration
+from obs.model import NoncurrentVersionExpiration, GetObjectHeader, HeadPermission, Lifecycle, Notification
+from obs.model import TopicConfiguration, FunctionGraphConfiguration, FilterRule, Replication, ReplicationRule
+from obs.model import Options, PutObjectHeader, AppendObjectHeader, AppendObjectContent, RedirectAllRequestTo
+from obs.model import Redirect, RoutingRule, Tag, TagInfo, Transition, NoncurrentVersionTransition, Rule, Versions
+from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUploadRequest, DeleteObjectsRequest
+from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileHeader, Payer
 from obs.model import ExtensionHeader, FetchStatus
 from obs.workflow import WorkflowClient
 
@@ -23,7 +31,7 @@ __all__ = [
     'ObsClient',
     'CompletePart',
     'Permission',
-    'StorageClass', 
+    'StorageClass',
     'EventType',
     'RestoreTier',
     'Group',
@@ -79,4 +87,3 @@ __all__ = [
     'FetchStatus',
     'WorkflowClient'
 ]
-

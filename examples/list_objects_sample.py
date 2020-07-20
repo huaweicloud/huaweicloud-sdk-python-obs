@@ -12,10 +12,12 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
 This sample demonstrates how to list objects under specified bucket
 from OBS using the OBS SDK for Python.
-'''
+"""
+
+from obs import ObsClient, Object, DeleteObjectsRequest
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -23,14 +25,12 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 
-from obs import *
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
 
 # Create bucket
 print('Create a new bucket for demo\n')
 obsClient.createBucket(bucketName)
-
 
 content = 'Hello OBS'
 keyPrefix = 'MyObjectKey'
@@ -44,7 +44,6 @@ for i in range(100):
     keys.append(Object(key))
 
 print('Put ' + str(len(keys)) + ' objects completed.' + '\n')
-
 
 # List objects using default parameters, will return up to 1000 objects
 print('List objects using default parameters:\n')
@@ -98,8 +97,7 @@ while True:
 
 print('\n')
 
-
-#Delete all the objects created
+# Delete all the objects created
 resp = obsClient.deleteObjects(bucketName, DeleteObjectsRequest(False, keys))
 print('Delete results:')
 if resp.body.deleted:

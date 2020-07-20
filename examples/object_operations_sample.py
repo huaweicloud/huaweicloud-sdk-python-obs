@@ -12,11 +12,13 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to do object-related operations
  (such as create/delete/get/copy object, do object ACL/OPTIONS)
  on OBS using the OBS SDK for Python.
-'''
+"""
+
+from obs import ObsClient, CorsRule, Options
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -24,7 +26,6 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 
-from obs import *
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
 
@@ -56,13 +57,13 @@ print('\tobject content:%s' % resp.body.buffer)
 # Copy object
 print('Copying object\n')
 destObjectKey = objectKey + '-back'
-# resp = obsClient.copyObject(sourceBucketName=bucketName, sourceObjectKey=objectKey, destBucketName=bucketName, destObjectKey=destObjectKey)
+# resp = obsClient.copyObject(sourceBucketName=bucketName, sourceObjectKey=objectKey,
+# destBucketName=bucketName, destObjectKey=destObjectKey)
 resp = bucketClient.copyObject(sourceBucketName=bucketName, sourceObjectKey=objectKey, destObjectKey=destObjectKey)
 if resp.status < 300:
     print('Copy object ' + destObjectKey + ' successfully!\n')
 
 # Options object
-
 cors1 = CorsRule(id='rule1', allowedMethod=['PUT', 'HEAD', 'GET'],
                  allowedOrigin=['http://www.a.com', 'http://www.b.com'], allowedHeader=['Authorization1'],
                  maxAgeSecond=100, exposeHeader=['x-obs-test1'])
@@ -75,7 +76,6 @@ options = Options(origin='http://www.a.com', accessControlRequestMethods=['PUT']
 # resp = obsClient.optionsObject(bucketName, objectKey, options)
 resp = bucketClient.optionsObject(objectKey, options)
 print(resp.body)
-
 
 # Put/Get object acl operations
 print('Setting object ACL to public-read \n')

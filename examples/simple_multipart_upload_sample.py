@@ -12,10 +12,12 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to upload multiparts to OBS
  using the OBS SDK for Python.
-'''
+"""
+
+from obs import ObsClient, CompleteMultipartUploadRequest, CompletePart
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -23,7 +25,6 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 
-from obs import *
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
 
@@ -45,6 +46,7 @@ etag = dict(resp.header).get('etag')
 
 # Step 3: complete multipart upload
 print('Step 3: complete multipart upload\n')
-resp = obsClient.completeMultipartUpload(bucketName, objectKey, uploadId, CompleteMultipartUploadRequest([CompletePart(partNum=partNum, etag=etag)]))
+resp = obsClient.completeMultipartUpload(bucketName, objectKey, uploadId,
+                                         CompleteMultipartUploadRequest([CompletePart(partNum=partNum, etag=etag)]))
 if resp.status < 300:
     print('Complete finished\n')

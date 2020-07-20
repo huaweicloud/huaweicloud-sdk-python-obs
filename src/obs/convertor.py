@@ -288,7 +288,7 @@ class Convertor(object):
                             grantDict[permission] = granteeIds
                         granteeIds.add('id=%s' % util.to_string(extensionGrant['granteeId']))
 
-                for key, value in grantDict:
+                for key, value in grantDict.items():
                     self._put_key_value(headers, key, ','.join(value))
         return {'headers': headers, 'entity': None if kwargs.get('location') is None else self.trans_bucket_location(
             kwargs.get('location'))}
@@ -759,7 +759,7 @@ class Convertor(object):
                             grantDict[permission] = granteeIds
                         granteeIds.add('id=%s' % util.to_string(extensionGrant['granteeId']))
 
-                for key, value in grantDict:
+                for key, value in grantDict.items():
                     self._put_key_value(_headers, key, ','.join(value))
         return _headers
 
@@ -791,7 +791,7 @@ class Convertor(object):
                         grantDict[permission] = granteeIds
                     granteeIds.add('id=%s' % util.to_string(extensionGrant['granteeId']))
 
-            for key, value in grantDict:
+            for key, value in grantDict.items():
                 self._put_key_value(headers, key, ','.join(value))
         return {'pathArgs': {'uploads': None}, 'headers': headers}
 
@@ -879,7 +879,7 @@ class Convertor(object):
                             grantDict[permission] = granteeIds
                         granteeIds.add('id=%s' % util.to_string(extensionGrant['granteeId']))
 
-                for key, value in grantDict:
+                for key, value in grantDict.items():
                     self._put_key_value(_headers, key, ','.join(value))
 
         return {'headers': _headers}

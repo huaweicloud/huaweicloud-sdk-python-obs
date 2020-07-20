@@ -12,10 +12,15 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to multipart upload an object concurrently by copy mode
  to OBS using the OBS SDK for Python.
-'''
+"""
+
+import multiprocessing
+import os
+import platform
+import threading
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -25,9 +30,8 @@ sourceBucketName = bucketName
 sourceObjectKey = 'my-obs-object-key-demo'
 objectKey = sourceObjectKey + '-back'
 sampleFilePath = '*** Provide your local file path ***'
-
-import platform, os, threading, multiprocessing
 IS_WINDOWS = platform.system() == 'Windows' or os.name == 'nt'
+
 
 def createSampleFile(sampleFilePath):
     if not os.path.exists(sampleFilePath):
@@ -46,17 +50,20 @@ def createSampleFile(sampleFilePath):
 
 from obs import *
 
+
 def doCopyPart(partETags, bucketName, objectKey, partNumber, uploadId, copySource, copySourceRange):
     if IS_WINDOWS:
         global obsClient
     else:
         obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
-    resp = obsClient.copyPart(bucketName=bucketName, objectKey=objectKey, partNumber=partNumber, uploadId=uploadId, copySource=copySource, copySourceRange=copySourceRange)
+    resp = obsClient.copyPart(bucketName=bucketName, objectKey=objectKey, partNumber=partNumber, uploadId=uploadId,
+                              copySource=copySource, copySourceRange=copySourceRange)
     if resp.status < 300:
         partETags[partNumber] = resp.body.etag
         print('Part#' + str(partNumber) + 'done\n')
     else:
         print('\tPart#' + str(partNumber) + ' failed\n')
+
 
 if __name__ == '__main__':
     # Constructs a obs client instance with your account for accessing OBS
@@ -99,7 +106,7 @@ if __name__ == '__main__':
 
     # Upload multiparts by copy mode
     print('Begin to upload multiparts to OBS by copy mode \n')
-    
+
     proc = threading.Thread if IS_WINDOWS else multiprocessing.Process
 
     partETags = dict() if IS_WINDOWS else multiprocessing.Manager().dict()
@@ -110,13 +117,14 @@ if __name__ == '__main__':
         rangeStart = i * partSize
         rangeEnd = objectSize - 1 if (i + 1 == partCount) else rangeStart + partSize - 1
 
-        p = proc(target=doCopyPart, args=(partETags, bucketName, objectKey, i+1, uploadId, sourceBucketName + '/' + sourceObjectKey, str(rangeStart) + '-' + str(rangeEnd)))
+        p = proc(target=doCopyPart, args=(
+            partETags, bucketName, objectKey, i + 1, uploadId, sourceBucketName + '/' + sourceObjectKey,
+            str(rangeStart) + '-' + str(rangeEnd)))
         p.daemon = True
         processes.append(p)
 
     for p in processes:
         p.start()
-
 
     for p in processes:
         p.join()

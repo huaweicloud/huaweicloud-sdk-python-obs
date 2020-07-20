@@ -12,10 +12,12 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to list versions under specified bucket
  from OBS using the OBS SDK for Python.
-'''
+"""
+
+from obs import ObsClient, Object, Versions, DeleteObjectsRequest
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -23,7 +25,6 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 
-from obs import *
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
 
@@ -84,7 +85,8 @@ index = 1
 pageSize = 10
 
 while True:
-    resp = obsClient.listVersions(bucketName, Versions(key_marker=nextKeyMarker, version_id_marker=nextVersionIdMarker, max_keys=pageSize))
+    resp = obsClient.listVersions(bucketName, Versions(key_marker=nextKeyMarker, version_id_marker=nextVersionIdMarker,
+                                                       max_keys=pageSize))
     print('Page:' + str(index) + '\n')
     for version in resp.body.versions:
         print('\t' + version.key + ' etag[' + version.etag + '] versionId[' + version.versionId + ']')
@@ -109,6 +111,7 @@ def listVersionsByPrefix(resp):
             print('\t' + version.key + ' etag[' + version.etag + '] versionId[' + version.versionId + ']')
         listVersionsByPrefix(subresp)
 
+
 print('List all versions group by folder \n')
 resp = obsClient.listVersions(bucketName, Versions(delimiter='/'))
 print('Root path:')
@@ -121,8 +124,7 @@ listVersionsByPrefix(resp)
 
 print('\n')
 
-
-#Delete all the objects created
+# Delete all the objects created
 resp = obsClient.deleteObjects(bucketName, DeleteObjectsRequest(False, keys))
 print('Delete results:')
 if resp.body.deleted:

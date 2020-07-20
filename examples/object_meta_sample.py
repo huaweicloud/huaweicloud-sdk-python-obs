@@ -12,10 +12,12 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to set/get self-defined metadata for object
  on OBS using the OBS SDK for Python.
-'''
+"""
+
+from obs import ObsClient, PutObjectHeader
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -23,7 +25,6 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 
-from obs import *
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
 
@@ -35,7 +36,7 @@ obsClient.createBucket(bucketName)
 headers = PutObjectHeader(contentType='text/plain')
 
 # Setting self-defined metadata
-metadata = {'meta1' : 'value1', 'meta2' : 'value2'}
+metadata = {'meta1': 'value1', 'meta2': 'value2'}
 
 resp = obsClient.putContent(bucketName, objectKey, 'Hello OBS', metadata=metadata, headers=headers)
 if resp.status < 300:

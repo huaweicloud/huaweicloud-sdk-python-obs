@@ -12,10 +12,13 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to download an object
  from OBS in different ways using the OBS SDK for Python.
-'''
+"""
+
+import os
+from obs import ObsClient
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -24,8 +27,6 @@ bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 localFile = '/temp/test.txt'
 
-import os
-from obs import *
 
 def createSampleFile(sampleFilePath):
     if not os.path.exists(sampleFilePath):
@@ -37,6 +38,7 @@ def createSampleFile(sampleFilePath):
             f.write(str(uuid.uuid1()) + '\n')
             f.write(str(uuid.uuid4()) + '\n')
     return sampleFilePath
+
 
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
@@ -74,7 +76,6 @@ print('Downloading an object as a stream object')
 resp = obsClient.getObject(bucketName, objectKey, loadStreamInMemory=True)
 print('stream object content:')
 print(resp.body.buffer)
-
 
 print('Deleting object ' + objectKey + '\n')
 obsClient.deleteObject(bucketName, objectKey)

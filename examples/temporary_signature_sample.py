@@ -12,10 +12,15 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
  This sample demonstrates how to do common operations in temporary signature way
  on OBS using the OBS SDK for Python.
-'''
+"""
+
+import sys
+from obs import ObsClient, CorsRule, const
+from obs.convertor import Convertor
+from obs.util import base64_encode, md5_encode
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -23,7 +28,6 @@ server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 
-import sys, ssl
 IS_PYTHON2 = sys.version_info.major == 2 or sys.version < '3'
 
 if IS_PYTHON2:
@@ -33,9 +37,9 @@ else:
     import http.client as httplib
     from urllib.parse import urlparse
 
-from obs import *
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server, is_secure=False, signature='obs')
+
 
 def doAction(msg, method, url, headers=None, content=None):
     print(msg + ' using temporary signature url:')
@@ -55,7 +59,7 @@ def doAction(msg, method, url, headers=None, content=None):
             content = content.encode('UTF-8')
         conn.send(content)
 
-    result = conn.getresponse()
+    result = conn.getresponse(True) if const.IS_PYTHON2 else conn.getresponse()
     status = result.status
     responseContent = result.read()
     if status < 300:
@@ -68,6 +72,7 @@ def doAction(msg, method, url, headers=None, content=None):
         print('\t%s' % responseContent)
     conn.close()
     print('\n')
+
 
 # Create bucket
 method = 'PUT'
@@ -88,10 +93,9 @@ cors2 = CorsRule(id='rule2', allowedMethod=['PUT', 'HEAD', 'GET'],
                  maxAgeSecond=200, exposeHeader=['x-obs-test2'])
 corsList = [cors1, cors2]
 
-from obs.convertor import Convertor
-from obs.util import base64_encode, md5_encode
 content = Convertor('').trans_cors_rules(corsList)
-headers = {'Content-Type': 'application/xml', 'Content-Length': str(len(content)), 'Content-MD5': base64_encode(md5_encode(content))}
+headers = {'Content-Type': 'application/xml', 'Content-Length': str(len(content)),
+           'Content-MD5': base64_encode(md5_encode(content))}
 res = obsClient.createSignedUrl(method, bucketName, specialParam='cors', headers=headers)
 doAction('Setting bucket cors', method, res['signedUrl'], res['actualSignedRequestHeaders'], content)
 

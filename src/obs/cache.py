@@ -12,8 +12,9 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-import weakref, collections
+import collections
 import time
+import weakref
 
 
 class _LocalCacheThread(object):
@@ -38,6 +39,6 @@ class _LocalCacheThread(object):
     def set(self, key, value):
         self.weak[key] = strongRef = self.Dict(value)
         self.strong.append(strongRef)
-         
-        
+
+
 LocalCache = _LocalCacheThread

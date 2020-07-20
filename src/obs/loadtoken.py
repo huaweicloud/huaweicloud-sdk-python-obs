@@ -17,16 +17,18 @@ import re
 from obs import const
 import threading
 
+
 class NoneTokenException(Exception):
-    def __init__(self,errorInfo):
+    def __init__(self, errorInfo):
         super(NoneTokenException, self).__init__(self)
         self.errorInfo = errorInfo
 
     def __str__(self):
         return self.errorInfo
 
+
 class ENV(object):
-    
+
     @staticmethod
     def search():
         reAccessKey = 'OBS_ACCESS_KEY_ID'
@@ -40,9 +42,10 @@ class ENV(object):
         if accessKey is None or secretKey is None:
             raise NoneTokenException('get token failed')
 
-        return  {'accessKey':accessKey,
-                 'secretKey':secretKey,
-                 'securityToken':securityToken}
+        return {'accessKey': accessKey,
+                'secretKey': secretKey,
+                'securityToken': securityToken}
+
 
 class ECS(object):
     ak = None
@@ -56,27 +59,23 @@ class ECS(object):
         if const.IS_PYTHON2:
             import httplib
         else:
-            import http.client as httplib   
+            import http.client as httplib
         from datetime import datetime
         from datetime import timedelta
 
         hostIP = '169.254.169.254'
         contactURL = '/openstack/latest/securitykey'
 
-        if ECS.expires is not None:
-            token_datenow = datetime.utcnow()
-            if token_datenow < (ECS.expires - timedelta(minutes = 10)):
-                return {'accessKey':ECS.ak,
-                        'secretKey':ECS.sk,
-                        'securityToken':ECS.token}
+        res = ECS._search_handle_expires(datetime, timedelta)
+        if res is not None:
+            return res
 
         if ECS.lock.acquire():
             try:
-                if ECS.expires is not None and datetime.utcnow() < (ECS.expires - timedelta(minutes = 10)):
-                    return {'accessKey':ECS.ak,
-                            'secretKey':ECS.sk,
-                            'securityToken':ECS.token}
-               
+                res = ECS._search_handle_lock_acquire(datetime, timedelta)
+                if res is not None:
+                    return res
+
                 accessKey = None
                 secretKey = None
                 securityToken = None
@@ -84,13 +83,15 @@ class ECS(object):
                 try:
                     conn = httplib.HTTPConnection(hostIP)
                     conn.request('GET', contactURL)
-                    result = conn.getresponse(True) if const.IS_PYTHON2 else conn.getresponse()
+                    result = ECS._search_get_result(conn)
                     responseBody = result.read()
                 except Exception:
-                    if ECS.expires is not None and datetime.utcnow() < ECS.expires:
-                        return {'accessKey':ECS.ak,
-                                'secretKey':ECS.sk,
-                                'securityToken':ECS.token}
+                    if ECS._search_judge(datetime):
+                        return {
+                            'accessKey': ECS.ak,
+                            'secretKey': ECS.sk,
+                            'securityToken': ECS.token
+                        }
                     raise
                 finally:
                     conn.close()
@@ -106,28 +107,31 @@ class ECS(object):
                     patternT = re.compile(reSecurityToken)
                     patternE = re.compile(reExpires)
 
-                    if not const.IS_PYTHON2:
-                        responseBody = responseBody.decode('utf-8')
+                    responseBody = ECS._search_handle_response_body(responseBody)
 
                     resultS = patternS.match(responseBody)
                     resultA = patternA.match(responseBody)
                     resultT = patternT.match(responseBody)
                     resultE = patternE.match(responseBody)
                 except Exception:
-                    if ECS.expires is not None and datetime.utcnow() < ECS.expires:
-                        return {'accessKey':ECS.ak,
-                                'secretKey':ECS.sk,
-                                'securityToken':ECS.token}        
+                    if ECS._search_judge(datetime):
+                        return {
+                            'accessKey': ECS.ak,
+                            'secretKey': ECS.sk,
+                            'securityToken': ECS.token
+                        }
                     raise
 
                 if resultA is None or resultS is None or resultT is None or resultE is None:
-                    if ECS.expires is not None and datetime.utcnow() < ECS.expires:
-                        return {'accessKey':ECS.ak,
-                                'secretKey':ECS.sk,
-                                'securityToken':ECS.token}           
+                    if ECS._search_judge(datetime):
+                        return {
+                            'accessKey': ECS.ak,
+                            'secretKey': ECS.sk,
+                            'securityToken': ECS.token
+                        }
                     raise NoneTokenException('get token failed')
 
-                accessKey = resultA.group(1) 
+                accessKey = resultA.group(1)
                 secretKey = resultS.group(1)
                 securityToken = resultT.group(1)
                 expiresAt = resultE.group(1)
@@ -135,10 +139,49 @@ class ECS(object):
                 ECS.ak = accessKey
                 ECS.sk = secretKey
                 ECS.token = securityToken
-                ECS.expires = datetime.strptime(expiresAt,'%Y-%m-%dT%H:%M:%S.%fZ')
+                ECS.expires = datetime.strptime(expiresAt, '%Y-%m-%dT%H:%M:%S.%fZ')
 
-                return {'accessKey':accessKey,
-                        'secretKey':secretKey,
-                        'securityToken':securityToken}
+                return {
+                    'accessKey': accessKey,
+                    'secretKey': secretKey,
+                    'securityToken': securityToken
+                }
             finally:
                 ECS.lock.release()
+
+    @staticmethod
+    def _search_handle_expires(datetime, timedelta):
+        if ECS.expires is not None:
+            token_datenow = datetime.utcnow()
+            if token_datenow < (ECS.expires - timedelta(minutes=10)):
+                return {
+                    'accessKey': ECS.ak,
+                    'secretKey': ECS.sk,
+                    'securityToken': ECS.token
+                }
+
+    @staticmethod
+    def _search_handle_lock_acquire(datetime, timedelta):
+        if ECS.expires is not None and datetime.utcnow() < (ECS.expires - timedelta(minutes=10)):
+            return {
+                'accessKey': ECS.ak,
+                'secretKey': ECS.sk,
+                'securityToken': ECS.token
+            }
+
+    @staticmethod
+    def _search_handle_response_body(responseBody):
+        if not const.IS_PYTHON2:
+            return responseBody.decode('utf-8')
+        return responseBody
+
+    @staticmethod
+    def _search_judge(datetime):
+        if ECS.expires is not None and datetime.utcnow() < ECS.expires:
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def _search_get_result(conn):
+        return conn.getresponse(True) if const.IS_PYTHON2 else conn.getresponse()

@@ -12,24 +12,27 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-'''
+"""
 This sample demonstrates how to post object under specified bucket from
 OBS using the OBS SDK for Python.
-'''
+"""
+
+import os
+import sys
+from obs import ObsClient, const
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
 server = 'https://your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
-
-import sys, os
 IS_PYTHON2 = sys.version_info.major == 2 or sys.version < '3'
 
 if IS_PYTHON2:
     import httplib
 else:
     import http.client as httplib
+
 
 def createSampleFile(sampleFilePath):
     if not os.path.exists(sampleFilePath):
@@ -42,13 +45,11 @@ def createSampleFile(sampleFilePath):
             f.write(str(uuid.uuid4()) + '\n')
     return sampleFilePath
 
-from obs import *
 
 signature = 'obs'
 
 # Constructs a obs client instance with your account for accessing OBS
 obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server, signature=signature)
-
 
 # Create bucket
 print('Create a new bucket for demo\n')
@@ -60,7 +61,7 @@ createSampleFile(sampleFilePath)
 
 # Claim a post object request
 formParams = {'x-obs-acl': 'public-read', 'content-type': 'text/plain'} if signature == 'obs' \
-else {'acl': 'public-read', 'content-type': 'text/plain'}
+    else {'acl': 'public-read', 'content-type': 'text/plain'}
 res = obsClient.createPostSignature(bucketName, objectKey, expires=3600, formParams=formParams)
 
 # Start to post object
@@ -129,9 +130,9 @@ buffers.append(buffer)
 
 contentLength += os.path.getsize(sampleFilePath)
 
-
 conn = httplib.HTTPConnection(bucketName + '.' + server, 80)
-conn.request('POST', '/', headers={'Content-Length': str(contentLength), 'User-Agent': 'OBS/Test', 'Content-Type': 'multipart/form-data; boundary=' + boundary})
+conn.request('POST', '/', headers={'Content-Length': str(contentLength), 'User-Agent': 'OBS/Test',
+                                   'Content-Type': 'multipart/form-data; boundary=' + boundary})
 
 # Send form data
 conn.send(buffers[0])
@@ -150,8 +151,7 @@ with open(sampleFilePath, 'rb') as f:
 # Send end data
 conn.send(buffers[2])
 
-
-result = conn.getresponse()
+result = conn.getresponse(True) if const.IS_PYTHON2 else conn.getresponse()
 status = result.status
 responseContent = result.read()
 if status < 300:

@@ -18,6 +18,7 @@ import binascii
 from obs import util
 from obs import const
 
+
 class Authentication(object):
 
     def __init__(self, ak, sk, path_style, ha, server, is_cname):
@@ -27,21 +28,19 @@ class Authentication(object):
         self.ha = ha
         self.server = server
         self.is_cname = is_cname
-        
-
 
     def doAuth(self, method, bucket, key, path_args, headers, expires=None):
         ret = self.getSignature(method, bucket, key, path_args, headers, expires)
         return {
             const.AUTHORIZATION_HEADER: '%s %s:%s' % (self.ha.auth_prefix(), self.ak, ret['Signature']),
-            const.CANONICAL_STRING : ret[const.CANONICAL_STRING]
+            const.CANONICAL_STRING: ret[const.CANONICAL_STRING]
         }
 
     def getSignature(self, method, bucket, key, path_args, headers, expires=None):
         canonical_string = self.__make_canonicalstring(method, bucket, key, path_args, headers, expires)
         return {
-            'Signature' : self.hmacSha128(canonical_string),
-            const.CANONICAL_STRING : canonical_string
+            'Signature': self.hmacSha128(canonical_string),
+            const.CANONICAL_STRING: canonical_string
         }
 
     def hmacSha128(self, canonical_string):
@@ -55,8 +54,44 @@ class Authentication(object):
         return encode_canonical
 
     def __make_canonicalstring(self, method, bucket_name, key, path_args, headers, expires=None):
-        str_list = []
-        str_list.append(method + '\n')
+        interesting_headers = self.__make_canonicalstring_interesting_headers(headers, expires)
+        keylist = sorted(interesting_headers.keys())
+        str_list = self.__make_canonicalstring_str_list(keylist, method, interesting_headers)
+        URI = ''
+        _bucket_name = self.server if self.is_cname else bucket_name
+        if _bucket_name:
+            URI += '/'
+            URI += _bucket_name
+            if not self.path_style or self.is_cname:
+                URI += '/'
+
+        if key:
+            if not URI.endswith('/'):
+                URI += '/'
+            URI += util.encode_object_key(key)
+
+        if URI:
+            str_list.append(URI)
+        else:
+            str_list.append('/')
+
+        if path_args:
+            e = '?'
+            cannoList = sorted(path_args.items(), key=lambda d: d[0])
+            for path_key, path_value in cannoList:
+                if path_key.lower() in const.ALLOWED_RESOURCE_PARAMTER_NAMES or path_key.lower().startswith(
+                        self.ha._get_header_prefix()):
+                    path_key = util.encode_item(path_key, '/')
+                    if path_value is None:
+                        e += path_key + '&'
+                        continue
+                    e += path_key + '=' + util.to_string(path_value) + '&'
+
+            e = e[:-1]
+            str_list.append(e)
+        return ''.join(str_list)
+
+    def __make_canonicalstring_interesting_headers(self, headers, expires):
         interesting_headers = {}
         if isinstance(headers, dict):
             for hash_key in headers.keys():
@@ -79,9 +114,10 @@ class Authentication(object):
         if const.CONTENT_MD5_HEADER.lower() not in keylist:
             interesting_headers[const.CONTENT_MD5_HEADER.lower()] = ''
 
-        keylist = sorted(interesting_headers.keys())
+        return interesting_headers
 
-
+    def __make_canonicalstring_str_list(self, keylist, method, interesting_headers):
+        str_list = [method + '\n']
         for k in keylist:
             header_key = util.to_string(k)
             val = '' if interesting_headers[header_key] is None else interesting_headers[header_key]
@@ -92,42 +128,12 @@ class Authentication(object):
             else:
                 str_list.append(val)
             str_list.append('\n')
+        return str_list
 
-        URI = ''
-        _bucket_name = self.server if self.is_cname else bucket_name        
-        if _bucket_name:
-            URI += '/'
-            URI += _bucket_name
-            if not self.path_style or self.is_cname:
-                URI += '/'
-            
-        if key:
-            if not URI.endswith('/'):
-                URI += '/'
-            URI += util.encode_object_key(key)
-
-        if URI:
-            str_list.append(URI)
-        else:
-            str_list.append('/')
-
-        if path_args:
-            e = '?'
-            cannoList = sorted(path_args.items(), key=lambda d: d[0])
-            for path_key, path_value in cannoList:
-                if path_key.lower() in const.ALLOWED_RESOURCE_PARAMTER_NAMES or path_key.lower().startswith(self.ha._get_header_prefix()):
-                    path_key = util.encode_item(path_key, '/')
-                    if path_value is None:
-                        e += path_key + '&'
-                        continue
-                    e += path_key + '=' + util.to_string(path_value) + '&'
-
-            e = e[:-1]
-            str_list.append(e)
-        return ''.join(str_list)
 
 class V4Authentication(object):
     CONTENT_SHA256 = 'UNSIGNED-PAYLOAD'
+
     def __init__(self, ak, sk, region, shortDate, longDate, path_style, ha):
         self.ak = ak
         self.sk = sk
@@ -146,10 +152,11 @@ class V4Authentication(object):
         headMap = self.setMapKeyLower(headers)
         signedHeaders = self.getSignedHeaders(headMap)
         ret = self.getSignature(method, bucket, key, args_path, headMap, signedHeaders)
-        auth = 'AWS4-HMAC-SHA256 Credential=%s,SignedHeaders=%s,Signature=%s' % (credenttial, signedHeaders, ret['Signature'])
+        auth = 'AWS4-HMAC-SHA256 Credential=%s,SignedHeaders=%s,Signature=%s' % (
+            credenttial, signedHeaders, ret['Signature'])
         return {
-            const.AUTHORIZATION_HEADER : auth,
-            const.CANONICAL_REQUEST : ret[const.CANONICAL_REQUEST]
+            const.AUTHORIZATION_HEADER: auth,
+            const.CANONICAL_REQUEST: ret[const.CANONICAL_REQUEST]
         }
 
     def getCredenttial(self):
@@ -183,8 +190,8 @@ class V4Authentication(object):
             stringToSign = stringToSign.encode('UTF-8')
             signingKey = self.getSigningKey_python3()
         return {
-            'Signature' : self.hmacSha256(signingKey, stringToSign),
-            const.CANONICAL_REQUEST : cannonicalRequest
+            'Signature': self.hmacSha256(signingKey, stringToSign),
+            const.CANONICAL_REQUEST: cannonicalRequest
         }
 
     def hmacSha256(self, signingKey, stringToSign):
@@ -215,7 +222,6 @@ class V4Authentication(object):
         output.append(self.CONTENT_SHA256 if payload is None else payload)
         return '\n'.join(output)
 
-
     def __shaCannonicalRequest_python2(self, cannonicalRequest):
         return hashlib.sha256(cannonicalRequest).hexdigest()
 
@@ -242,7 +248,7 @@ class V4Authentication(object):
         for val in cannoList:
             if i != 0:
                 queryStr += '&'
-            queryStr += '%s=%s'%(util.encode_item(val[0], '/'), util.encode_item(val[1], ''))
+            queryStr += '%s=%s' % (util.encode_item(val[0], '/'), util.encode_item(val[1], ''))
             i = 1
         return queryStr
 
