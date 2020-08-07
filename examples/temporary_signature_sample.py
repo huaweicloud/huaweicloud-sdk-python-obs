@@ -17,6 +17,7 @@
  on OBS using the OBS SDK for Python.
 """
 
+from __future__ import print_function
 import sys
 from obs import ObsClient, CorsRule, const
 from obs.convertor import Convertor

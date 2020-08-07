@@ -12,7 +12,7 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-
+from __future__ import print_function
 import hyper
 from hyper.common import headers
 from hyper.common import util
@@ -44,7 +44,8 @@ def to_string(item):
 def _get_ssl_context(ssl_verify):
     try:
         from hyper import tls
-        import ssl, os
+        import ssl
+        import os
         context = tls.init_context(None, None, None)
         context.check_hostname = False
         if ssl_verify:

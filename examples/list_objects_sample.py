@@ -17,6 +17,7 @@ This sample demonstrates how to list objects under specified bucket
 from OBS using the OBS SDK for Python.
 """
 
+from __future__ import print_function
 from obs import ObsClient, Object, DeleteObjectsRequest
 
 AK = '*** Provide your Access Key ***'

@@ -14,12 +14,19 @@
 
 try:
     import xml.etree.cElementTree as ET
-except:
+except Exception:
     import xml.etree.ElementTree as ET
 import json
-from obs.model import *
 from obs import util
 from obs import const
+from obs.model import SseCHeader, SseKmsHeader, Owner, Bucket, ListBucketsResponse, GetBucketMetadataResponse, \
+    LocationResponse, GetBucketStorageInfoResponse, Policy, GetBucketStoragePolicyResponse, GetBucketQuotaResponse, \
+    GetBucketEncryptionResponse, TagInfo, CommonPrefix, ObjectVersions, OptionsResponse, ErrorResult, \
+    DeleteObjectsResponse, DeleteObjectResponse, Expiration, LifecycleResponse, Lifecycle, RedirectAllRequestTo, \
+    WebsiteConfiguration, IndexDocument, ErrorDocument, RoutingRule, Notification, TopicConfiguration, Initiator, \
+    ListMultipartUploadsResponse, Part, ACL, Logging, PutContentResponse, AppendObjectResponse, \
+    InitiateMultipartUploadResponse, CopyObjectResponse, GetObjectMetadataResponse, SetObjectMetadataResponse, \
+    UploadPartResponse, CopyPartResponse, Replication, GetBucketRequestPaymentResponse
 from obs.model import FetchPolicy, SetBucketFetchJobResponse, GetBucketFetchJobResponse, FetchJobResponse, \
     ListWorkflowTemplateResponse
 from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowResponse, \

@@ -128,7 +128,7 @@ class Future(object):
 
     def _get_result(self):
         if self._exception:
-            raise self._exception
+            raise self._exception  # pylint: disable=raising-bad-type
         else:
             return self._result
 
@@ -209,7 +209,7 @@ def _reportProgress(progress, interval, progressCallback):
 def _checkBulkTasksPara(task_num, task_queue_size, task_interval, threshold):
     origine = [task_num, task_queue_size, task_interval, threshold]
     default = (
-    const.DEFAULT_TASK_NUM, const.DEFAULT_TASK_QUEUE_SIZE, const.DEFAULT_BYTE_INTTERVAL, const.DEFAULT_MAXIMUM_SIZE)
+        const.DEFAULT_TASK_NUM, const.DEFAULT_TASK_QUEUE_SIZE, const.DEFAULT_BYTE_INTTERVAL, const.DEFAULT_MAXIMUM_SIZE)
     size = len(origine)
     for i in range(size):
         origine[i] = util.to_int(origine[i])

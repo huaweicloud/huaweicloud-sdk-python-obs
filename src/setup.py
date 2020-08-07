@@ -1,4 +1,4 @@
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 # Copyright 2019 Huawei Technologies Co.,Ltd.
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use
 # this file except in compliance with the License.  You may obtain a copy of the
@@ -11,19 +11,17 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-#use 'python setup.py bdist_egg' to generate the egg file package
-#use 'easy_install eggfile' to install the egg file to the python Lib
-
-#or
-
-#use 'python setup.py install' to install to the python Lib directly
+# use 'python setup.py bdist_egg' to generate the egg file package
+# use 'easy_install eggfile' to install the egg file to the python Lib
+# or
+# use 'python setup.py install' to install to the python Lib directly
 
 
 from setuptools import setup, find_packages
 
 setup(
     name='esdk-obs-python',
-    version='3.20.7',
+    version='3.20.7.1',
     packages=find_packages(),
     zip_safe=False,
     description='OBS Python SDK',

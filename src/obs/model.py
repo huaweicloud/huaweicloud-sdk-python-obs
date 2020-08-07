@@ -371,7 +371,7 @@ class DateTime(BaseModel):
             dt = time.strftime(CST_FORMAT, cst_time)
 
             return dt
-        except:
+        except Exception:
             return strUTC
 
     @staticmethod
@@ -387,7 +387,7 @@ class DateTime(BaseModel):
             cst_time = time.localtime(time.mktime(gmt_time) - time.timezone)
             dt = time.strftime(CST_FORMAT, cst_time)
             return dt
-        except:
+        except Exception:
             return strUTC
 
 

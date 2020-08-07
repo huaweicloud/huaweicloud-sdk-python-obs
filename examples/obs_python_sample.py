@@ -12,6 +12,7 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
+from __future__ import print_function
 from obs import ObsClient, LogConf, CreateBucketHeader, Grantee, Grant, StorageClass, Owner, Group, Permission, ACL
 from obs import Versions, Expiration, DateTime, NoncurrentVersionExpiration, Rule, Lifecycle, RedirectAllRequestTo
 from obs import IndexDocument, ErrorDocument, Condition, Redirect, RoutingRule, WebsiteConfiguration, Logging, TagInfo
@@ -301,7 +302,7 @@ def SetBucketWebsite():
     Lrout = RoutingRule(condition=Lcondition, redirect=Lredirect)
 
     Lrouts = [Lrout, Lrout]
-    Lwebsite = WebsiteConfiguration(redirectAllRequestTo=None, indexDocument=Lindex, errorDocument=Lerr,
+    Lwebsite = WebsiteConfiguration(redirectAllRequestTo=Lweb, indexDocument=Lindex, errorDocument=Lerr,
                                     routingRules=Lrouts)
 
     resp = bucketClient.setBucketWebsite(website=Lwebsite)
@@ -504,7 +505,7 @@ def SetObjectAcl():
 
     Lacl = ACL(owner=Lowner, grants=Lgrants)
 
-    resp = bucketClient.setObjectAcl(objectKey='test.txt', acl=None, versionId=None,
+    resp = bucketClient.setObjectAcl(objectKey='test.txt', acl=Lacl, versionId=None,
                                      aclControl='public-read-write')
     print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
 

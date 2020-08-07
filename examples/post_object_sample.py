@@ -17,6 +17,7 @@ This sample demonstrates how to post object under specified bucket from
 OBS using the OBS SDK for Python.
 """
 
+from __future__ import print_function
 import os
 import sys
 from obs import ObsClient, const

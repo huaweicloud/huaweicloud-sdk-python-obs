@@ -17,6 +17,7 @@
  from OBS in different ways using the OBS SDK for Python.
 """
 
+from __future__ import print_function
 import os
 from obs import ObsClient
 

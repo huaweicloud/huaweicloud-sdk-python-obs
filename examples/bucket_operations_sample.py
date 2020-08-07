@@ -18,6 +18,7 @@
   on OBS using the OBS SDK for Python.
 """
 
+from __future__ import print_function
 from obs import ObsClient, Rule, Expiration, DateTime, NoncurrentVersionExpiration, WebsiteConfiguration, \
     IndexDocument, ErrorDocument, CorsRule, Options, Lifecycle, Logging, TagInfo
 

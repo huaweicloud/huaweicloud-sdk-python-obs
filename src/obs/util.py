@@ -349,7 +349,7 @@ def safe_decode(item):
     if isinstance(item, str):
         try:
             item = item.decode('UTF-8')
-        except:
+        except Exception:
             try:
                 item = item.decode('GB2312')
             except Exception:
@@ -404,7 +404,7 @@ def do_close(result, conn, connHolder, log_client=None):
         if connHolder is not None:
             try:
                 connHolder['connSet'].put_nowait(conn)
-            except:
+            except Exception:
                 close_conn(conn, log_client)
 
 

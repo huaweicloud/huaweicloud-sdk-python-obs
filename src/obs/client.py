@@ -12,6 +12,7 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
+from __future__ import print_function
 import time
 import functools
 import threading
@@ -647,7 +648,7 @@ class _BasicClient(object):
         if self.connHolder is not None and not self.connHolder['connSet'].empty() and not redirect:
             try:
                 return self.connHolder['connSet'].get_nowait()
-            except:
+            except Exception:
                 self.log_client.log(DEBUG, 'can not get conn, will create a new one')
 
         if self.use_http2:

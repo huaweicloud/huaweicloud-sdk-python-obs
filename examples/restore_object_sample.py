@@ -17,6 +17,7 @@
  from OBS using the OBS SDK for Python.
 """
 
+from __future__ import print_function
 from obs import ObsClient, CreateBucketHeader, StorageClass, RestoreTier
 import time
 

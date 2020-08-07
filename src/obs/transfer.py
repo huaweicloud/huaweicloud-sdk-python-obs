@@ -56,7 +56,7 @@ def _resumer_download(bucketName, objectKey, downloadFile, partSize, taskNum, en
     if down_operation.size == 0:
         down_operation._delete_record()
         down_operation._delete_tmp_file()
-        with open(down_operation.fileName, 'wb') as _:
+        with open(down_operation.fileName, 'wb'):
             pass
         if down_operation.progressCallback is not None and callable(down_operation.progressCallback):
             down_operation.progressCallback(0, 0, 0)
@@ -380,16 +380,17 @@ class downloadOperation(Operation):
 
         parent_dir = os.path.dirname(self.fileName)
         if not os.path.exists(parent_dir):
-            os.makedirs(parent_dir, exist_ok=True)
+            os.makedirs(parent_dir)
 
         self._tmp_file = self.fileName + '.tmp'
         metedata_resp = self.obsClient.getObjectMetadata(self.bucketName, self.objectKey, self.versionId,
                                                          extensionHeaders=self.extensionHeaders)
         if metedata_resp.status < 300:
             self.lastModified = metedata_resp.body.lastModified
-            self.size = metedata_resp.body.contentLength if metedata_resp.body.contentLength is not None and metedata_resp.body.contentLength >= 0 else 0
+            self.size = metedata_resp.body.contentLength \
+                if metedata_resp.body.contentLength is not None and metedata_resp.body.contentLength >= 0 else 0
         else:
-            if metedata_resp.status >= 400 and metedata_resp.status < 500:
+            if 400 <= metedata_resp.status < 500:
                 self._delete_record()
                 self._delete_tmp_file()
             self.obsClient.log_client.log(
@@ -418,7 +419,7 @@ class downloadOperation(Operation):
                 self._delete_record()
             self._delete_tmp_file()
             return 1
-        except:
+        except Exception:
             return 0
 
     def _download(self):

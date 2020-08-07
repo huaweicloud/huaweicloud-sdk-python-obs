@@ -17,10 +17,12 @@
  from OBS using the OBS SDK for Python.
 """
 
+from __future__ import print_function
 import multiprocessing
 import os
 import platform
 import threading
+from obs import ObsClient, GetObjectHeader
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
@@ -46,9 +48,6 @@ def createSampleFile(sampleFilePath):
                 f.write(str(uuid.uuid4()) + '\n')
                 index -= 1
     return sampleFilePath
-
-
-from obs import *
 
 
 def doGetObject(lock, completedBlocks, bucketName, objectKey, startPos, endPos, i):
@@ -119,10 +118,8 @@ if __name__ == '__main__':
     lock = threading.Lock() if IS_WINDOWS else multiprocessing.Lock()
     proc = threading.Thread if IS_WINDOWS else multiprocessing.Process
 
-
     class Temp(object):
         pass
-
 
     completedBlocks = Temp() if IS_WINDOWS else multiprocessing.Value('i', 0)
 

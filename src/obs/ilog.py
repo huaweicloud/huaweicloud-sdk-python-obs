@@ -122,7 +122,7 @@ class LogClient(object):
         for handle in self.logger.handlers:
             try:
                 handle.close()
-            except:
+            except Exception:
                 # ignore exception of log handle close.
                 pass
 
