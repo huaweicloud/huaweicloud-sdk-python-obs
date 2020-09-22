@@ -282,7 +282,7 @@ class uploadOperation(Operation):
         uploadParts = []
         num_counts = int(self.size / self.partSize)
         if num_counts >= 10000:
-            self.partSize = self.size / 10000 if self.size % 10000 == 0 else self.size / 10000 + 1
+            self.partSize = int(self.size / 10000) if self.size % 10000 == 0 else int(self.size / 10000) + 1
             num_counts = int(self.size / self.partSize)
         if self.size % self.partSize != 0:
             num_counts += 1
@@ -556,7 +556,7 @@ class downloadOperation(Operation):
         downloadParts = []
         num_counts = int(self.size / self.partSize)
         if num_counts >= 10000:
-            self.partSize = self.size / 10000 if self.size % 10000 == 0 else self.size / 10000 + 1
+            self.partSize = int(self.size / 10000) if self.size % 10000 == 0 else int(self.size / 10000) + 1
             num_counts = int(self.size / self.partSize)
         if self.size % self.partSize != 0:
             num_counts += 1
