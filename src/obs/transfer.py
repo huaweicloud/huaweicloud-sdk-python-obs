@@ -272,7 +272,8 @@ class uploadOperation(Operation):
             self.obsClient.log_client.log(INFO, '{0} was changed, clear the record.'.format(self.fileName))
             return False
         if self.checkSum and len(record['fileStatus']) >= 3:
-            checkSum = util.md5_file_encode_by_size_offset(file_path=self.fileName, size=self.size, offset=0)
+            checkSum = util.base64_encode(
+                util.md5_file_encode_by_size_offset(file_path=self.fileName, size=self.size, offset=0))
             if record['fileStatus'][2] and record['fileStatus'][2] != checkSum:
                 self.obsClient.log_client.log(INFO, '{0} content was changed, clear the record.'.format(self.fileName))
                 return False
@@ -305,7 +306,7 @@ class uploadOperation(Operation):
     def _prepare(self):
         fileStatus = [self.size, self.lastModified]
         if self.checkSum:
-            fileStatus.append(util.md5_file_encode_by_size_offset(self.fileName, self.size, 0))
+            fileStatus.append(util.base64_encode(util.md5_file_encode_by_size_offset(self.fileName, self.size, 0)))
 
         if self.headers is None:
             self.headers = UploadFileHeader()

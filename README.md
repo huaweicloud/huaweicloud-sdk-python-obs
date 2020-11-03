@@ -1,3 +1,47 @@
+Version 3.20.9.1
+
+New Features:
+
+Documentation & Demo:
+
+Resolved Issues:
+1. Fixed the issue that an exception is thrown if both the checkSum and enableCheckpoint parameters are specified as True when calling the uploadFile API.
+
+------------------------------------------------------------------------------------------------- 
+
+Version 3.20.5
+
+New Features:
+1. Added APIs related to asynchronous fetch policies, including ObsClient.setBucketFetchPolicy, ObsClient.getBucketFetchPolicy, and ObsClient.deleteBucketFetchPolicy.
+2. Added APIs related to asynchronous fetch tasks, including ObsClient.setBucketFetchJob and ObsClient.getBucketFetchJob.
+3. Added service orchestration APIs. For details, see obs/workflow.py.
+
+Documentation & Demo:
+1. Added sections of asynchronous fetch and service orchestration in OBS Python SDK Developer Guide.
+2. Added sections of asynchronous fetch and service orchestration APIs in OBS Python SDK API Reference.
+3. Added the topic of asynchronous fetch policy status to section "Pre-defined Constants" and the topics of the response results of the asynchronous fetch APIs and service orchestration APIs to section "Data Types" in OBS Python SDK API Reference.
+
+Resolved Issues:
+
+------------------------------------------------------------------------------------------------- 
+
+Version 3.20.1
+
+New Features:
+1. Added the ObsClient.headObject API for determining whether an object exists.
+2. Added the ObsClient.setBucketRequestPayment and ObsClient.getBucketRequestPayment APIs respectively for configuring the Requester Pays function and obtaining related configuration.
+3. Supports the Requester Pays header by configuring the extensionHeaders parameter when calling an API.
+
+Documentation & Demo:
+1. Added the topic of checking whether an object exists to section "Object Management" in OBS Python SDK Developer Guide; added the API for checking whether an object exists to section "Bucket-Related APIs" in OBS Python SDK API Reference.
+2. Added the topic of Requester Pays to section "Bucket Management" in OBS Python SDK Developer Guide; added the APIs for configuring the Requester Pays function and obtaining related configuration to section "Bucket-Related APIs" in OBS Python SDK API Reference; added the response result of obtaining Requester Pays configuration and extended additional header to section "Data Types" in OBS Python SDK API Reference.
+3. Added the topic of Requester Pays configuration to section "Pre-defined Constants" in OBS Python SDK API Reference.
+4. Added the description of extended additional headers to the API method definitions in OBS Python SDK API Reference.
+
+Resolved Issues:
+
+------------------------------------------------------------------------------------------------- 
+
 Version 3.19.11
 
 Documentation & Demo:
