@@ -384,7 +384,13 @@ class downloadOperation(Operation):
             os.makedirs(parent_dir)
 
         self._tmp_file = self.fileName + '.tmp'
+
+        if self.header.sseHeader:
+            sseHeader = self.header.sseHeader
+        else:
+            sseHeader = None
         metedata_resp = self.obsClient.getObjectMetadata(self.bucketName, self.objectKey, self.versionId,
+                                                         sseHeader=sseHeader,
                                                          extensionHeaders=self.extensionHeaders)
         if metedata_resp.status < 300:
             self.lastModified = metedata_resp.body.lastModified
@@ -396,10 +402,10 @@ class downloadOperation(Operation):
                 self._delete_tmp_file()
             self.obsClient.log_client.log(
                 ERROR,
-                'there are something wrong when touch the objetc {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
+                'there are something wrong when touch the object {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
                     self.objectKey, metedata_resp.errorCode, metedata_resp.errorMessage))
             raise Exception(
-                'there are something wrong when touch the objetc {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
+                'there are something wrong when touch the object {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
                     self.objectKey, metedata_resp.status, metedata_resp.errorMessage))
         self._metedata_resp = metedata_resp
 
