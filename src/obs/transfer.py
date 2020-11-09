@@ -348,7 +348,8 @@ class uploadOperation(Operation):
                                                               self._record['uploadId'], self.fileName,
                                                               isFile=True, partSize=part['length'],
                                                               offset=part['offset'], notifier=self.notifier,
-                                                              extensionHeaders=self.extensionHeaders)
+                                                              extensionHeaders=self.extensionHeaders,
+                                                              sseHeader=self.headers.sseHeader)
                 if resp.status < 300:
                     self._record['uploadParts'][part['partNumber'] - 1]['isCompleted'] = True
                     self._record['partEtags'].append(CompletePart(util.to_int(part['partNumber']), resp.body.etag))
@@ -385,7 +386,9 @@ class downloadOperation(Operation):
 
         self._tmp_file = self.fileName + '.tmp'
         metedata_resp = self.obsClient.getObjectMetadata(self.bucketName, self.objectKey, self.versionId,
-                                                         extensionHeaders=self.extensionHeaders)
+                                                         extensionHeaders=self.extensionHeaders,
+                                                         sseHeader=self.header.sseHeader, origin=self.header.origin,
+                                                         requestHeaders=self.header.requestHeaders)
         if metedata_resp.status < 300:
             self.lastModified = metedata_resp.body.lastModified
             self.size = metedata_resp.body.contentLength \
@@ -583,6 +586,10 @@ class downloadOperation(Operation):
     def _copy_get_object_header(self, src_header):
         get_object_header = GetObjectHeader()
         get_object_header.sseHeader = src_header.sseHeader
+        get_object_header.if_match = src_header.if_match
+        get_object_header.if_none_match = src_header.if_none_match
+        get_object_header.if_modified_since = src_header.if_modified_since
+        get_object_header.if_unmodified_since = src_header.if_unmodified_since
         return get_object_header
 
     def _download_part(self, part):
@@ -606,8 +613,8 @@ class downloadOperation(Operation):
                 else:
                     if 300 < resp.status < 500:
                         self._do_abort('errorCode:{0}, errorMessage:{1}'.format(resp.errorCode, resp.errorMessage))
-                    self._exception.append(
-                        'response from server is something wrong. ErrorCode:{0}, ErrorMessage:{1}'.format(
+                    self._exception += (
+                        'response from server is something wrong. ErrorCode:{0}, ErrorMessage:{1}\n'.format(
                             resp.errorCode, resp.errorMessage))
                     self.obsClient.log_client.log(
                         ERROR,

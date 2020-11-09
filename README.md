@@ -1,3 +1,13 @@
+Version 3.20.11
+
+New Features:
+
+Documentation & Demo:
+
+Resolved Issues:
+1. Fixed the issue that the uploadFile and downloadFile APIs do not support server-side encryption header. 
+
+------------------------------------------------------------------------------------------------- 
 Version 3.20.9.1
 
 New Features:
