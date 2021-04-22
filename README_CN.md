@@ -1,4 +1,12 @@
-﻿Version 3.20.11
+﻿# 安装
+
+```
+pip install esdk-obs-python
+```
+
+# 更新日志
+
+Version 3.20.11
 
 新特性：
 

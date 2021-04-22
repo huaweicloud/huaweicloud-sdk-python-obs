@@ -1,3 +1,11 @@
+# Installation
+
+```
+pip install esdk-obs-python
+```
+
+# Changelog
+
 Version 3.20.11
 
 New Features:
