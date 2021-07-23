@@ -21,7 +21,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='esdk-obs-python',
-    version='3.20.11',
+    version='3.21.4',
     packages=find_packages(),
     zip_safe=False,
     description='OBS Python SDK',

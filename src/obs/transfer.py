@@ -140,6 +140,9 @@ class uploadOperation(Operation):
             raise Exception('head bucket {0} failed. Please check. Status:{1}.'.format(self.bucketName, resp.status))
 
     def _upload(self):
+        if self.headers is None:
+            self.headers = UploadFileHeader()
+
         if self.enableCheckPoint:
             self._load()
 
@@ -147,12 +150,12 @@ class uploadOperation(Operation):
             self._prepare()
 
         unfinished_upload_parts = []
-        sendedBytes = const.LONG(0)
+        sent_bytes = const.LONG(0)
         for p in self._record['uploadParts']:
             if not p['isCompleted']:
                 unfinished_upload_parts.append(p)
             else:
-                sendedBytes += p['length']
+                sent_bytes += p['length']
 
         if self.progressCallback is not None:
             self.notifier = progress.ProgressNotifier(self.progressCallback, self.size)
@@ -161,8 +164,8 @@ class uploadOperation(Operation):
         try:
             if len(unfinished_upload_parts) > 0:
 
-                if (self.size - sendedBytes) > 0:
-                    self.notifier.send(sendedBytes)
+                if (self.size - sent_bytes) > 0:
+                    self.notifier.send(sent_bytes)
 
                 thread_pools = _ThreadPool(functools.partial(self._produce, upload_parts=unfinished_upload_parts),
                                            [self._consume] * self.taskNum)
@@ -308,9 +311,6 @@ class uploadOperation(Operation):
         if self.checkSum:
             fileStatus.append(util.base64_encode(util.md5_file_encode_by_size_offset(self.fileName, self.size, 0)))
 
-        if self.headers is None:
-            self.headers = UploadFileHeader()
-
         resp = self.obsClient.initiateMultipartUpload(self.bucketName, self.objectKey, metadata=self.metadata,
                                                       acl=self.headers.acl,
                                                       storageClass=self.headers.storageClass,
@@ -399,10 +399,10 @@ class downloadOperation(Operation):
                 self._delete_tmp_file()
             self.obsClient.log_client.log(
                 ERROR,
-                'there are something wrong when touch the objetc {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
+                'there are something wrong when touch the object {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
                     self.objectKey, metedata_resp.errorCode, metedata_resp.errorMessage))
             raise Exception(
-                'there are something wrong when touch the objetc {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
+                'there are something wrong when touch the object {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
                     self.objectKey, metedata_resp.status, metedata_resp.errorMessage))
         self._metedata_resp = metedata_resp
 
@@ -435,16 +435,16 @@ class downloadOperation(Operation):
         if not self._record:
             self._prepare()
 
-        sendedBytes, unfinished_down_parts = self._download_prepare()
+        sent_bytes, unfinished_down_parts = self._download_prepare()
 
         try:
             if len(unfinished_down_parts) > 0:
-                if (self.size - sendedBytes) > 0:
+                if (self.size - sent_bytes) > 0:
                     if self.progressCallback is not None:
                         self.notifier = progress.ProgressNotifier(self.progressCallback, self.size)
                         inner_notifier = True
                         self.notifier.start()
-                    self.notifier.send(sendedBytes)
+                    self.notifier.send(sent_bytes)
 
                 thread_pools = _ThreadPool(functools.partial(self._produce, download_parts=unfinished_down_parts),
                                            [self._consume] * self.taskNum)
@@ -481,14 +481,14 @@ class downloadOperation(Operation):
                 self.notifier.end()
 
     def _download_prepare(self):
-        sendedBytes = 0
+        sent_bytes = 0
         unfinished_down_parts = []
         for part in self._record['downloadParts']:
             if not part['isCompleted']:
                 unfinished_down_parts.append(part)
             else:
-                sendedBytes += (part['length'] - part['offset']) + 1
-        return sendedBytes, unfinished_down_parts
+                sent_bytes += (part['length'] - part['offset']) + 1
+        return sent_bytes, unfinished_down_parts
 
     def _load(self):
         self._record = self._get_record()

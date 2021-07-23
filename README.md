@@ -1,3 +1,14 @@
+Version 3.21.4
+
+New Features:
+
+1. If an error occurs during API access and the server returns an error message, all error information will be displayed in the response body. 
+   
+Resolved Issues:
+
+1. Fixed the bug that can not resume upload task without headers at uploadFile API
+
+------------------------------------------------------------------------------------------------- 
 Version 3.20.11
 
 New Features:

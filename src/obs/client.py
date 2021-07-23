@@ -1018,6 +1018,7 @@ class _BasicClient(object):
                     search = self.pattern.search(responseData)
                     responseData = responseData if search is None else responseData.replace(search.group(), '')
                     code, message, requestId, hostId, resource = self.convertor.parseErrorResult(responseData)
+                body = responseData
             except Exception as ee:
                 self.log_client.log(ERROR, util.to_string(ee))
                 self.log_client.log(ERROR, traceback.format_exc())

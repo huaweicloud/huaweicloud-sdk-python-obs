@@ -85,7 +85,7 @@ DEFAULT_TASK_INTTERVAL = 100
 DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 
-OBS_SDK_VERSION = '3.20.11'
+OBS_SDK_VERSION = '3.21.4'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -237,6 +237,7 @@ MIME_TYPES = {
     'aac': 'audio/x-aac',
     'ai': 'application/postscript',
     'aif': 'audio/x-aiff',
+    'apk': 'application/vnd.android.package-archive',
     'asc': 'text/plain',
     'asf': 'video/x-ms-asf',
     'atom': 'application/atom+xml',
