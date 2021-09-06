@@ -52,8 +52,8 @@ def _resultFilter(result, executionState):
     return result
 
 
-def _listWorkflowExecutionMethodName(isJsonResult, defualtMethodName):
-    return 'ListWorkflowExecutionResponse' if not isJsonResult else defualtMethodName
+def _listWorkflowExecutionMethodName(isJsonResult, defaultMethodName):
+    return 'ListWorkflowExecutionResponse' if not isJsonResult else defaultMethodName
 
 
 def _listWorkflowExecutionCount(isJsonResult, body):
@@ -88,7 +88,7 @@ def _listWorkflowExecutionPathArgs(graphName, nextMarker, limit, executionType):
         pathArgs['x-workflow-next-marker'] = nextMarker
     if limit:
         if limit > 1000:
-            raise Exception('Invaild parameter: limit')
+            raise Exception('Invalid parameter: limit')
         pathArgs['x-workflow-limit'] = limit
     if executionType:
         pathArgs['x-workflow-execution-type'] = executionType
@@ -157,7 +157,7 @@ class WorkflowClient(_BasicClient):
         super(WorkflowClient, self).__init__(client_mode='workflow', *args, **kwargs)
         self.__resource = 'v2/'
         self.__isJsonResult = isJsonResult
-        self.__defualtMethodName = 'GetJsonResponse'
+        self.__defaultMethodName = 'GetJsonResponse'
 
     # begin workflow api
     # begin workflow api
@@ -170,7 +170,7 @@ class WorkflowClient(_BasicClient):
             bucketName=None,
             objectKey=self.__resource + combine(const.WORKFLOW_TEMPLATES, templateName),
             headers=prepareHeader(),
-            methodName='CreateWorkflowTemplateResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='CreateWorkflowTemplateResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -179,7 +179,7 @@ class WorkflowClient(_BasicClient):
             bucketName=None,
             objectKey=self.__resource + combine(const.WORKFLOW_TEMPLATES, templateName),
             headers=prepareHeader(),
-            methodName='GetWorkflowTemplateResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='GetWorkflowTemplateResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -188,7 +188,7 @@ class WorkflowClient(_BasicClient):
             bucketName=None,
             objectKey=self.__resource + combine(const.WORKFLOW_TEMPLATES, templateName),
             headers=prepareHeader(),
-            methodName=self.__defualtMethodName
+            methodName=self.__defaultMethodName
         )
 
     @entrance
@@ -205,7 +205,7 @@ class WorkflowClient(_BasicClient):
                                                 templateNamePrefix if templateNamePrefix is not None else ''),
             pathArgs=pathArgs,
             headers=prepareHeader(),
-            methodName='ListWorkflowTemplateResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='ListWorkflowTemplateResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -216,7 +216,7 @@ class WorkflowClient(_BasicClient):
             objectKey=self.__resource + combine(const.WORKFLOWS, graphName),
             pathArgs={'x-workflow-template-name': templateName},
             headers=prepareHeader(),
-            methodName='CreateWorkflowResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='CreateWorkflowResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -225,7 +225,7 @@ class WorkflowClient(_BasicClient):
             bucketName=None,
             objectKey=self.__resource + combine(const.WORKFLOWS, graphName),
             headers=prepareHeader(),
-            methodName='GetWorkflowResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='GetWorkflowResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -234,7 +234,7 @@ class WorkflowClient(_BasicClient):
             bucketName=None,
             objectKey=self.__resource + combine(const.WORKFLOWS, graphName),
             headers=prepareHeader(),
-            methodName=self.__defualtMethodName
+            methodName=self.__defaultMethodName
         )
 
     @entrance
@@ -244,7 +244,7 @@ class WorkflowClient(_BasicClient):
             bucketName=None,
             objectKey=self.__resource + combine(const.WORKFLOWS, graphName),
             headers=prepareHeader(),
-            methodName='UpdateWorkflowResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='UpdateWorkflowResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -261,7 +261,7 @@ class WorkflowClient(_BasicClient):
                                                 graphNamePrefix if graphNamePrefix is not None else ''),
             pathArgs=pathArgs,
             headers=prepareHeader(),
-            methodName='ListWorkflowResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='ListWorkflowResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -271,7 +271,7 @@ class WorkflowClient(_BasicClient):
             bucketName=None,
             objectKey=self.__resource + combine(const.WORKFLOWS, graphName),
             headers=prepareHeader(),
-            methodName='AsyncAPIStartWorkflowResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='AsyncAPIStartWorkflowResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -279,14 +279,14 @@ class WorkflowClient(_BasicClient):
         pathArgs = _listWorkflowExecutionPathArgs(graphName, nextMarker, limit, executionType)
         if executionState:
             if executionState not in ['RUNNING', 'SUCCESS', 'FAILED']:
-                raise Exception('Invaild parameter: execution state')
+                raise Exception('Invalid parameter: execution state')
 
             resp = self._make_get_request(
                 bucketName=None,
                 objectKey=self.__resource + const.WORKFLOW_EXECUTIONS,
                 pathArgs=pathArgs,
                 headers=prepareHeader(),
-                methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defualtMethodName)
+                methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defaultMethodName)
             )
             if resp.status > 300:
                 return resp
@@ -314,7 +314,7 @@ class WorkflowClient(_BasicClient):
                         objectKey=self.__resource + const.WORKFLOW_EXECUTIONS,
                         pathArgs=pathArgs,
                         headers=prepareHeader(),
-                        methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defualtMethodName)
+                        methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defaultMethodName)
                     )
                     if tempResp.status > 300:
                         return tempResp
@@ -344,7 +344,7 @@ class WorkflowClient(_BasicClient):
                 objectKey=self.__resource + const.WORKFLOW_EXECUTIONS,
                 pathArgs=pathArgs,
                 headers=prepareHeader(),
-                methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defualtMethodName)
+                methodName=_listWorkflowExecutionMethodName(self.__isJsonResult, self.__defaultMethodName)
             )
 
     @entrance
@@ -358,7 +358,7 @@ class WorkflowClient(_BasicClient):
             objectKey=self.__resource + combine(const.WORKFLOW_EXECUTIONS, executionName),
             pathArgs=pathArgs,
             headers=prepareHeader(),
-            methodName='GetWorkflowExecutionResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='GetWorkflowExecutionResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -372,7 +372,7 @@ class WorkflowClient(_BasicClient):
             objectKey=self.__resource + combine(const.WORKFLOW_EXECUTIONS, executionName),
             pathArgs=pathArgs,
             headers=prepareHeader(),
-            methodName='RestoreFailedWorkflowExecutionResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='RestoreFailedWorkflowExecutionResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -387,7 +387,7 @@ class WorkflowClient(_BasicClient):
             objectKey=None,
             pathArgs=pathArgs,
             headers=prepareHeader(),
-            methodName=self.__defualtMethodName
+            methodName=self.__defaultMethodName
         )
 
     @entrance
@@ -401,7 +401,7 @@ class WorkflowClient(_BasicClient):
             objectKey=None,
             pathArgs=pathArgs,
             headers=prepareHeader(),
-            methodName='GetTriggerPolicyResponse' if not self.__isJsonResult else self.__defualtMethodName
+            methodName='GetTriggerPolicyResponse' if not self.__isJsonResult else self.__defaultMethodName
         )
 
     @entrance
@@ -415,7 +415,7 @@ class WorkflowClient(_BasicClient):
             objectKey=None,
             pathArgs=pathArgs,
             headers=prepareHeader(),
-            methodName=self.__defualtMethodName
+            methodName=self.__defaultMethodName
         )
 
     # end workflow api

@@ -7,28 +7,23 @@
 
 # http://www.apache.org/licenses/LICENSE-2.0
 
+import functools
+import json
 # Unless required by applicable law or agreed to in writing, software distributed
 # under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
-
-import os
-import json
-import threading
-import sys
-import traceback
-import functools
+import math
 import operator
-from obs import util
-from obs import const
-from obs import progress
-from obs.model import BaseModel
-from obs.model import CompletePart
-from obs.model import CompleteMultipartUploadRequest
-from obs.model import GetObjectRequest
-from obs.model import GetObjectHeader
-from obs.model import UploadFileHeader
-from obs.ilog import INFO, ERROR, DEBUG
+import os
+import sys
+import threading
+import traceback
+
+from obs import const, progress, util
+from obs.ilog import DEBUG, ERROR, INFO
+from obs.model import BaseModel, CompleteMultipartUploadRequest, CompletePart, GetObjectHeader, GetObjectRequest, \
+    UploadFileHeader
 
 if const.IS_PYTHON2:
     import Queue as queue
@@ -36,23 +31,28 @@ else:
     import queue
 
 
-def _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile, checkSum,
-                    metadata, progressCallback, obsClient, headers, extensionHeaders=None):
+def _resume_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile, checkSum,
+                   metadata, progressCallback, obsClient, headers, extensionHeaders=None, encoding_type=None):
     upload_operation = uploadOperation(util.to_string(bucketName), util.to_string(objectKey),
                                        util.to_string(uploadFile), partSize, taskNum, enableCheckPoint,
                                        util.to_string(checkPointFile), checkSum, metadata, progressCallback, obsClient,
-                                       headers, extensionHeaders=extensionHeaders)
+                                       headers, extensionHeaders=extensionHeaders, encoding_type=encoding_type)
     return upload_operation._upload()
 
 
-def _resumer_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                      header, versionId, progressCallback, obsClient, imageProcess=None,
-                      notifier=progress.NONE_NOTIFIER, extensionHeaders=None):
+def _resume_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
+                     header, versionId, progressCallback, obsClient, imageProcess=None,
+                     notifier=progress.NONE_NOTIFIER, extensionHeaders=None):
     down_operation = downloadOperation(util.to_string(bucketName), util.to_string(objectKey),
                                        util.to_string(downloadFile), partSize, taskNum, enableCheckPoint,
                                        util.to_string(checkPointFile),
                                        header, versionId, progressCallback, obsClient, imageProcess, notifier,
                                        extensionHeaders=extensionHeaders)
+
+    return _resume_download_with_operation(down_operation)
+
+
+def _resume_download_with_operation(down_operation):
     if down_operation.size == 0:
         down_operation._delete_record()
         down_operation._delete_tmp_file()
@@ -60,7 +60,7 @@ def _resumer_download(bucketName, objectKey, downloadFile, partSize, taskNum, en
             pass
         if down_operation.progressCallback is not None and callable(down_operation.progressCallback):
             down_operation.progressCallback(0, 0, 0)
-        return down_operation._metedata_resp
+        return down_operation._metadata_resp
     return down_operation._download()
 
 
@@ -119,13 +119,16 @@ class Operation(object):
 
 class uploadOperation(Operation):
     def __init__(self, bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                 checkSum, metadata, progressCallback, obsClient, headers, extensionHeaders=None):
+                 checkSum, metadata, progressCallback, obsClient, headers, extensionHeaders=None, encoding_type=None):
+        if enableCheckPoint and not checkPointFile:
+            checkPointFile = uploadFile + '.upload_record'
         super(uploadOperation, self).__init__(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint,
                                               checkPointFile, progressCallback, obsClient)
         self.checkSum = checkSum
         self.metadata = metadata
         self.headers = headers
         self.extensionHeaders = extensionHeaders
+        self.encoding_type = encoding_type
 
         try:
             self.size = os.path.getsize(self.fileName)
@@ -135,9 +138,31 @@ class uploadOperation(Operation):
             self.obsClient.log_client.log(ERROR,
                                           'something is happened when obtain uploadFile information. Please check')
             raise e
+        self.total_parts = 0
+        self.reset_partSize()
+        self._record = {'bucketName': self.bucketName, 'objectKey': self.objectKey, 'uploadFile': self.fileName,
+                        'partEtags': []}
         resp = self.obsClient.headBucket(self.bucketName, extensionHeaders=extensionHeaders)
         if resp.status > 300:
             raise Exception('head bucket {0} failed. Please check. Status:{1}.'.format(self.bucketName, resp.status))
+
+    def reset_partSize(self):
+        if self.partSize < const.DEFAULT_MINIMUM_SIZE:
+            self.partSize = const.DEFAULT_MINIMUM_SIZE
+        elif self.partSize > const.DEFAULT_MAXIMUM_SIZE:
+            self.partSize = const.DEFAULT_MAXIMUM_SIZE
+        else:
+            self.partSize = util.to_int(self.partSize)
+        if self.taskNum <= 0:
+            self.taskNum = 1
+        else:
+            self.taskNum = int(math.ceil(self.taskNum))
+        self.total_parts = int(self.size / self.partSize)
+        if self.total_parts >= 10000:
+            self.partSize = int(self.size / 10000) if self.size % 10000 == 0 else int(self.size / 10000) + 1
+            self.total_parts = int(self.size / self.partSize)
+        if self.size % self.partSize != 0:
+            self.total_parts += 1
 
     def _upload(self):
         if self.headers is None:
@@ -146,7 +171,7 @@ class uploadOperation(Operation):
         if self.enableCheckPoint:
             self._load()
 
-        if self._record is None:
+        if "uploadId" not in self._record:
             self._prepare()
 
         unfinished_upload_parts = []
@@ -176,7 +201,7 @@ class uploadOperation(Operation):
                                                         extensionHeaders=self.extensionHeaders)
                     self.obsClient.log_client.log(
                         ERROR,
-                        'the code from server is 4**, please check space、persimission and so on.'
+                        'the code from server is 4**, please check space, permission and so on.'
                     )
                     self._delete_record()
                     if self._exception is not None:
@@ -193,10 +218,11 @@ class uploadOperation(Operation):
             part_Etags = []
             for part in self._record['partEtags']:
                 part_Etags.append(CompletePart(partNum=part['partNum'], etag=part['etag']))
-                self.obsClient.log_client.log(INFO, 'Completing to upload multiparts')
+                self.obsClient.log_client.log(INFO, 'Completing to upload multi_parts')
             resp = self.obsClient.completeMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'],
                                                           CompleteMultipartUploadRequest(part_Etags),
-                                                          extensionHeaders=self.extensionHeaders)
+                                                          extensionHeaders=self.extensionHeaders,
+                                                          encoding_type=self.encoding_type)
             self._upload_handle_response(resp)
             return resp
         finally:
@@ -233,6 +259,9 @@ class uploadOperation(Operation):
             self.obsClient.log_client.log(ERROR, 'checkpointFile is invalid')
             self._delete_record()
             self._record = None
+        if self._record is None:
+            self._record = {'bucketName': self.bucketName, 'objectKey': self.objectKey, 'uploadFile': self.fileName,
+                            'partEtags': []}
 
     def _type_check(self, record):
         try:
@@ -284,53 +313,53 @@ class uploadOperation(Operation):
 
     def _slice_file(self):
         uploadParts = []
-        num_counts = int(self.size / self.partSize)
-        if num_counts >= 10000:
-            self.partSize = int(self.size / 10000) if self.size % 10000 == 0 else int(self.size / 10000) + 1
-            num_counts = int(self.size / self.partSize)
-        if self.size % self.partSize != 0:
-            num_counts += 1
 
-        if num_counts == 0:
+        if self.total_parts == 0:
             part = Part(util.to_long(1), util.to_long(0), util.to_long(0), False)
             uploadParts.append(part)
         else:
             offset = 0
-            for i in range(1, num_counts + 1, 1):
+            for i in range(1, self.total_parts + 1, 1):
                 part = Part(util.to_long(i), util.to_long(offset), util.to_long(self.partSize), False)
                 offset += self.partSize
                 uploadParts.append(part)
 
             if self.size % self.partSize != 0:
-                uploadParts[num_counts - 1].length = util.to_long(self.size % self.partSize)
+                uploadParts[self.total_parts - 1].length = util.to_long(self.size % self.partSize)
 
         return uploadParts
 
-    def _prepare(self):
-        fileStatus = [self.size, self.lastModified]
-        if self.checkSum:
-            fileStatus.append(util.base64_encode(util.md5_file_encode_by_size_offset(self.fileName, self.size, 0)))
-
-        resp = self.obsClient.initiateMultipartUpload(self.bucketName, self.objectKey, metadata=self.metadata,
+    def get_init_upload_result(self):
+        return self.obsClient.initiateMultipartUpload(self.bucketName, self.objectKey, metadata=self.metadata,
                                                       acl=self.headers.acl,
                                                       storageClass=self.headers.storageClass,
                                                       websiteRedirectLocation=self.headers.websiteRedirectLocation,
                                                       contentType=self.headers.contentType,
                                                       sseHeader=self.headers.sseHeader, expires=self.headers.expires,
                                                       extensionGrants=self.headers.extensionGrants,
-                                                      extensionHeaders=self.extensionHeaders)
+                                                      extensionHeaders=self.extensionHeaders,
+                                                      encoding_type=self.encoding_type)
+
+    def _prepare(self):
+        fileStatus = [self.size, self.lastModified]
+        if self.checkSum:
+            fileStatus.append(util.base64_encode(util.md5_file_encode_by_size_offset(self.fileName, self.size, 0)))
+
+        resp = self.get_init_upload_result()
+
         if resp.status > 300:
             raise Exception('initiateMultipartUpload failed. ErrorCode:{0}. ErrorMessage:{1}'.format(resp.errorCode,
                                                                                                      resp.errorMessage))
         uploadId = resp.body.uploadId
-        self._record = {'bucketName': self.bucketName, 'objectKey': self.objectKey, 'uploadId': uploadId,
-                        'uploadFile': self.fileName, 'fileStatus': fileStatus, 'uploadParts': self._slice_file(),
-                        'partEtags': []}
+        self._record["uploadParts"] = self._slice_file()
+        self._record["uploadId"] = uploadId
+        self._record["fileStatus"] = fileStatus
         self.obsClient.log_client.log(INFO, 'prepare new upload task success. uploadId = {0}'.format(uploadId))
         if self.enableCheckPoint:
             self._write_record(self._record)
 
-    def _produce(self, ThreadPool, upload_parts):
+    @staticmethod
+    def _produce(ThreadPool, upload_parts):
         for part in upload_parts:
             ThreadPool.put(part)
 
@@ -344,12 +373,7 @@ class uploadOperation(Operation):
     def _upload_part(self, part):
         if not self._is_abort():
             try:
-                resp = self.obsClient._uploadPartWithNotifier(self.bucketName, self.objectKey, part['partNumber'],
-                                                              self._record['uploadId'], self.fileName,
-                                                              isFile=True, partSize=part['length'],
-                                                              offset=part['offset'], notifier=self.notifier,
-                                                              extensionHeaders=self.extensionHeaders,
-                                                              sseHeader=self.headers.sseHeader)
+                resp = self.get_upload_part_resp(part)
                 if resp.status < 300:
                     self._record['uploadParts'][part['partNumber'] - 1]['isCompleted'] = True
                     self._record['partEtags'].append(CompletePart(util.to_int(part['partNumber']), resp.body.etag))
@@ -367,11 +391,21 @@ class uploadOperation(Operation):
                 self.obsClient.log_client.log(DEBUG, 'upload part %s error, %s' % (part['partNumber'], e))
                 self.obsClient.log_client.log(ERROR, traceback.format_exc())
 
+    def get_upload_part_resp(self, part):
+        return self.obsClient._uploadPartWithNotifier(self.bucketName, self.objectKey, part['partNumber'],
+                                                      self._record['uploadId'], self.fileName,
+                                                      isFile=True, partSize=part['length'],
+                                                      offset=part['offset'], notifier=self.notifier,
+                                                      extensionHeaders=self.extensionHeaders,
+                                                      sseHeader=self.headers.sseHeader)
+
 
 class downloadOperation(Operation):
     def __init__(self, bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
                  header, versionId, progressCallback, obsClient, imageProcess=None, notifier=progress.NONE_NOTIFIER,
                  extensionHeaders=None):
+        if enableCheckPoint and not checkPointFile:
+            checkPointFile = downloadFile + '.download_record'
         super(downloadOperation, self).__init__(bucketName, objectKey, downloadFile, partSize, taskNum,
                                                 enableCheckPoint,
                                                 checkPointFile, progressCallback, obsClient, notifier)
@@ -379,32 +413,34 @@ class downloadOperation(Operation):
         self.versionId = versionId
         self.imageProcess = imageProcess
         self.extensionHeaders = extensionHeaders
+        self._record = {'bucketName': self.bucketName, 'objectKey': self.objectKey, 'versionId': self.versionId,
+                        'downloadFile': self.fileName, 'imageProcess': self.imageProcess}
 
         parent_dir = os.path.dirname(self.fileName)
         if not os.path.exists(parent_dir):
             os.makedirs(parent_dir)
 
         self._tmp_file = self.fileName + '.tmp'
-        metedata_resp = self.obsClient.getObjectMetadata(self.bucketName, self.objectKey, self.versionId,
+        metadata_resp = self.obsClient.getObjectMetadata(self.bucketName, self.objectKey, self.versionId,
                                                          extensionHeaders=self.extensionHeaders,
                                                          sseHeader=self.header.sseHeader, origin=self.header.origin,
                                                          requestHeaders=self.header.requestHeaders)
-        if metedata_resp.status < 300:
-            self.lastModified = metedata_resp.body.lastModified
-            self.size = metedata_resp.body.contentLength \
-                if metedata_resp.body.contentLength is not None and metedata_resp.body.contentLength >= 0 else 0
+        if metadata_resp.status < 300:
+            self.lastModified = metadata_resp.body.lastModified
+            self.size = metadata_resp.body.contentLength \
+                if metadata_resp.body.contentLength is not None and metadata_resp.body.contentLength >= 0 else 0
         else:
-            if 400 <= metedata_resp.status < 500:
+            if 400 <= metadata_resp.status < 500:
                 self._delete_record()
                 self._delete_tmp_file()
             self.obsClient.log_client.log(
                 ERROR,
                 'there are something wrong when touch the object {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
-                    self.objectKey, metedata_resp.errorCode, metedata_resp.errorMessage))
+                    self.objectKey, metadata_resp.errorCode, metadata_resp.errorMessage))
             raise Exception(
                 'there are something wrong when touch the object {0}. ErrorCode:{1}, ErrorMessage:{2}'.format(
-                    self.objectKey, metedata_resp.status, metedata_resp.errorMessage))
-        self._metedata_resp = metedata_resp
+                    self.objectKey, metadata_resp.status, metadata_resp.errorMessage))
+        self._metadata_resp = metadata_resp
 
     def _delete_tmp_file(self):
         if os.path.exists(self._tmp_file):
@@ -415,7 +451,7 @@ class downloadOperation(Operation):
             with open(self.fileName, 'wb') as wf:
                 with open(self._tmp_file, 'rb') as rf:
                     while True:
-                        chunk = rf.read(65536)
+                        chunk = rf.read(const.READ_ONCE_LENGTH)
                         if not chunk:
                             break
                         wf.write(chunk)
@@ -432,7 +468,7 @@ class downloadOperation(Operation):
         if self.enableCheckPoint:
             self._load()
 
-        if not self._record:
+        if "downloadParts" not in self._record:
             self._prepare()
 
         sent_bytes, unfinished_down_parts = self._download_prepare()
@@ -465,11 +501,11 @@ class downloadOperation(Operation):
                 if self.enableCheckPoint:
                     self._delete_record()
                 self.obsClient.log_client.log(INFO, 'download success.')
-                return self._metedata_resp
+                return self._metadata_resp
             except Exception as e:
                 if self._do_rename():
                     self.obsClient.log_client.log(INFO, 'download success.')
-                    return self._metedata_resp
+                    return self._metadata_resp
                 if not self.enableCheckPoint:
                     self._delete_tmp_file()
                 self.obsClient.log_client.log(
@@ -497,19 +533,21 @@ class downloadOperation(Operation):
             self._delete_record()
             self._delete_tmp_file()
             self._record = None
+        if self._record is None:
+            self._record = {'bucketName': self.bucketName, 'objectKey': self.objectKey, 'versionId': self.versionId,
+                            'downloadFile': self.fileName, 'imageProcess': self.imageProcess}
 
     def _prepare(self):
-        object_staus = [self.objectKey, self.size, self.lastModified, self.versionId, self.imageProcess]
+        object_status = [self.objectKey, self.size, self.lastModified, self.versionId, self.imageProcess]
         with open(_to_unicode(self._tmp_file), 'wb') as f:
             if self.size > 0:
                 f.seek(self.size - 1, 0)
             f.write('b' if const.IS_PYTHON2 else 'b'.encode('UTF-8'))
 
         tmp_file_status = [os.path.getsize(self._tmp_file), os.path.getmtime(self._tmp_file)]
-        self._record = {'bucketName': self.bucketName, 'objectKey': self.objectKey, 'versionId': self.versionId,
-                        'downloadFile': self.fileName, 'downloadParts': self._split_object(),
-                        'objectStatus': object_staus,
-                        'tmpFileStatus': tmp_file_status, 'imageProcess': self.imageProcess}
+        self._record["downloadParts"] = self._split_object()
+        self._record["objectStatus"] = object_status
+        self._record["tmpFileStatus"] = tmp_file_status
         self.obsClient.log_client.log(INFO, 'prepare new download task success.')
         if self.enableCheckPoint:
             self._write_record(self._record)
@@ -572,7 +610,8 @@ class downloadOperation(Operation):
             downloadParts.append(part)
         return downloadParts
 
-    def _produce(self, ThreadPool, download_parts):
+    @staticmethod
+    def _produce(ThreadPool, download_parts):
         for part in download_parts:
             ThreadPool.put(part)
 
@@ -583,7 +622,8 @@ class downloadOperation(Operation):
                 break
             self._download_part(part)
 
-    def _copy_get_object_header(self, src_header):
+    @staticmethod
+    def _copy_get_object_header(src_header):
         get_object_header = GetObjectHeader()
         get_object_header.sseHeader = src_header.sseHeader
         get_object_header.if_match = src_header.if_match
@@ -597,15 +637,16 @@ class downloadOperation(Operation):
         get_object_header = self._copy_get_object_header(self.header)
         get_object_header.range = util.to_string(part['offset']) + '-' + util.to_string(part['length'])
         if not self._is_abort():
+            # todo 检视 response 的作用与 part_response 的重构
             response = None
             try:
-                resp = self.obsClient._getObjectWithNotifier(bucketName=self.bucketName, objectKey=self.objectKey,
-                                                             getObjectRequest=get_object_request,
-                                                             headers=get_object_header, notifier=self.notifier,
-                                                             extensionHeaders=self.extensionHeaders)
+                resp = self.obsClient.getObject(bucketName=self.bucketName, objectKey=self.objectKey,
+                                                getObjectRequest=get_object_request,
+                                                headers=get_object_header, notifier=self.notifier,
+                                                extensionHeaders=self.extensionHeaders)
                 if resp.status < 300:
-                    respone = resp.body.response
-                    self._download_part_write(respone, part)
+                    part_response = resp.body.response
+                    self._download_part_write(part_response, part)
                     self._record['downloadParts'][part['partNumber'] - 1]['isCompleted'] = True
                     if self.enableCheckPoint:
                         with self._lock:
@@ -625,15 +666,15 @@ class downloadOperation(Operation):
                 self.obsClient.log_client.log(ERROR, traceback.format_exc())
             finally:
                 if response is not None:
-                    respone.close()
+                    part_response.close()
 
-    def _download_part_write(self, respone, part):
-        chunk_size = 65536
-        if respone is not None:
+    def _download_part_write(self, response, part):
+        chunk_size = const.READ_ONCE_LENGTH
+        if response is not None:
             with open(_to_unicode(self._tmp_file), 'rb+') as fs:
                 fs.seek(part['offset'], 0)
                 while True:
-                    chunk = respone.read(chunk_size)
+                    chunk = response.read(chunk_size)
                     if not chunk:
                         break
                     fs.write(chunk)
@@ -704,7 +745,8 @@ class _ThreadPool(object):
         with self._lock:
             return self._exc_info is None
 
-    def _add_and_run(self, thread, pool):
+    @staticmethod
+    def _add_and_run(thread, pool):
         thread.daemon = True
         thread.start()
         pool.append(thread)

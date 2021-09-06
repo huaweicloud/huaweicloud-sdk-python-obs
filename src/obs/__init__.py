@@ -25,6 +25,9 @@ from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUp
 from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileHeader, Payer
 from obs.model import ExtensionHeader, FetchStatus
 from obs.workflow import WorkflowClient
+from obs.crypto_client import CryptoObsClient
+from obs.obs_cipher_suite import CTRCipherGenerator
+from obs.obs_cipher_suite import CtrRSACipherGenerator
 
 __all__ = [
     'LogConf',
@@ -85,5 +88,8 @@ __all__ = [
     'Payer',
     'ExtensionHeader',
     'FetchStatus',
-    'WorkflowClient'
+    'WorkflowClient',
+    'CryptoObsClient',
+    'CTRCipherGenerator',
+    'CtrRSACipherGenerator'
 ]

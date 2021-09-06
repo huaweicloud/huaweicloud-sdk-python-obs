@@ -22,10 +22,12 @@ from obs.ilog import ERROR
 
 def _download_files(obsClient, bucketName, prefix, downloadFolder=None, taskNum=const.DEFAULT_TASK_NUM,
                     taskQueueSize=const.DEFAULT_TASK_QUEUE_SIZE,
-                    headers=GetObjectHeader(), imageProcess=None, interval=const.DEFAULT_BYTE_INTTERVAL,
+                    headers=None, imageProcess=None, interval=const.DEFAULT_BYTE_INTTERVAL,
                     taskCallback=None, progressCallback=None,
                     threshold=const.DEFAULT_MAXIMUM_SIZE, partSize=5 * 1024 * 1024, subTaskNum=1,
                     enableCheckpoint=False, checkpointFile=None, extensionHeaders=None):
+    if headers is None:
+        headers = GetObjectHeader()
     try:
         executor = None
         notifier = None
@@ -75,7 +77,7 @@ def _download_files(obsClient, bucketName, prefix, downloadFolder=None, taskNum=
             if objectKey.endswith('/'):
                 state._successful_increment()
             elif content.size < threshold:
-                executor.execute(_task_wrap, obsClient, obsClient._getObjectWithNotifier, key=objectKey,
+                executor.execute(_task_wrap, obsClient, obsClient.getObject, key=objectKey,
                                  taskCallback=taskCallback, state=state, bucketName=bucketName,
                                  objectKey=objectKey, getObjectRequest=query, headers=headers,
                                  downloadPath=downloadPath, notifier=notifier, extensionHeaders=extensionHeaders)

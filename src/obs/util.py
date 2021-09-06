@@ -12,13 +12,12 @@
 # CONDITIONS OF ANY KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations under the License.
 
-import re
 import base64
 import hashlib
-import os
 import json
-from obs import const
-from obs import progress
+import re
+
+from obs import const, progress
 
 if const.IS_PYTHON2:
     import urllib
@@ -69,11 +68,11 @@ def is_valid(item):
 class RequestFormat(object):
 
     @staticmethod
-    def get_pathformat():
+    def get_path_format():
         return PathFormat()
 
     @staticmethod
-    def get_subdomainformat():
+    def get_sub_domain_format():
         return SubdomainFormat()
 
     @classmethod
@@ -98,7 +97,7 @@ class RequestFormat(object):
     def get_endpoint(self, server, port, bucket):
         return
 
-    def get_pathbase(self, bucket, key):
+    def get_path_base(self, bucket, key):
         return
 
     def get_url(self, bucket, key, path_args):
@@ -107,10 +106,11 @@ class RequestFormat(object):
 
 class PathFormat(RequestFormat):
 
-    def get_server(self, server, bucket):
+    @staticmethod
+    def get_server(server, bucket):
         return server
 
-    def get_pathbase(self, bucket, key):
+    def get_path_base(self, bucket, key):
         if bucket:
             return '/' + bucket + '/' + encode_object_key(key) if key else '/' + bucket
         return '/' + encode_object_key(key) if key else '/'
@@ -121,7 +121,7 @@ class PathFormat(RequestFormat):
         return server + ':' + str(port)
 
     def get_url(self, bucket, key, path_args):
-        path_base = self.get_pathbase(bucket, key)
+        path_base = self.get_path_base(bucket, key)
         path_arguments = self.convert_path_string(path_args)
         return path_base + path_arguments
 
@@ -134,10 +134,11 @@ class PathFormat(RequestFormat):
 
 class SubdomainFormat(RequestFormat):
 
-    def get_server(self, server, bucket):
+    @staticmethod
+    def get_server(server, bucket):
         return bucket + '.' + server if bucket else server
 
-    def get_pathbase(self, bucket, key):
+    def get_path_base(self, bucket, key):
         if key is None:
             return '/'
         return '/' + encode_object_key(key)
@@ -149,7 +150,7 @@ class SubdomainFormat(RequestFormat):
 
     def get_url(self, bucket, key, path_args):
         url = self.convert_path_string(path_args)
-        return self.get_pathbase(bucket, key) + url
+        return self.get_path_base(bucket, key) + url
 
     def get_full_url(self, is_secure, server, port, bucket, key, path_args):
         url = 'https://' if is_secure else 'http://'
@@ -170,7 +171,7 @@ def conn_delegate(conn):
     return delegate(conn)
 
 
-def get_readable_entity(readable, chunk_size=65536, notifier=None, auto_close=True):
+def get_readable_entity(readable, chunk_size=const.READ_ONCE_LENGTH, notifier=None, auto_close=True):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
 
@@ -196,21 +197,35 @@ def get_readable_entity(readable, chunk_size=65536, notifier=None, auto_close=Tr
     return entity
 
 
-def get_readable_entity_by_totalcount(readable, totalCount, chunk_size=65536, notifier=None, auto_close=True):
+def get_readable_entity_by_total_count(readable, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None,
+                                       auto_close=True):
+    return get_entity_for_send_with_total_count(readable, totalCount, chunk_size, notifier, auto_close)
+
+
+def get_file_entity_by_total_count(file_path, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None):
+    f = open(file_path, "rb")
+    return get_entity_for_send_with_total_count(f, totalCount, chunk_size, notifier)
+
+
+def get_entity_for_send_with_total_count(readable, totalCount=None, chunk_size=const.READ_ONCE_LENGTH, notifier=None,
+                                         auto_close=True):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
 
     def entity(conn):
+        readCount = 0
         try:
-            readCount = 0
             while True:
-                readCountOnce = chunk_size if totalCount - readCount >= chunk_size else totalCount - readCount
+                if totalCount is None or totalCount - readCount >= chunk_size:
+                    readCountOnce = chunk_size
+                else:
+                    readCountOnce = totalCount - readCount
                 chunk = readable.read(readCountOnce)
                 newReadCount = len(chunk)
-                readCount += newReadCount
                 if newReadCount > 0:
                     notifier.send(newReadCount)
-                if readCount >= totalCount:
+                readCount += newReadCount
+                if (totalCount is not None and readCount >= totalCount) or (totalCount is not None and not chunk):
                     conn.send(chunk, final=True)
                     break
                 conn.send(chunk)
@@ -221,71 +236,10 @@ def get_readable_entity_by_totalcount(readable, totalCount, chunk_size=65536, no
     return entity
 
 
-def get_file_entity(file_path, chunk_size=65536, notifier=None):
-    if notifier is None:
-        notifier = progress.NONE_NOTIFIER
-
-    def entity(conn):
-        fileSize = os.path.getsize(file_path)
-        readCount = 0
-        with open(file_path, 'rb') as f:
-            while True:
-                chunk = f.read(chunk_size)
-                newReadCount = len(chunk)
-                if newReadCount > 0:
-                    notifier.send(newReadCount)
-                readCount += newReadCount
-                if readCount >= fileSize:
-                    conn.send(chunk, final=True)
-                    break
-                conn.send(chunk)
-
-    return entity
-
-
-def get_file_entity_by_totalcount(file_path, totalCount, chunk_size=65536, notifier=None):
-    if notifier is None:
-        notifier = progress.NONE_NOTIFIER
-
-    def entity(conn):
-        readCount = 0
-        with open(file_path, 'rb') as f:
-            while True:
-                readCountOnce = chunk_size if totalCount - readCount >= chunk_size else totalCount - readCount
-                chunk = f.read(readCountOnce)
-                newReadCount = len(chunk)
-                if newReadCount > 0:
-                    notifier.send(newReadCount)
-                readCount += newReadCount
-                if readCount >= totalCount:
-                    conn.send(chunk, final=True)
-                    break
-                conn.send(chunk)
-
-    return entity
-
-
-def get_file_entity_by_offset_partsize(file_path, offset, partSize, chunk_size=65536, notifier=None):
-    if notifier is None:
-        notifier = progress.NONE_NOTIFIER
-
-    def entity(conn):
-        readCount = 0
-        with open(file_path, 'rb') as f:
-            f.seek(offset)
-            while True:
-                readCountOnce = chunk_size if partSize - readCount >= chunk_size else partSize - readCount
-                chunk = f.read(readCountOnce)
-                newReadCount = len(chunk)
-                if newReadCount > 0:
-                    notifier.send(newReadCount)
-                readCount += newReadCount
-                if readCount >= partSize:
-                    conn.send(chunk, final=True)
-                    break
-                conn.send(chunk)
-
-    return entity
+def get_file_entity_by_offset_partsize(file_path, offset, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None):
+    f = open(file_path, "rb")
+    f.seek(offset)
+    return get_entity_for_send_with_total_count(f, totalCount, chunk_size, notifier)
 
 
 def is_ipaddress(item):
@@ -300,11 +254,18 @@ def md5_encode(unencoded):
     return m.digest()
 
 
+def covert_string_to_bytes(str_object):
+    if not const.IS_PYTHON2:
+        if isinstance(str_object, str):
+            return str_object.encode("UTF-8")
+    return str_object
+
+
 def base64_encode(unencoded):
     unencoded = unencoded if const.IS_PYTHON2 else (
         unencoded.encode('UTF-8') if not isinstance(unencoded, bytes) else unencoded)
-    encodeestr = base64.b64encode(unencoded, altchars=None)
-    return encodeestr if const.IS_PYTHON2 else encodeestr.decode('UTF-8')
+    encode_str = base64.b64encode(unencoded, altchars=None)
+    return encode_str if const.IS_PYTHON2 else encode_str.decode('UTF-8')
 
 
 def encode_object_key(key):
@@ -375,11 +336,11 @@ def md5_file_encode_by_size_offset(file_path=None, size=None, offset=None, chuck
     if file_path is not None and size is not None and offset is not None:
         m = hashlib.md5()
         with open(file_path, 'rb') as fp:
-            CHUNKSIZE = 65536 if chuckSize is None else chuckSize
+            CHUNK_SIZE = const.READ_ONCE_LENGTH if chuckSize is None else chuckSize
             fp.seek(offset)
             read_count = 0
             while read_count < size:
-                read_size = CHUNKSIZE if size - read_count >= CHUNKSIZE else size - read_count
+                read_size = CHUNK_SIZE if size - read_count >= CHUNK_SIZE else size - read_count
                 data = fp.read(read_size)
                 read_count_once = len(data)
                 if read_count_once <= 0:

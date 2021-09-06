@@ -13,40 +13,26 @@
 # specific language governing permissions and limitations under the License.
 
 from __future__ import print_function
-import time
+
 import functools
-import threading
-import os
-import re
-import traceback
 import math
+import os
 import random
-from obs import const, convertor, util, auth, locks, progress
-from obs.cache import LocalCache
-from obs.ilog import NoneLogClient, INFO, WARNING, ERROR, DEBUG, LogClient
-from obs.transfer import _resumer_upload, _resumer_download
-from obs.extension import _download_files
-from obs.model import Logging
-from obs.model import AppendObjectHeader
-from obs.model import AppendObjectContent
-from obs.model import Notification
-from obs.model import ListMultipartUploadsRequest
-from obs.model import PutObjectHeader
-from obs.model import BaseModel
-from obs.model import GetResult
-from obs.model import ObjectStream
-from obs.model import ResponseWrapper
-from obs.model import CreateBucketHeader
-from obs.model import ACL
-from obs.model import Versions
-from obs.model import GetObjectRequest
-from obs.model import GetObjectHeader
-from obs.model import CopyObjectHeader
-from obs.model import SetObjectMetadataHeader
-from obs.bucket import BucketClient
-from obs import loadtoken
+import re
+import threading
+import time
+import traceback
 from inspect import isfunction
-from obs.model import FetchPolicy, _FetchJob
+
+from obs import auth, const, convertor, loadtoken, locks, progress, util
+from obs.bucket import BucketClient
+from obs.cache import LocalCache
+from obs.extension import _download_files
+from obs.ilog import DEBUG, ERROR, INFO, LogClient, NoneLogClient, WARNING
+from obs.model import ACL, AppendObjectContent, AppendObjectHeader, BaseModel, CopyObjectHeader, CreateBucketHeader, \
+    FetchPolicy, GetObjectHeader, GetObjectRequest, GetResult, ListMultipartUploadsRequest, Logging, Notification, \
+    ObjectStream, PutObjectHeader, ResponseWrapper, SetObjectMetadataHeader, Versions, _FetchJob
+from obs.transfer import _resume_download, _resume_upload
 
 if const.IS_PYTHON2:
     from urlparse import urlparse
@@ -202,7 +188,7 @@ class ConvertWrapper(object):
 class _BasicClient(object):
     def __init__(self, access_key_id='', secret_access_key='', is_secure=True, server=None,
                  signature='obs', region='region', path_style=False, ssl_verify=False,
-                 port=None, max_retry_count=3, timeout=60, chunk_size=65536,
+                 port=None, max_retry_count=3, timeout=60, chunk_size=const.READ_ONCE_LENGTH,
                  long_conn_mode=False, proxy_host=None, proxy_port=None,
                  proxy_username=None, proxy_password=None, security_token=None,
                  custom_ciphers=None, use_http2=False, is_signature_negotiation=True, is_cname=False,
@@ -276,13 +262,15 @@ class _BasicClient(object):
             self.ha = convertor.Adapter(self.signature)
             self.convertor = convertor.Convertor(self.signature, self.ha)
 
-    def _parse_server_hostname(self, server):
+    @staticmethod
+    def _parse_server_hostname(server):
         hostname = server.netloc if util.is_valid(server.netloc) else server.path
         if not util.is_valid(hostname):
             raise Exception('server is not set correctly')
         return hostname
 
-    def _check_server_secure(self, server, is_secure):
+    @staticmethod
+    def _check_server_secure(server, is_secure):
         if util.is_valid(server.scheme):
             if server.scheme == 'https':
                 is_secure = True
@@ -306,7 +294,8 @@ class _BasicClient(object):
             self.security_provider_policy = None
             print(traceback.format_exc())
 
-    def _split_host_port(self, hostname, port):
+    @staticmethod
+    def _split_host_port(hostname, port):
         host_port = hostname.split(':')
         if len(host_port) == 2:
             port = util.to_int(host_port[1])
@@ -315,7 +304,8 @@ class _BasicClient(object):
     def _check_path_style(self, path_style):
         return True if util.is_ipaddress(self.server) else path_style
 
-    def _parse_port(self, port, is_secure):
+    @staticmethod
+    def _parse_port(port, is_secure):
         if port is None:
             if is_secure:
                 port = const.DEFAULT_SECURE_PORT
@@ -325,9 +315,9 @@ class _BasicClient(object):
 
     def _parse_calling_format(self):
         if self.path_style:
-            return util.RequestFormat.get_pathformat()
+            return util.RequestFormat.get_path_format()
         else:
-            return util.RequestFormat.get_subdomainformat()
+            return util.RequestFormat.get_sub_domain_format()
 
     def _get_token(self):
         from obs.searchmethod import get_token
@@ -402,7 +392,8 @@ class _BasicClient(object):
             msg.append('Access Mode=' + ('Path' if self.path_style else 'Virtual Hosting') + ']')
             self.log_client.log(WARNING, '];['.join(msg))
 
-    def _assert_not_null(self, param, msg):
+    @staticmethod
+    def _assert_not_null(param, msg):
         param = util.safe_encode(param)
         if param is None or util.to_string(param).strip() == '':
             raise Exception(msg)
@@ -492,7 +483,6 @@ class _BasicClient(object):
                 time.sleep(math.pow(2, flag) * 0.05)
                 self.log_client.log(WARNING, 'request again, time:%d' % int(flag))
                 continue
-            break
 
     def _make_request_internal(self, method, bucketName='', objectKey=None, pathArgs=None, headers=None, entity=None,
                                chunkedMode=False, redirectLocation=None, skipAuthentication=False, redirectFlag=False,
@@ -546,7 +536,8 @@ class _BasicClient(object):
                                   chunkedMode)
         return conn
 
-    def _parse_extension_headers(self, headers, extension_headers):
+    @staticmethod
+    def _parse_extension_headers(headers, extension_headers):
         if len(extension_headers) > 0:
             if headers is None or not isinstance(headers, dict):
                 headers = {}
@@ -556,7 +547,8 @@ class _BasicClient(object):
                 headers[key] = value
         return headers
 
-    def _parse_entity(self, entity, headers):
+    @staticmethod
+    def _parse_entity(entity, headers):
         if entity is not None and not callable(entity):
             entity = util.safe_encode(entity)
             if not isinstance(entity, str) and not isinstance(entity, bytes):
@@ -740,7 +732,8 @@ class _BasicClient(object):
             header[const.CONNECTION_HEADER] = const.CONNECTION_CLOSE_VALUE
         return conn, header
 
-    def _parse_connection_chunked_mode(self, conn, chunkedMode, method, path, header):
+    @staticmethod
+    def _parse_connection_chunked_mode(conn, chunkedMode, method, path, header):
         if chunkedMode:
             conn.putrequest(method, path, skip_host=1)
             for k, v in header.items():
@@ -772,93 +765,46 @@ class _BasicClient(object):
         finally:
             util.do_close(result, conn, self.connHolder, self.log_client)
 
-    def _parse_content_with_notifier(self, conn, objectKey, chuckSize=65536, downloadPath=None, notifier=None):
+    def _parse_content(self, objectKey, conn, response, download_start='',
+                       downloadPath=None, chuckSize=const.READ_ONCE_LENGTH, loadStreamInMemory=False,
+                       progressCallback=None, notifier=None):
         if not conn:
             return self._getNoneResult('connection is none')
-        result = None
         close_conn_flag = True
+        result_wrapper = None
         try:
-            result = conn.getresponse(True) if const.IS_PYTHON2 else conn.getresponse()
-            if not result:
+            if not response:
                 return self._getNoneResult('response is none')
 
-            if not util.to_int(result.status) < 300:
-                return self._parse_xml_internal(result)
+            if not util.to_int(response.status) < 300:
+                return self._parse_xml_internal(response)
 
             headers = {}
-            for k, v in result.getheaders():
+            for k, v in response.getheaders():
                 headers[k.lower()] = v
 
             content_length = headers.get('content-length')
             content_length = util.to_long(content_length) if content_length is not None else None
-            resultWrapper = ResponseWrapper(conn, result, self.connHolder, content_length, notifier)
-            if downloadPath is None:
-                self.log_client.log(DEBUG, 'DownloadPath is none, return conn directly')
-                close_conn_flag = False
-                body = ObjectStream(response=resultWrapper)
-            else:
-                objectKey = util.safe_encode(objectKey)
-                downloadPath = util.safe_encode(downloadPath)
-                file_path, _ = self._get_data(resultWrapper, downloadPath, chuckSize)
-                body = ObjectStream(url=util.to_string(file_path))
-                self.log_client.log(DEBUG, 'DownloadPath is ' + util.to_string(file_path))
-
-            status = util.to_int(result.status)
-            reason = result.reason
-            self.convertor.parseGetObject(headers, body)
-            header = self._rename_response_headers(headers)
-            requestId = dict(header).get('request-id')
-            return GetResult(status=status, reason=reason, header=header, body=body, requestId=requestId)
-        except _RedirectException as ex:
-            raise ex
-        except Exception as e:
-            self.log_client.log(ERROR, traceback.format_exc())
-            raise e
-        finally:
-            if close_conn_flag:
-                util.do_close(result, conn, self.connHolder, self.log_client)
-
-    def _parse_content(self, conn, objectKey, downloadPath=None, chuckSize=65536, loadStreamInMemory=False,
-                       progressCallback=None):
-        if not conn:
-            return self._getNoneResult('connection is none')
-        close_conn_flag = True
-        result = None
-        resultWrapper = None
-        try:
-            result = conn.getresponse(True) if const.IS_PYTHON2 else conn.getresponse()
-            if not result:
-                return self._getNoneResult('response is none')
-
-            if not util.to_int(result.status) < 300:
-                return self._parse_xml_internal(result)
-
-            headers = {}
-            for k, v in result.getheaders():
-                headers[k.lower()] = v
-
-            content_length = headers.get('content-length')
-            content_length = util.to_long(content_length) if content_length is not None else None
-            notifier = self._get_notifier(content_length, progressCallback)
-            notifier.start()
-            resultWrapper = ResponseWrapper(conn, result, self.connHolder, content_length, notifier)
+            if not notifier:
+                notifier = self._get_notifier(content_length, progressCallback)
+                notifier.start()
+            result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier)
             if loadStreamInMemory:
                 self.log_client.log(DEBUG, 'loadStreamInMemory is True, read stream into memory')
-                buf = self._get_buffer_data(resultWrapper, chuckSize)
+                buf = self._get_buffer_data(result_wrapper, chuckSize)
                 body = ObjectStream(buffer=buf, size=util.to_long(len(buf)) if buf is not None else 0)
             elif downloadPath is None:
                 self.log_client.log(DEBUG, 'DownloadPath is none, return conn directly')
                 close_conn_flag = False
-                body = ObjectStream(response=resultWrapper)
+                body = ObjectStream(response=result_wrapper)
             else:
-                objectKey = util.safe_encode(objectKey)
                 downloadPath = util.safe_encode(downloadPath)
-                file_path, _ = self._get_data(resultWrapper, downloadPath, chuckSize)
+                file_path, _ = self._get_data(result_wrapper, downloadPath, chuckSize)
                 body = ObjectStream(url=util.to_string(file_path))
                 self.log_client.log(DEBUG, 'DownloadPath is ' + util.to_string(file_path))
 
-            status = util.to_int(result.status)
-            reason = result.reason
+            status = util.to_int(response.status)
+            reason = response.reason
             self.convertor.parseGetObject(headers, body)
             header = self._rename_response_headers(headers)
             requestId = dict(header).get('request-id')
@@ -870,12 +816,13 @@ class _BasicClient(object):
             raise e
         finally:
             if close_conn_flag:
-                if resultWrapper is not None:
-                    resultWrapper.close()
+                if result_wrapper is not None:
+                    result_wrapper.close()
                 else:
-                    util.do_close(result, conn, self.connHolder, self.log_client)
+                    util.do_close(response, conn, self.connHolder, self.log_client)
 
-    def _get_buffer_data(self, resultWrapper, chuckSize):
+    @staticmethod
+    def _get_buffer_data(resultWrapper, chuckSize):
         buf = None
         appendList = []
         while True:
@@ -891,14 +838,16 @@ class _BasicClient(object):
             appendList.append(chunk)
         return buf
 
-    def _get_notifier(self, content_length, progressCallback):
+    @staticmethod
+    def _get_notifier(content_length, progressCallback):
         return progress.ProgressNotifier(progressCallback,
                                          content_length) if content_length is not None and content_length > 0 \
                                                             and progressCallback is not None else progress.NONE_NOTIFIER
 
-    def _get_data(self, resultWrapper, downloadPath, chuckSize):
+    @staticmethod
+    def _get_data(resultWrapper, downloadPath, chuckSize):
         origin_file_path = downloadPath
-        readed_count = 0
+        read_count = 0
         if const.IS_WINDOWS:
             downloadPath = util.safe_trans_to_gb2312(downloadPath)
         pathDir = os.path.dirname(downloadPath)
@@ -910,10 +859,11 @@ class _BasicClient(object):
                 if not chunk:
                     break
                 f.write(chunk)
-                readed_count += len(chunk)
-        return origin_file_path, readed_count
+                read_count += len(chunk)
+        return origin_file_path, read_count
 
-    def _rename_key(self, k, v):
+    @staticmethod
+    def _rename_key(k, v):
         flag = 0
         if k.startswith(const.V2_META_HEADER_PREFIX):
             k = k[k.index(const.V2_META_HEADER_PREFIX) + len(const.V2_META_HEADER_PREFIX):]
@@ -947,7 +897,8 @@ class _BasicClient(object):
                 header.append((k, v))
         return header
 
-    def _prepare_response_data(self, result, chuckSize):
+    @staticmethod
+    def _prepare_response_data(result, chuckSize):
         responseData = None
         while True:
             chunk = result.read(chuckSize)
@@ -964,7 +915,7 @@ class _BasicClient(object):
                 try:
                     if responseData:
                         responseData = responseData if const.IS_PYTHON2 else responseData.decode('UTF-8')
-                        self.log_client.log(DEBUG, 'recv Msg:%s', responseData)
+                        self.log_client.log(DEBUG, 'receive Msg:%s', responseData)
                         if not isJson:
                             search = self.pattern.search(responseData)
                             responseData = responseData if search is None else responseData.replace(search.group(),
@@ -977,17 +928,19 @@ class _BasicClient(object):
                     self.log_client.log(ERROR, traceback.format_exc())
         return responseData, body
 
-    def _prepare_request_id(self, requestId, headers):
+    @staticmethod
+    def _prepare_request_id(requestId, headers):
         if requestId is None:
             requestId = headers.get('x-obs-request-id')
         if requestId is None:
             requestId = headers.get('x-amz-request-id')
         return requestId
 
-    def _is_redirect_exception(self, status, headers):
-        return status >= 300 and status < 400 and status != 304 and const.LOCATION_HEADER.lower() in headers
+    @staticmethod
+    def _is_redirect_exception(status, headers):
+        return 300 <= status < 400 and status != 304 and const.LOCATION_HEADER.lower() in headers
 
-    def _parse_xml_internal(self, result, methodName=None, chuckSize=65536, readable=False):
+    def _parse_xml_internal(self, result, methodName=None, chuckSize=const.READ_ONCE_LENGTH, readable=False):
         status = util.to_int(result.status)
         reason = result.reason
         code = None
@@ -1125,8 +1078,8 @@ class ObsClient(_BasicClient):
         v2Auth = auth.Authentication(securityProvider.access_key_id, securityProvider.secret_access_key,
                                      self.path_style, self.ha, self.server, self.is_cname)
 
-        signature = v2Auth.getSignature(method, bucketName, objectKey, queryParams, headers, util.to_string(expires))[
-            'Signature']
+        signature = v2Auth.getSignature(method, bucketName, objectKey, queryParams,
+                                        headers, util.to_string(expires))['Signature']
 
         queryParams['Expires'] = expires
         queryParams['AccessKeyId' if self.signature == 'obs' else 'AWSAccessKeyId'] = securityProvider.access_key_id
@@ -1135,11 +1088,10 @@ class ObsClient(_BasicClient):
         if self.is_cname:
             bucketName = None
 
-        result = {
-            'signedUrl': calling_format.get_full_url(self.is_secure, self.server, self.port, bucketName, objectKey,
-                                                     queryParams),
-            'actualSignedRequestHeaders': headers
-        }
+        result = {'signedUrl': calling_format.get_full_url(self.is_secure, self.server,
+                                                           self.port, bucketName, objectKey,
+                                                           queryParams),
+                  'actualSignedRequestHeaders': headers}
 
         return _CreateSignedUrlResponse(**result)
 
@@ -1173,7 +1125,7 @@ class ObsClient(_BasicClient):
                                        shortDate, longDate, self.path_style, self.ha)
 
         queryParams['X-Amz-Algorithm'] = 'AWS4-HMAC-SHA256'
-        queryParams['X-Amz-Credential'] = v4Auth.getCredenttial()
+        queryParams['X-Amz-Credential'] = v4Auth.getCredential()
         queryParams['X-Amz-Date'] = longDate
         queryParams['X-Amz-Expires'] = expires
 
@@ -1182,9 +1134,8 @@ class ObsClient(_BasicClient):
 
         queryParams['X-Amz-SignedHeaders'] = signedHeaders
 
-        signature = \
-            v4Auth.getSignature(method, bucketName, objectKey, queryParams, headMap, signedHeaders, 'UNSIGNED-PAYLOAD')[
-                'Signature']
+        signature = v4Auth.getSignature(method, bucketName, objectKey, queryParams,
+                                        headMap, signedHeaders, 'UNSIGNED-PAYLOAD')['Signature']
 
         queryParams['X-Amz-Signature'] = signature
 
@@ -1323,14 +1274,16 @@ class ObsClient(_BasicClient):
     @funcCache
     def listBuckets(self, isQueryLocation=True, extensionHeaders=None):
         if self.is_cname:
-            raise Exception('listBuckets is not allowed in customdomain mode')
+            raise Exception('listBuckets is not allowed in custom domain mode')
         return self._make_get_request(methodName='listBuckets', extensionHeaders=extensionHeaders,
                                       **self.convertor.trans_list_buckets(isQueryLocation=isQueryLocation))
 
     @funcCache
-    def createBucket(self, bucketName, header=CreateBucketHeader(), location=None, extensionHeaders=None):
+    def createBucket(self, bucketName, header=None, location=None, extensionHeaders=None):
+        if header is None:
+            header = CreateBucketHeader()
         if self.is_cname:
-            raise Exception('createBucket is not allowed in customdomain mode')
+            raise Exception('createBucket is not allowed in custom domain mode')
         res = self._make_put_request(bucketName, extensionHeaders=extensionHeaders,
                                      **self.convertor.trans_create_bucket(header=header, location=location))
         try:
@@ -1344,10 +1297,12 @@ class ObsClient(_BasicClient):
             return res
 
     @funcCache
-    def listObjects(self, bucketName, prefix=None, marker=None, max_keys=None, delimiter=None, extensionHeaders=None):
+    def listObjects(self, bucketName, prefix=None, marker=None, max_keys=None, delimiter=None,
+                    extensionHeaders=None, encoding_type=None):
         return self._make_get_request(bucketName, methodName='listObjects', extensionHeaders=extensionHeaders,
                                       **self.convertor.trans_list_objects(prefix=prefix, marker=marker,
-                                                                          max_keys=max_keys, delimiter=delimiter))
+                                                                          max_keys=max_keys, delimiter=delimiter,
+                                                                          encoding_type=encoding_type))
 
     @funcCache
     def headBucket(self, bucketName, extensionHeaders=None):
@@ -1392,7 +1347,9 @@ class ObsClient(_BasicClient):
                                       extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketAcl(self, bucketName, acl=ACL(), aclControl=None, extensionHeaders=None):
+    def setBucketAcl(self, bucketName, acl=None, aclControl=None, extensionHeaders=None):
+        if acl is None:
+            acl = ACL()
         if acl is not None and len(acl) > 0 and aclControl is not None:
             raise Exception('Both acl and aclControl are set')
         if not acl and not aclControl:
@@ -1433,14 +1390,20 @@ class ObsClient(_BasicClient):
                                       extensionHeaders=extensionHeaders)
 
     @funcCache
-    def listVersions(self, bucketName, version=Versions(), extensionHeaders=None):
+    def listVersions(self, bucketName, version=None, extensionHeaders=None):
+        if version is None:
+            version = Versions()
         return self._make_get_request(bucketName, methodName='listVersions', extensionHeaders=extensionHeaders,
                                       **self.convertor.trans_list_versions(version=version))
 
     @funcCache
-    def listMultipartUploads(self, bucketName, multipart=ListMultipartUploadsRequest(), extensionHeaders=None):
+    def listMultipartUploads(self, bucketName, multipart=None, extensionHeaders=None,
+                             encoding_type=None):
+        if multipart is None:
+            multipart = ListMultipartUploadsRequest()
         return self._make_get_request(bucketName, methodName='listMultipartUploads', extensionHeaders=extensionHeaders,
-                                      **self.convertor.trans_list_multipart_uploads(multipart=multipart))
+                                      **self.convertor.trans_list_multipart_uploads(multipart=multipart,
+                                                                                    encoding_type=encoding_type))
 
     @funcCache
     def deleteBucketLifecycle(self, bucketName, extensionHeaders=None):
@@ -1473,7 +1436,7 @@ class ObsClient(_BasicClient):
                                       extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketLogging(self, bucketName, logstatus=Logging(), extensionHeaders=None):
+    def setBucketLogging(self, bucketName, logstatus=None, extensionHeaders=None):
         if logstatus is None:
             logstatus = Logging()
         return self._make_put_request(bucketName, pathArgs={'logging': None},
@@ -1519,7 +1482,9 @@ class ObsClient(_BasicClient):
         return self.optionsObject(bucketName, None, option=option, extensionHeaders=extensionHeaders)
 
     @funcCache
-    def setBucketNotification(self, bucketName, notification=Notification(), extensionHeaders=None):
+    def setBucketNotification(self, bucketName, notification=None, extensionHeaders=None):
+        if notification is None:
+            notification = Notification()
         if notification is None:
             notification = Notification()
         return self._make_put_request(bucketName, pathArgs={'notification': None},
@@ -1574,36 +1539,29 @@ class ObsClient(_BasicClient):
                                                                                  versionId=versionId))
 
     @funcCache
-    def getObject(self, bucketName, objectKey, downloadPath=None, getObjectRequest=GetObjectRequest(),
-                  headers=GetObjectHeader(), loadStreamInMemory=False, progressCallback=None, extensionHeaders=None):
+    def getObject(self, bucketName, objectKey, downloadPath=None, getObjectRequest=None,
+                  headers=None, loadStreamInMemory=False, progressCallback=None, extensionHeaders=None, notifier=None):
+        if getObjectRequest is None:
+            getObjectRequest = GetObjectRequest()
+        if headers is None:
+            headers = GetObjectHeader()
         _parse_content = self._parse_content
-        CHUNKSIZE = self.chunk_size
+        CHUNK_SIZE = self.chunk_size
         readable = False if progressCallback is None else True
 
         def parseMethod(conn):
-            return _parse_content(conn, objectKey, downloadPath, CHUNKSIZE, loadStreamInMemory, progressCallback)
+            result = conn.getresponse()
+            return _parse_content(objectKey, conn, result, download_start=headers.range, downloadPath=downloadPath,
+                                  chuckSize=CHUNK_SIZE, loadStreamInMemory=loadStreamInMemory, notifier=notifier,
+                                  progressCallback=progressCallback)
 
         return self._make_get_request(bucketName, objectKey, parseMethod=parseMethod, readable=readable,
                                       extensionHeaders=extensionHeaders,
                                       **self.convertor.trans_get_object(getObjectRequest=getObjectRequest,
                                                                         headers=headers))
 
-    @funcCache
-    def _getObjectWithNotifier(self, bucketName, objectKey, getObjectRequest=GetObjectRequest(),
-                               headers=GetObjectHeader(), downloadPath=None, notifier=None, extensionHeaders=None):
-        _parse_content_with_notifier = self._parse_content_with_notifier
-        CHUNKSIZE = self.chunk_size
-        readable = False if notifier is None else True
-
-        def parseMethod(conn):
-            return _parse_content_with_notifier(conn, objectKey, CHUNKSIZE, downloadPath, notifier)
-
-        return self._make_get_request(bucketName, objectKey, parseMethod=parseMethod, readable=readable,
-                                      extensionHeaders=extensionHeaders,
-                                      **self.convertor.trans_get_object(getObjectRequest=getObjectRequest,
-                                                                        headers=headers))
-
-    def _preapare_append_object_input(self, objectKey, headers, content):
+    @staticmethod
+    def _prepare_append_object_input(objectKey, headers, content):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
@@ -1619,7 +1577,7 @@ class ObsClient(_BasicClient):
 
         return objectKey, headers, content
 
-    def _prepare_file_notifier_and_entiy(self, offset, file_size, headers, progressCallback, file_path, readable):
+    def _prepare_file_notifier_and_entity(self, offset, file_size, headers, progressCallback, file_path, readable):
         if offset is not None and 0 < offset < file_size:
             headers['contentLength'] = headers['contentLength'] if 0 < headers['contentLength'] <= (
                     file_size - offset) else file_size - offset
@@ -1629,7 +1587,9 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback, totalCount)
             else:
                 notifier = progress.NONE_NOTIFIER
-            entity = util.get_file_entity_by_offset_partsize(file_path, offset, totalCount, self.chunk_size, notifier)
+            readable_object = self.gen_readable_object_from_file(file_path)
+            readable_object.seek(offset)
+            entity = util.get_entity_for_send_with_total_count(readable_object, totalCount, self.chunk_size, notifier)
         else:
             totalCount = headers['contentLength']
             if totalCount > 0 and progressCallback is not None:
@@ -1637,12 +1597,13 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback, totalCount)
             else:
                 notifier = progress.NONE_NOTIFIER
-            entity = util.get_file_entity_by_totalcount(file_path, totalCount, self.chunk_size, notifier)
+            readable_object = self.gen_readable_object_from_file(file_path)
+            entity = util.get_entity_for_send_with_total_count(readable_object, totalCount, self.chunk_size, notifier)
 
         return headers, readable, notifier, entity
 
-    def _prepare_content_notifier_and_entiy(self, entity, headers, progressCallback, autoClose, readable, chunkedMode,
-                                            notifier):
+    def _prepare_content_notifier_and_entity(self, entity, headers, progressCallback, autoClose, readable, chunkedMode,
+                                             notifier):
         if entity is None:
             entity = ''
         elif hasattr(entity, 'read') and callable(entity.read):
@@ -1657,25 +1618,21 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback,
                                                      totalCount) if totalCount > 0 and progressCallback is not None \
                     else progress.NONE_NOTIFIER
-                entity = util.get_readable_entity_by_totalcount(entity, totalCount, self.chunk_size, notifier,
-                                                                autoClose)
+                entity = util.get_entity_for_send_with_total_count(entity, totalCount, self.chunk_size, notifier,
+                                                                   autoClose)
 
         return entity, readable, chunkedMode, notifier
 
     @funcCache
     def appendObject(self, bucketName, objectKey, content=None, metadata=None, headers=None, progressCallback=None,
                      autoClose=True, extensionHeaders=None):
-        objectKey, headers, content = self._preapare_append_object_input(objectKey, headers, content)
+        objectKey, headers, content = self._prepare_append_object_input(objectKey, headers, content)
 
         chunkedMode = False
         readable = False
         notifier = None
         if content.get('isFile'):
-            file_path = util.safe_encode(content.get('content'))
-            if not os.path.exists(file_path):
-                file_path = util.safe_trans_to_gb2312(file_path)
-                if not os.path.exists(file_path):
-                    raise Exception('file [%s] does not exist' % file_path)
+            file_path = self.check_file_path(content.get('content'))
 
             if headers.get('contentType') is None:
                 headers['contentType'] = const.MIME_TYPES.get(file_path[file_path.rfind('.') + 1:].lower())
@@ -1685,17 +1642,17 @@ class ObsClient(_BasicClient):
             headers['contentLength'] = headers['contentLength'] if headers.get('contentLength') is not None and headers[
                 'contentLength'] <= file_size else file_size
             offset = util.to_long(content.get('offset'))
-            headers, readable, notifier, entity = self._prepare_file_notifier_and_entiy(offset, file_size, headers,
-                                                                                        progressCallback, file_path,
-                                                                                        readable)
+            headers, readable, notifier, entity = self._prepare_file_notifier_and_entity(offset, file_size, headers,
+                                                                                         progressCallback, file_path,
+                                                                                         readable)
             headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
             self.log_client.log(DEBUG, 'send Path:%s' % file_path)
         else:
             entity = content.get('content')
-            entity, readable, chunkedMode, notifier = self._prepare_content_notifier_and_entiy(entity, headers,
-                                                                                               progressCallback,
-                                                                                               autoClose, readable,
-                                                                                               chunkedMode, notifier)
+            entity, readable, chunkedMode, notifier = self._prepare_content_notifier_and_entity(entity, headers,
+                                                                                                progressCallback,
+                                                                                                autoClose, readable,
+                                                                                                chunkedMode, notifier)
 
             headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
 
@@ -1727,10 +1684,10 @@ class ObsClient(_BasicClient):
 
         readable = False
         chunkedMode = False
+        notifier = None
 
         try:
             entity = content
-            notifier = None
             if entity is None:
                 entity = ''
             elif hasattr(entity, 'read') and callable(entity.read):
@@ -1745,8 +1702,8 @@ class ObsClient(_BasicClient):
                     notifier = progress.ProgressNotifier(progressCallback,
                                                          totalCount) if totalCount > 0 and progressCallback \
                                                                         is not None else progress.NONE_NOTIFIER
-                    entity = util.get_readable_entity_by_totalcount(entity, totalCount, self.chunk_size, notifier,
-                                                                    autoClose)
+                    entity = util.get_entity_for_send_with_total_count(entity, totalCount, self.chunk_size, notifier,
+                                                                       autoClose)
 
                 notifier.start()
             ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity,
@@ -1766,16 +1723,13 @@ class ObsClient(_BasicClient):
     @funcCache
     def putFile(self, bucketName, objectKey, file_path, metadata=None, headers=None, progressCallback=None,
                 extensionHeaders=None):
-        file_path = util.safe_encode(file_path)
-        if not os.path.exists(file_path):
-            file_path = util.safe_trans_to_gb2312(file_path)
-            if not os.path.exists(file_path):
-                raise Exception('file [{0}] doesnot exist'.format(file_path))
-
+        file_path = self.check_file_path(file_path)
         _flag = os.path.isdir(file_path)
 
         if headers is None:
             headers = PutObjectHeader()
+        if metadata is None:
+            metadata = dict()
 
         if _flag:
             headers['contentLength'] = None
@@ -1802,6 +1756,8 @@ class ObsClient(_BasicClient):
 
         headers = self._putFileHandleHeader(headers, size, objectKey, file_path)
 
+        readable_object = self.gen_readable_object_from_file(file_path)
+        metadata = self.add_metadata_from_content(metadata, headers, readable_object)
         _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
         if const.CONTENT_LENGTH_HEADER not in _headers:
             _headers[const.CONTENT_LENGTH_HEADER] = util.to_string(size)
@@ -1815,7 +1771,8 @@ class ObsClient(_BasicClient):
         else:
             notifier = progress.NONE_NOTIFIER
             readable = False
-        entity = util.get_file_entity_by_totalcount(file_path, totalCount, self.chunk_size, notifier)
+
+        entity = util.get_entity_for_send_with_total_count(readable_object, totalCount, self.chunk_size, notifier)
         try:
             notifier.start()
             ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity,
@@ -1825,7 +1782,15 @@ class ObsClient(_BasicClient):
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
 
-    def _putFileHandleHeader(self, headers, size, objectKey, file_path):
+    @staticmethod
+    def add_metadata_from_content(metadata, headers, content):
+        return metadata
+
+    def gen_readable_object_from_file(self, file_path):
+        return open(file_path, "rb")
+
+    @staticmethod
+    def _putFileHandleHeader(headers, size, objectKey, file_path):
         headers['contentLength'] = util.to_long(headers.get('contentLength'))
         if headers.get('contentLength') is not None:
             headers['contentLength'] = size if headers['contentLength'] > size else headers['contentLength']
@@ -1837,11 +1802,13 @@ class ObsClient(_BasicClient):
             headers['contentType'] = const.MIME_TYPES.get(file_path[file_path.rfind('.') + 1:].lower())
         return headers
 
-    def _get_offset(self, offset, file_size):
+    @staticmethod
+    def _get_offset(offset, file_size):
         offset = offset if offset is not None and 0 <= offset < file_size else 0
         return offset
 
-    def _get_partsize(self, partSize, file_size, offset):
+    @staticmethod
+    def _get_part_size(partSize, file_size, offset):
         partSize = partSize if partSize is not None and 0 < partSize <= (file_size - offset) else file_size - offset
         return partSize
 
@@ -1857,7 +1824,8 @@ class ObsClient(_BasicClient):
 
         return headers
 
-    def _prepare_uploadpart_notifier(self, partSize, progressCallback, readable):
+    @staticmethod
+    def _prepare_upload_part_notifier(partSize, progressCallback, readable):
         if partSize > 0 and progressCallback is not None:
             readable = True
             notifier = progress.ProgressNotifier(progressCallback, partSize)
@@ -1874,14 +1842,26 @@ class ObsClient(_BasicClient):
 
         return headers
 
-    def _get_notifier_without_size(self, progressCallback):
+    @staticmethod
+    def _get_notifier_without_size(progressCallback):
         return progress.ProgressNotifier(progressCallback,
                                          -1) if progressCallback is not None else progress.NONE_NOTIFIER
 
-    def _get_notifier_with_size(self, progressCallback, totalCount):
+    @staticmethod
+    def _get_notifier_with_size(progressCallback, totalCount):
         return progress.ProgressNotifier(progressCallback,
                                          totalCount) if totalCount > 0 and progressCallback is not None \
             else progress.NONE_NOTIFIER
+
+    def _check_file_part_info(self, file_path, offset, partSize):
+        file_part_info = dict()
+        file_part_info["file_path"] = self.check_file_path(file_path)
+        file_size = util.to_long(os.path.getsize(file_path))
+        offset = util.to_long(offset)
+        file_part_info["offset"] = self._get_offset(offset, file_size)
+        partSize = util.to_long(partSize)
+        file_part_info["partSize"] = self._get_part_size(partSize, file_size, offset)
+        return file_part_info
 
     @funcCache
     def uploadPart(self, bucketName, objectKey, partNumber, uploadId, object=None, isFile=False, partSize=None,
@@ -1890,29 +1870,27 @@ class ObsClient(_BasicClient):
         self._assert_not_null(partNumber, 'partNumber is empty')
         self._assert_not_null(uploadId, 'uploadId is empty')
 
+        chunkedMode = False
+        readable = False
+
         if content is None:
             content = object
 
-        chunkedMode = False
-        readable = False
         notifier = None
         if isFile:
-            file_path = util.safe_encode(content)
-            if not os.path.exists(file_path):
-                file_path = util.safe_trans_to_gb2312(file_path)
-                if not os.path.exists(file_path):
-                    raise Exception('file [%s] does not exist' % file_path)
-            file_size = util.to_long(os.path.getsize(file_path))
-            offset = util.to_long(offset)
-            offset = self._get_offset(offset, file_size)
-            partSize = util.to_long(partSize)
-            partSize = self._get_partsize(partSize, file_size, offset)
+            checked_file_part_info = self._check_file_part_info(content, offset, partSize)
 
-            headers = {const.CONTENT_LENGTH_HEADER: util.to_string(partSize)}
-            headers = self._prepare_headers(md5, isAttachMd5, file_path, partSize, offset, sseHeader, headers)
+            headers = {const.CONTENT_LENGTH_HEADER: util.to_string(checked_file_part_info["partSize"])}
+            headers = self._prepare_headers(md5, isAttachMd5, checked_file_part_info["file_path"],
+                                            checked_file_part_info["partSize"], checked_file_part_info["offset"],
+                                            sseHeader, headers)
 
-            readable, notifier = self._prepare_uploadpart_notifier(partSize, progressCallback, readable)
-            entity = util.get_file_entity_by_offset_partsize(file_path, offset, partSize, self.chunk_size, notifier)
+            readable, notifier = self._prepare_upload_part_notifier(checked_file_part_info["partSize"],
+                                                                    progressCallback, readable)
+            readable_object = open(checked_file_part_info["file_path"], "rb")
+            readable_object.seek(checked_file_part_info["offset"])
+            entity = util.get_entity_for_send_with_total_count(readable_object, checked_file_part_info["partSize"],
+                                                               self.chunk_size, notifier)
         else:
             headers = {}
             if content is not None and hasattr(content, 'read') and callable(content.read):
@@ -1928,8 +1906,8 @@ class ObsClient(_BasicClient):
                     headers[const.CONTENT_LENGTH_HEADER] = util.to_string(partSize)
                     totalCount = util.to_long(partSize)
                     notifier = self._get_notifier_with_size(progressCallback, totalCount)
-                    entity = util.get_readable_entity_by_totalcount(content, totalCount, self.chunk_size, notifier,
-                                                                    autoClose)
+                    entity = util.get_entity_for_send_with_total_count(content, totalCount, self.chunk_size, notifier,
+                                                                       autoClose)
             else:
                 entity = content
                 if entity is None:
@@ -1948,36 +1926,40 @@ class ObsClient(_BasicClient):
                 notifier.end()
         return ret
 
+    @staticmethod
+    def check_file_path(file_path):
+        file_path = util.safe_encode(file_path)
+        if not os.path.exists(file_path):
+            file_path = util.safe_trans_to_gb2312(file_path)
+            if not os.path.exists(file_path):
+                raise Exception('file [%s] does not exist' % file_path)
+        return file_path
+
     @funcCache
     def _uploadPartWithNotifier(self, bucketName, objectKey, partNumber, uploadId, content=None, isFile=False,
-                                partSize=None,
-                                offset=0, sseHeader=None, isAttachMd5=False, md5=None, notifier=None,
-                                extensionHeaders=None):
+                                partSize=None, offset=0, sseHeader=None, isAttachMd5=False, md5=None, notifier=None,
+                                extensionHeaders=None, headers=None):
         self._assert_not_null(partNumber, 'partNumber is empty')
         self._assert_not_null(uploadId, 'uploadId is empty')
 
         chunkedMode = False
         readable = False
+        if headers is None:
+            headers = dict()
         if isFile:
-            file_path = util.safe_encode(content)
-            if not os.path.exists(file_path):
-                file_path = util.safe_trans_to_gb2312(file_path)
-                if not os.path.exists(file_path):
-                    raise Exception('file [%s] does not exist' % file_path)
-            file_size = util.to_long(os.path.getsize(file_path))
-            offset = util.to_long(offset)
-            offset = self._get_offset(offset, file_size)
-            partSize = util.to_long(partSize)
-            partSize = self._get_partsize(partSize, file_size, offset)
+            checked_file_part_info = self._check_file_part_info(content, offset, partSize)
 
-            headers = {const.CONTENT_LENGTH_HEADER: util.to_string(partSize)}
-            headers = self._prepare_headers(md5, isAttachMd5, file_path, partSize, offset, sseHeader, headers)
+            headers[const.CONTENT_LENGTH_HEADER] = util.to_string(checked_file_part_info["partSize"])
+            headers = self._prepare_headers(md5, isAttachMd5, checked_file_part_info["file_path"],
+                                            checked_file_part_info["partSize"], checked_file_part_info["offset"],
+                                            sseHeader, headers)
 
             if notifier is not None and not isinstance(notifier, progress.NoneNotifier):
                 readable = True
-            entity = util.get_file_entity_by_offset_partsize(file_path, offset, partSize, self.chunk_size, notifier)
+            readable_object = open(checked_file_part_info["file_path"], "rb")
+            readable_object.seek(checked_file_part_info["offset"])
+            entity = util.get_entity_for_send_with_total_count(readable_object, partSize, self.chunk_size, notifier)
         else:
-            headers = {}
             if content is not None and hasattr(content, 'read') and callable(content.read):
                 readable = True
                 headers = self._get_headers(md5, sseHeader, headers)
@@ -1987,8 +1969,8 @@ class ObsClient(_BasicClient):
                     entity = util.get_readable_entity(content, self.chunk_size, notifier)
                 else:
                     headers[const.CONTENT_LENGTH_HEADER] = util.to_string(partSize)
-                    entity = util.get_readable_entity_by_totalcount(content, util.to_long(partSize), self.chunk_size,
-                                                                    notifier)
+                    entity = util.get_entity_for_send_with_total_count(content, util.to_long(partSize), self.chunk_size,
+                                                                       notifier)
             else:
                 entity = content
                 if entity is None:
@@ -2022,7 +2004,9 @@ class ObsClient(_BasicClient):
                                                                          sourceObjectKey=sourceObjectKey))
 
     @funcCache
-    def setObjectAcl(self, bucketName, objectKey, acl=ACL(), versionId=None, aclControl=None, extensionHeaders=None):
+    def setObjectAcl(self, bucketName, objectKey, acl=None, versionId=None, aclControl=None, extensionHeaders=None):
+        if acl is None:
+            acl = ACL()
         if acl is not None and len(acl) > 0 and aclControl is not None:
             raise Exception('Both acl and aclControl are set')
         if not acl and not aclControl:
@@ -2063,7 +2047,7 @@ class ObsClient(_BasicClient):
     @funcCache
     def initiateMultipartUpload(self, bucketName, objectKey, acl=None, storageClass=None,
                                 metadata=None, websiteRedirectLocation=None, contentType=None, sseHeader=None,
-                                expires=None, extensionGrants=None, extensionHeaders=None):
+                                expires=None, extensionGrants=None, extensionHeaders=None, encoding_type=None):
         objectKey = util.safe_encode(objectKey)
         if objectKey is None:
             objectKey = ''
@@ -2081,7 +2065,8 @@ class ObsClient(_BasicClient):
                                                                        contentType=contentType,
                                                                        sseHeader=sseHeader,
                                                                        expires=expires,
-                                                                       extensionGrants=extensionGrants)
+                                                                       extensionGrants=extensionGrants,
+                                                                       encoding_type=encoding_type)
                                        )
 
     @funcCache
@@ -2100,11 +2085,14 @@ class ObsClient(_BasicClient):
 
     @funcCache
     def completeMultipartUpload(self, bucketName, objectKey, uploadId, completeMultipartUploadRequest,
-                                extensionHeaders=None):
+                                extensionHeaders=None, encoding_type=None):
         self._assert_not_null(uploadId, 'uploadId is empty')
         self._assert_not_null(completeMultipartUploadRequest, 'completeMultipartUploadRequest is empty')
-
-        ret = self._make_post_request(bucketName, objectKey, pathArgs={'uploadId': uploadId},
+        pathArgs = {'uploadId': uploadId}
+        if encoding_type is not None:
+            pathArgs["encoding-type"] = encoding_type
+        ret = self._make_post_request(bucketName, objectKey,
+                                      pathArgs=pathArgs,
                                       entity=self.convertor.trans_complete_multipart_upload_request(
                                           completeMultipartUploadRequest), methodName='completeMultipartUpload',
                                       extensionHeaders=extensionHeaders)
@@ -2118,13 +2106,16 @@ class ObsClient(_BasicClient):
                                          extensionHeaders=extensionHeaders)
 
     @funcCache
-    def listParts(self, bucketName, objectKey, uploadId, maxParts=None, partNumberMarker=None, extensionHeaders=None):
+    def listParts(self, bucketName, objectKey, uploadId, maxParts=None, partNumberMarker=None, extensionHeaders=None,
+                  encoding_type=None):
         self._assert_not_null(uploadId, 'uploadId is empty')
         pathArgs = {'uploadId': uploadId}
         if maxParts is not None:
             pathArgs['max-parts'] = maxParts
         if partNumberMarker is not None:
             pathArgs['part-number-marker'] = partNumberMarker
+        if encoding_type is not None:
+            pathArgs['encoding-type'] = encoding_type
         return self._make_get_request(bucketName, objectKey, pathArgs=pathArgs, methodName='listParts',
                                       extensionHeaders=extensionHeaders)
 
@@ -2186,26 +2177,16 @@ class ObsClient(_BasicClient):
     @funcCache
     def uploadFile(self, bucketName, objectKey, uploadFile, partSize=9 * 1024 * 1024,
                    taskNum=1, enableCheckpoint=False, checkpointFile=None,
-                   checkSum=False, metadata=None, progressCallback=None, headers=None, extensionHeaders=None):
+                   checkSum=False, metadata=None, progressCallback=None, headers=None,
+                   extensionHeaders=None, encoding_type=None):
         self.log_client.log(INFO, 'enter resume upload file...')
         self._assert_not_null(bucketName, 'bucketName is empty')
         self._assert_not_null(objectKey, 'objectKey is empty')
         self._assert_not_null(uploadFile, 'uploadFile is empty')
-        if enableCheckpoint and checkpointFile is None:
-            checkpointFile = uploadFile + '.upload_record'
 
-        if partSize < const.DEFAULT_MINIMUM_SIZE:
-            partSize = const.DEFAULT_MINIMUM_SIZE
-        elif partSize > const.DEFAULT_MAXIMUM_SIZE:
-            partSize = const.DEFAULT_MAXIMUM_SIZE
-        else:
-            partSize = util.to_int(partSize)
-        if taskNum <= 0:
-            taskNum = 1
-        else:
-            taskNum = int(math.ceil(taskNum))
-        return _resumer_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile,
-                               checkSum, metadata, progressCallback, self, headers, extensionHeaders=extensionHeaders)
+        return _resume_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile,
+                              checkSum, metadata, progressCallback, self, headers,
+                              extensionHeaders=extensionHeaders, encoding_type=encoding_type)
 
     @funcCache
     def _downloadFileWithNotifier(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1,
@@ -2219,22 +2200,10 @@ class ObsClient(_BasicClient):
             header = GetObjectHeader()
         if downloadFile is None:
             downloadFile = objectKey
-        if enableCheckpoint and checkpointFile is None:
-            checkpointFile = downloadFile + '.download_record'
 
-        if partSize < const.DEFAULT_MINIMUM_SIZE:
-            partSize = const.DEFAULT_MINIMUM_SIZE
-        elif partSize > const.DEFAULT_MAXIMUM_SIZE:
-            partSize = const.DEFAULT_MAXIMUM_SIZE
-        else:
-            partSize = util.to_int(partSize)
-        if taskNum <= 0:
-            taskNum = 1
-        else:
-            taskNum = int(math.ceil(taskNum))
-        return _resumer_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckpoint,
-                                 checkpointFile, header, versionId, progressCallback, self,
-                                 imageProcess, notifier, extensionHeaders=extensionHeaders)
+        return _resume_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckpoint,
+                                checkpointFile, header, versionId, progressCallback, self,
+                                imageProcess, notifier, extensionHeaders=extensionHeaders)
 
     def downloadFile(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1,
                      enableCheckpoint=False,
@@ -2246,10 +2215,12 @@ class ObsClient(_BasicClient):
 
     def downloadFiles(self, bucketName, prefix, downloadFolder=None, taskNum=const.DEFAULT_TASK_NUM,
                       taskQueueSize=const.DEFAULT_TASK_QUEUE_SIZE,
-                      headers=GetObjectHeader(), imageProcess=None, interval=const.DEFAULT_BYTE_INTTERVAL,
+                      headers=None, imageProcess=None, interval=const.DEFAULT_BYTE_INTTERVAL,
                       taskCallback=None, progressCallback=None,
                       threshold=const.DEFAULT_MAXIMUM_SIZE, partSize=5 * 1024 * 1024, subTaskNum=1,
                       enableCheckpoint=False, checkpointFile=None, extensionHeaders=None):
+        if headers is None:
+            headers = GetObjectHeader()
         return _download_files(self, bucketName, prefix, downloadFolder, taskNum, taskQueueSize, headers, imageProcess,
                                interval, taskCallback, progressCallback, threshold, partSize, subTaskNum,
                                enableCheckpoint, checkpointFile, extensionHeaders=extensionHeaders)

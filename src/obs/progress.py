@@ -46,7 +46,7 @@ class ProgressNotifier(object):
             if self._newlyTransferredAmount >= self.interval and (
                     self._transferredAmount < self.totalAmount or self.totalAmount <= 0):
                 self._newlyTransferredAmount = 0
-                self.callback(*self._caculate())
+                self.callback(*self._calculate())
 
     def start(self):
         now = time.time()
@@ -55,7 +55,7 @@ class ProgressNotifier(object):
         t.daemon = True
         t.start()
 
-    def _caculate(self):
+    def _calculate(self):
         totalSeconds = time.time() - self._startCheckpoint
         return self._transferredAmount, self.totalAmount, totalSeconds if totalSeconds > 0 else 0.001
 
@@ -65,7 +65,7 @@ class ProgressNotifier(object):
 
     def end(self):
         self._queue.put(None)
-        self.callback(*self._caculate())
+        self.callback(*self._calculate())
         self.callback = None
 
 

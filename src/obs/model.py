@@ -345,7 +345,7 @@ class DateTime(BaseModel):
 
     def ToUTTime(self):
         strTime = '%04d-%02d-%02dT%02d:%02d:%02d.000Z' % (
-        self.year, self.month, self.day, self.hour, self.min, self.sec)
+            self.year, self.month, self.day, self.hour, self.min, self.sec)
         return strTime
 
     def ToGMTTime(self):
@@ -620,10 +620,10 @@ class ObjectVersionHead(BaseModel):
     allowedAttr = {'name': BASESTRING, 'location': BASESTRING, 'prefix': BASESTRING, 'delimiter': BASESTRING,
                    'keyMarker': BASESTRING,
                    'versionIdMarker': BASESTRING, 'nextKeyMarker': BASESTRING, 'nextVersionIdMarker': BASESTRING,
-                   'maxKeys': int, 'isTruncated': bool}
+                   'maxKeys': int, 'isTruncated': bool, "encoding_type": BASESTRING}
 
-    def __init__(self, name=None, location=None, prefix=None, delimiter=None, keyMarker=None,
-                 versionIdMarker=None, nextKeyMarker=None, nextVersionIdMarker=None, maxKeys=None, isTruncated=None):
+    def __init__(self, name=None, location=None, prefix=None, delimiter=None, keyMarker=None, versionIdMarker=None,
+                 nextKeyMarker=None, nextVersionIdMarker=None, maxKeys=None, isTruncated=None, encoding_type=None):
         self.name = name
         self.location = location
         self.prefix = prefix
@@ -634,6 +634,7 @@ class ObjectVersionHead(BaseModel):
         self.nextVersionIdMarker = nextVersionIdMarker
         self.maxKeys = maxKeys
         self.isTruncated = isTruncated
+        self.encoding_type = encoding_type
 
 
 class ObjectVersion(BaseModel):
@@ -673,11 +674,12 @@ class PutObjectHeader(BaseModel):
     allowedAttr = {'md5': BASESTRING, 'acl': BASESTRING, 'location': BASESTRING,
                    'contentType': BASESTRING, 'sseHeader': SseHeader, 'contentLength': [int, LONG, BASESTRING],
                    'storageClass': BASESTRING, 'successActionRedirect': BASESTRING, 'expires': int,
-                   'extensionGrants': list}
+                   'extensionGrants': list, "sha256": BASESTRING}
 
     def __init__(self, md5=None, acl=None, location=None, contentType=None, sseHeader=None, contentLength=None,
-                 storageClass=None, successActionRedirect=None, expires=None, extensionGrants=None):
+                 storageClass=None, successActionRedirect=None, expires=None, extensionGrants=None, sha256=None):
         self.md5 = md5
+        self.sha256 = sha256
         self.acl = acl
         self.location = location
         self.contentType = contentType
@@ -694,9 +696,8 @@ AppendObjectHeader = PutObjectHeader
 
 class UploadFileHeader(BaseModel):
     allowedAttr = {'acl': BASESTRING, 'websiteRedirectLocation': BASESTRING, 'contentType': BASESTRING,
-                   'sseHeader': SseHeader,
-                   'storageClass': BASESTRING, 'successActionRedirect': BASESTRING, 'expires': int,
-                   'extensionGrants': list}
+                   'sseHeader': SseHeader, 'storageClass': BASESTRING,
+                   'successActionRedirect': BASESTRING, 'expires': int, 'extensionGrants': list}
 
     def __init__(self, acl=None, websiteRedirectLocation=None, contentType=None, sseHeader=None,
                  storageClass=None, successActionRedirect=None, expires=None, extensionGrants=None):
@@ -829,14 +830,16 @@ class Upload(BaseModel):
 
 class Versions(BaseModel):
     allowedAttr = {'prefix': BASESTRING, 'key_marker': BASESTRING, 'max_keys': [int, BASESTRING],
-                   'delimiter': BASESTRING, 'version_id_marker': BASESTRING}
+                   'delimiter': BASESTRING, 'version_id_marker': BASESTRING, 'encoding_type': BASESTRING}
 
-    def __init__(self, prefix=None, key_marker=None, max_keys=None, delimiter=None, version_id_marker=None):
+    def __init__(self, prefix=None, key_marker=None, max_keys=None, delimiter=None, version_id_marker=None,
+                 encoding_type=None):
         self.prefix = prefix
         self.key_marker = key_marker
         self.max_keys = max_keys
         self.delimiter = delimiter
         self.version_id_marker = version_id_marker
+        self.encoding_type = encoding_type
 
 
 class Object(BaseModel):
@@ -901,13 +904,13 @@ class CompleteMultipartUploadRequest(BaseModel):
 
 
 class CompleteMultipartUploadResponse(BaseModel):
-    allowedAttr = {'location': BASESTRING, 'bucket': BASESTRING,
+    allowedAttr = {'location': BASESTRING, 'bucket': BASESTRING, "encoding_type": BASESTRING,
                    'key': BASESTRING, 'etag': BASESTRING, 'versionId': BASESTRING, 'sseKms': BASESTRING,
                    'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING, 'objectUrl': BASESTRING}
 
     def __init__(self, location=None, bucket=None, key=None, etag=None,
                  versionId=None, sseKms=None, sseKmsKey=None, sseC=None,
-                 sseCKeyMd5=None, objectUrl=None):
+                 sseCKeyMd5=None, objectUrl=None, encoding_type=None):
         self.location = location
         self.bucket = bucket
         self.key = key
@@ -918,6 +921,7 @@ class CompleteMultipartUploadResponse(BaseModel):
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
         self.objectUrl = objectUrl
+        self.encoding_type = encoding_type
 
 
 class CopyObjectResponse(BaseModel):
@@ -961,11 +965,12 @@ class DeleteObjectResponse(BaseModel):
 
 
 class DeleteObjectsRequest(BaseModel):
-    allowedAttr = {'quiet': bool, 'objects': list}
+    allowedAttr = {'quiet': bool, 'objects': list, "encoding_type": BASESTRING}
 
-    def __init__(self, quiet=None, objects=None):
+    def __init__(self, quiet=None, objects=None, encoding_type=None):
         self.quiet = quiet
         self.objects = objects
+        self.encoding_type = encoding_type
 
     def add_object(self, object):
         if self.objects is None:
@@ -975,11 +980,12 @@ class DeleteObjectsRequest(BaseModel):
 
 
 class DeleteObjectsResponse(BaseModel):
-    allowedAttr = {'deleted': list, 'error': list}
+    allowedAttr = {'deleted': list, 'error': list, "encoding_type": BASESTRING}
 
-    def __init__(self, deleted=None, error=None):
+    def __init__(self, deleted=None, error=None, encoding_type=None):
         self.deleted = deleted
         self.error = error
+        self.encoding_type = encoding_type
 
 
 class ErrorResult(BaseModel):
@@ -1018,12 +1024,12 @@ class ListMultipartUploadsRequest(BaseModel):
 class ListPartsResponse(BaseModel):
     allowedAttr = {'bucketName': BASESTRING, 'objectKey': BASESTRING, 'uploadId': BASESTRING, 'initiator': Initiator,
                    'owner': Owner, 'storageClass': BASESTRING, 'partNumberMarker': int, 'nextPartNumberMarker': int,
-                   'maxParts': int,
+                   'maxParts': int, "encoding_type": BASESTRING,
                    'isTruncated': bool, 'parts': list}
 
     def __init__(self, bucketName=None, objectKey=None, uploadId=None, initiator=None, owner=None,
                  storageClass=None, partNumberMarker=None, nextPartNumberMarker=None, maxParts=None, isTruncated=None,
-                 parts=None):
+                 parts=None, encoding_type=None):
         self.bucketName = bucketName
         self.objectKey = objectKey
         self.uploadId = uploadId
@@ -1035,6 +1041,7 @@ class ListPartsResponse(BaseModel):
         self.maxParts = maxParts
         self.isTruncated = isTruncated
         self.parts = parts
+        self.encoding_type = encoding_type
 
 
 class GetBucketMetadataResponse(BaseModel):
@@ -1151,13 +1158,14 @@ class GetObjectRequest(BaseModel):
 
 
 class InitiateMultipartUploadResponse(BaseModel):
-    allowedAttr = {'bucketName': BASESTRING, 'objectKey': BASESTRING, 'uploadId': BASESTRING,
-                   'sseKms': BASESTRING, 'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING}
+    allowedAttr = {'bucketName': BASESTRING, 'objectKey': BASESTRING, 'uploadId': BASESTRING, 'sseKms': BASESTRING,
+                   'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING, "encoding_type": BASESTRING}
 
-    def __init__(self, bucketName=None, objectKey=None, uploadId=None):
+    def __init__(self, bucketName=None, objectKey=None, uploadId=None, encoding_type=None):
         self.bucketName = bucketName
         self.objectKey = objectKey
         self.uploadId = uploadId
+        self.encoding_type = encoding_type
 
 
 class LifecycleResponse(BaseModel):
@@ -1179,10 +1187,11 @@ class ListMultipartUploadsResponse(BaseModel):
     allowedAttr = {'bucket': BASESTRING, 'keyMarker': BASESTRING, 'uploadIdMarker': BASESTRING,
                    'nextKeyMarker': BASESTRING, 'nextUploadIdMarker': BASESTRING, 'maxUploads': int,
                    'isTruncated': bool, 'prefix': BASESTRING, 'delimiter': BASESTRING, 'upload': list,
-                   'commonPrefixs': list}
+                   'commonPrefixs': list, "encoding_type": BASESTRING}
 
     def __init__(self, bucket=None, keyMarker=None, uploadIdMarker=None, nextKeyMarker=None, nextUploadIdMarker=None,
-                 maxUploads=None, isTruncated=None, prefix=None, delimiter=None, upload=None, commonPrefixs=None):
+                 maxUploads=None, isTruncated=None, prefix=None, delimiter=None, upload=None, commonPrefixs=None,
+                 encoding_type=None):
         self.bucket = bucket
         self.keyMarker = keyMarker
         self.uploadIdMarker = uploadIdMarker
@@ -1195,16 +1204,16 @@ class ListMultipartUploadsResponse(BaseModel):
         self.delimiter = delimiter
         self.upload = upload
         self.commonPrefixs = commonPrefixs
+        self.encoding_type = encoding_type
 
 
 class ListObjectsResponse(BaseModel):
     allowedAttr = {'name': BASESTRING, 'location': BASESTRING, 'prefix': BASESTRING, 'marker': BASESTRING,
-                   'delimiter': BASESTRING,
-                   'max_keys': int, 'is_truncated': bool, 'next_marker': BASESTRING, 'contents': list,
-                   'commonPrefixs': list}
+                   'delimiter': BASESTRING, 'commonPrefixs': list, 'encoding_type': BASESTRING,
+                   'max_keys': int, 'is_truncated': bool, 'next_marker': BASESTRING, 'contents': list}
 
-    def __init__(self, name=None, location=None, prefix=None, marker=None, delimiter=None,
-                 max_keys=None, is_truncated=None, next_marker=None, contents=None, commonPrefixs=None):
+    def __init__(self, name=None, location=None, prefix=None, marker=None, delimiter=None, max_keys=None,
+                 is_truncated=None, next_marker=None, contents=None, commonPrefixs=None, encoding_type=None):
         self.name = name
         self.location = location
         self.prefix = prefix
@@ -1215,6 +1224,7 @@ class ListObjectsResponse(BaseModel):
         self.next_marker = next_marker
         self.contents = contents
         self.commonPrefixs = commonPrefixs
+        self.encoding_type = encoding_type
 
 
 class LocationResponse(BaseModel):
@@ -1303,7 +1313,7 @@ class ResponseWrapper(object):
         self.result = result
         self.connHolder = connHolder
         self.contentLength = contentLength
-        self.readedCount = 0
+        self.read_count = 0
         self.notifier = notifier
         if self.notifier is None:
             self.notifier = progress.NONE_NOTIFIER
@@ -1313,15 +1323,15 @@ class ResponseWrapper(object):
             def _read(*args, **kwargs):
                 chunk = self.result.read(*args, **kwargs)
                 if not chunk:
-                    if self.contentLength is not None and self.contentLength != self.readedCount:
+                    if self.contentLength is not None and self.contentLength != self.read_count:
                         raise Exception(
                             'premature end of Content-Length delimiter message body (expected:' + util.to_string(
-                                self.contentLength) + '; received:' + util.to_string(self.readedCount) + ')')
+                                self.contentLength) + '; received:' + util.to_string(self.read_count) + ')')
                 else:
                     newReadCount = len(chunk)
                     if newReadCount > 0:
                         self.notifier.send(newReadCount)
-                    self.readedCount += newReadCount
+                    self.read_count += newReadCount
                 return chunk
 
             return _read

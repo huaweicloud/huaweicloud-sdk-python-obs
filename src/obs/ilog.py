@@ -128,12 +128,12 @@ class LogClient(object):
 
     def log(self, level, msg, *args, **kwargs):
         base_back = sys._getframe().f_back
-        funcname = base_back.f_code.co_name
-        while funcname.lower() == 'log':
+        func_name = base_back.f_code.co_name
+        while func_name.lower() == 'log':
             base_back = base_back.f_back
-            funcname = base_back.f_code.co_name
+            func_name = base_back.f_code.co_name
         line = base_back.f_lineno
-        msg = '%(logger)s|%(name)s,%(lineno)d|' % {'logger': self.display_name, 'name': funcname,
+        msg = '%(logger)s|%(name)s,%(lineno)d|' % {'logger': self.display_name, 'name': func_name,
                                                    'lineno': int(line)} + str(msg)
 
         if level == CRITICAL:

@@ -152,8 +152,8 @@ class ECS(object):
     @staticmethod
     def _search_handle_expires(datetime, timedelta):
         if ECS.expires is not None:
-            token_datenow = datetime.utcnow()
-            if token_datenow < (ECS.expires - timedelta(minutes=10)):
+            token_date_now = datetime.utcnow()
+            if token_date_now < (ECS.expires - timedelta(minutes=10)):
                 return {
                     'accessKey': ECS.ak,
                     'secretKey': ECS.sk,
@@ -177,10 +177,7 @@ class ECS(object):
 
     @staticmethod
     def _search_judge(datetime):
-        if ECS.expires is not None and datetime.utcnow() < ECS.expires:
-            return True
-        else:
-            return False
+        return ECS.expires is not None and datetime.utcnow() < ECS.expires
 
     @staticmethod
     def _search_get_result(conn):

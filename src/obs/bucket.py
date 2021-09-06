@@ -91,8 +91,8 @@ class BucketClient(object):
 
     def __getattr__(self, key):
         if key in self.allowedMethod and hasattr(self.__obsClient, key):
-            orignalMethod = getattr(self.__obsClient, key)
-            if callable(orignalMethod):
+            original_method = getattr(self.__obsClient, key)
+            if callable(original_method):
                 def delegate(*args, **kwargs):
                     _args = list(args)
                     if key == 'copyObject':
@@ -104,7 +104,7 @@ class BucketClient(object):
                     else:
                         if 'bucketName' not in kwargs:
                             _args.insert(0, self.__bucketName)
-                    return orignalMethod(*_args, **kwargs)
+                    return original_method(*_args, **kwargs)
 
                 return delegate
         return super(BucketClient, self).__getattribute__(key)

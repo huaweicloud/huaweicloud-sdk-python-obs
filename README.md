@@ -1,3 +1,11 @@
+Version 3.21.8
+
+New Features:
+
+1. Add crypto client, could encrypt object at client side.
+
+------------------------------------------------------------------------------------------------- 
+
 Version 3.21.4
 
 New Features:

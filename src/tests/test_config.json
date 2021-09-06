@@ -1,0 +1,16 @@
+{
+  "ak": "",
+  "sk": "",
+  "endpoint": "",
+  "bucketName": "",
+  "path_prefix": "",
+  "public_key": "",
+  "private_key": "",
+  "auth_type": "obs",
+  "test_files": {
+    "1k": 1,
+    "99k": 99,
+    "1M": 1024,
+    "100M": 102400
+  }
+}

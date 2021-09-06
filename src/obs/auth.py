@@ -37,7 +37,7 @@ class Authentication(object):
         }
 
     def getSignature(self, method, bucket, key, path_args, headers, expires=None):
-        canonical_string = self.__make_canonicalstring(method, bucket, key, path_args, headers, expires)
+        canonical_string = self.__make_canonical_string(method, bucket, key, path_args, headers, expires)
         return {
             'Signature': self.hmacSha128(canonical_string),
             const.CANONICAL_STRING: canonical_string
@@ -53,10 +53,10 @@ class Authentication(object):
 
         return encode_canonical
 
-    def __make_canonicalstring(self, method, bucket_name, key, path_args, headers, expires=None):
+    def __make_canonical_string(self, method, bucket_name, key, path_args, headers, expires=None):
         interesting_headers = self.__make_canonicalstring_interesting_headers(headers, expires)
-        keylist = sorted(interesting_headers.keys())
-        str_list = self.__make_canonicalstring_str_list(keylist, method, interesting_headers)
+        key_list = sorted(interesting_headers.keys())
+        str_list = self.__make_canonicalstring_str_list(key_list, method, interesting_headers)
         URI = ''
         _bucket_name = self.server if self.is_cname else bucket_name
         if _bucket_name:
@@ -100,18 +100,18 @@ class Authentication(object):
                     s = headers.get(hash_key)
                     interesting_headers[lk] = ''.join(s)
 
-        keylist = interesting_headers.keys()
+        key_list = interesting_headers.keys()
 
-        if self.ha.date_header() in keylist:
+        if self.ha.date_header() in key_list:
             interesting_headers[const.DATE_HEADER.lower()] = ''
 
         if expires:
             interesting_headers[const.DATE_HEADER.lower()] = expires
 
-        if const.CONTENT_TYPE_HEADER.lower() not in keylist:
+        if const.CONTENT_TYPE_HEADER.lower() not in key_list:
             interesting_headers[const.CONTENT_TYPE_HEADER.lower()] = ''
 
-        if const.CONTENT_MD5_HEADER.lower() not in keylist:
+        if const.CONTENT_MD5_HEADER.lower() not in key_list:
             interesting_headers[const.CONTENT_MD5_HEADER.lower()] = ''
 
         return interesting_headers
@@ -148,24 +148,25 @@ class V4Authentication(object):
         headers = headers if isinstance(headers, dict) else {}
         headers[self.ha.content_sha256_header()] = self.CONTENT_SHA256
 
-        credenttial = self.getCredenttial()
+        credential = self.getCredential()
         headMap = self.setMapKeyLower(headers)
         signedHeaders = self.getSignedHeaders(headMap)
         ret = self.getSignature(method, bucket, key, args_path, headMap, signedHeaders)
         auth = 'AWS4-HMAC-SHA256 Credential=%s,SignedHeaders=%s,Signature=%s' % (
-            credenttial, signedHeaders, ret['Signature'])
+            credential, signedHeaders, ret['Signature'])
         return {
             const.AUTHORIZATION_HEADER: auth,
             const.CANONICAL_REQUEST: ret[const.CANONICAL_REQUEST]
         }
 
-    def getCredenttial(self):
+    def getCredential(self):
         return '%s/%s/%s/s3/aws4_request' % (self.ak, self.shortDate, self.region)
 
     def getScope(self):
         return '%s/%s/s3/aws4_request' % (self.shortDate, self.region)
 
-    def getSignedHeaders(self, headMap):
+    @staticmethod
+    def getSignedHeaders(headMap):
         headList = sorted(headMap.items(), key=lambda d: d[0])
         signedHeaders = ''
         i = 0
@@ -194,7 +195,8 @@ class V4Authentication(object):
             const.CANONICAL_REQUEST: cannonicalRequest
         }
 
-    def hmacSha256(self, signingKey, stringToSign):
+    @staticmethod
+    def hmacSha256(signingKey, stringToSign):
         return hmac.new(signingKey, stringToSign, hashlib.sha256).hexdigest()
 
     def getSigningKey_python2(self):
@@ -222,10 +224,12 @@ class V4Authentication(object):
         output.append(self.CONTENT_SHA256 if payload is None else payload)
         return '\n'.join(output)
 
-    def __shaCannonicalRequest_python2(self, cannonicalRequest):
+    @staticmethod
+    def __shaCannonicalRequest_python2(cannonicalRequest):
         return hashlib.sha256(cannonicalRequest).hexdigest()
 
-    def __shaCannonicalRequest_python3(self, cannonicalRequest):
+    @staticmethod
+    def __shaCannonicalRequest_python3(cannonicalRequest):
         return hashlib.sha256(cannonicalRequest.encode('UTF-8')).hexdigest()
 
     def getCanonicalURI(self, bucket=None, key=None):
@@ -238,7 +242,8 @@ class V4Authentication(object):
             URI = '/'
         return util.encode_object_key(URI)
 
-    def getCanonicalQueryString(self, args_path):
+    @staticmethod
+    def getCanonicalQueryString(args_path):
         canonMap = {}
         for key, value in args_path.items():
             canonMap[key] = value
@@ -252,7 +257,8 @@ class V4Authentication(object):
             i = 1
         return queryStr
 
-    def getCanonicalHeaders(self, headMap):
+    @staticmethod
+    def getCanonicalHeaders(headMap):
         headList = sorted(headMap.items(), key=lambda d: d[0])
         canonicalHeaderStr = ''
         for val in headList:
@@ -264,7 +270,8 @@ class V4Authentication(object):
                 canonicalHeaderStr += val[0] + ':' + str(val[1]) + '\n'
         return canonicalHeaderStr
 
-    def setMapKeyLower(self, inputMap):
+    @staticmethod
+    def setMapKeyLower(inputMap):
         outputMap = {}
         for key in inputMap.keys():
             outputMap[key.lower()] = inputMap[key]

@@ -38,6 +38,11 @@ from obs.model import DateTime, ListObjectsResponse, Content, CorsRule, ObjectVe
     Redirect, FilterRule, FunctionGraphConfiguration, Upload, CompleteMultipartUploadResponse, ListPartsResponse, \
     Grant, ReplicationRule, Transition, Grantee
 
+if const.IS_PYTHON2:
+    from urllib import unquote_plus, quote_plus
+else:
+    from urllib.parse import unquote_plus, quote_plus
+
 
 class Adapter(object):
     OBS_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'public-read-delivered',
@@ -94,7 +99,8 @@ class Adapter(object):
     def default_storage_class_header(self):
         return self._get_header_prefix() + 'storage-class' if self.is_obs else 'x-default-storage-class'
 
-    def az_redundancy_header(self):
+    @staticmethod
+    def az_redundancy_header():
         return 'x-obs-az-redundancy'
 
     def storage_class_header(self):
@@ -103,7 +109,8 @@ class Adapter(object):
     def request_id_header(self):
         return self._get_header_prefix() + 'request-id'
 
-    def indicator_header(self):
+    @staticmethod
+    def indicator_header():
         return 'x-reserved-indicator'
 
     def location_header(self):
@@ -113,7 +120,8 @@ class Adapter(object):
         return self._get_header_prefix() + 'bucket-location' if self.is_obs \
             else self._get_header_prefix() + 'bucket-region'
 
-    def server_version_header(self):
+    @staticmethod
+    def server_version_header():
         return 'x-obs-version'
 
     def version_id_header(self):
@@ -153,13 +161,15 @@ class Adapter(object):
     def website_redirect_location_header(self):
         return self._get_header_prefix() + 'website-redirect-location'
 
-    def success_action_redirect_header(self):
+    @staticmethod
+    def success_action_redirect_header():
         return 'success-action-redirect'
 
     def restore_header(self):
         return self._get_header_prefix() + 'restore'
 
-    def expires_header(self):
+    @staticmethod
+    def expires_header():
         return 'x-obs-expires'
 
     def expiration_header(self):
@@ -186,10 +196,12 @@ class Adapter(object):
     def copy_source_if_unmodified_since_header(self):
         return self._get_header_prefix() + 'copy-source-if-unmodified-since'
 
-    def next_position_header(self):
+    @staticmethod
+    def next_position_header():
         return 'x-obs-next-append-position'
 
-    def object_type_header(self):
+    @staticmethod
+    def object_type_header():
         return 'x-obs-object-type'
 
     def request_payer_header(self):
@@ -210,7 +222,7 @@ class Adapter(object):
         return group if group in self.OBS_ALLOWED_GROUP else 'Everyone' \
             if group in ('http://acs.amazonaws.com/groups/global/AllUsers', 'AllUsers') else None
 
-    def adapt_retore_tier(self, tier):
+    def adapt_restore_tier(self, tier):
         if self.is_obs:
             return tier if tier in self.OBS_ALLOWED_RESTORE_TIER else None
 
@@ -266,7 +278,17 @@ class Convertor(object):
         self.is_obs = signature.lower() == 'obs'
         self.ha = ha
 
-    def _put_key_value(self, headers, key, value):
+    @staticmethod
+    def url_encode(value, encoding_type):
+        if encoding_type and encoding_type.lower() == "url":
+            if const.IS_PYTHON2 and isinstance(value, unicode):
+                value = quote_plus(util.safe_encode(value))
+                return value
+            value = quote_plus(value)
+        return value
+
+    @staticmethod
+    def _put_key_value(headers, key, value):
         if value is not None:
             if const.IS_PYTHON2:
                 value = util.safe_encode(value)
@@ -317,6 +339,7 @@ class Convertor(object):
         self._put_key_value(pathArgs, 'marker', kwargs.get('marker'))
         self._put_key_value(pathArgs, 'delimiter', kwargs.get('delimiter'))
         self._put_key_value(pathArgs, 'max-keys', kwargs.get('max_keys'))
+        self._put_key_value(pathArgs, 'encoding-type', kwargs.get('encoding_type'))
         return {'pathArgs': pathArgs}
 
     def trans_list_versions(self, **kwargs):
@@ -328,6 +351,7 @@ class Convertor(object):
             self._put_key_value(pathArgs, 'max-keys', version.get('max_keys'))
             self._put_key_value(pathArgs, 'delimiter', version.get('delimiter'))
             self._put_key_value(pathArgs, 'version-id-marker', version.get('version_id_marker'))
+            self._put_key_value(pathArgs, 'encoding-type', version.get('encoding_type'))
         return {'pathArgs': pathArgs}
 
     def trans_get_bucket_metadata(self, **kwargs):
@@ -372,7 +396,8 @@ class Convertor(object):
             ET.SubElement(sse, 'KMSMasterKeyID').text = util.to_string(key)
         return ET.tostring(root, 'UTF-8')
 
-    def trans_quota(self, quota):
+    @staticmethod
+    def trans_quota(quota):
         root = ET.Element('Quota')
         ET.SubElement(root, 'StorageQuota').text = util.to_string(quota)
         return ET.tostring(root, 'UTF-8')
@@ -385,7 +410,8 @@ class Convertor(object):
             'entity': entity
         }
 
-    def trans_tag_info(self, tagInfo):
+    @staticmethod
+    def trans_tag_info(tagInfo):
         root = ET.Element('Tagging')
         tagSetEle = ET.SubElement(root, 'TagSet')
         if tagInfo.get('tagSet') is not None and len(tagInfo['tagSet']) > 0:
@@ -401,7 +427,8 @@ class Convertor(object):
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
         return {'pathArgs': {'cors': None}, 'headers': headers, 'entity': entity}
 
-    def trans_cors_rules(self, corsRuleList):
+    @staticmethod
+    def trans_cors_rules(corsRuleList):
         root = ET.Element('CORSConfiguration')
         for cors in corsRuleList:
             corsRuleEle = ET.SubElement(root, 'CORSRule')
@@ -430,19 +457,25 @@ class Convertor(object):
 
     def trans_delete_objects_request(self, deleteObjectsRequest):
         root = ET.Element('Delete')
+        encoding_type = None
         if deleteObjectsRequest is not None:
             if deleteObjectsRequest.get('quiet') is not None:
                 ET.SubElement(root, 'Quiet').text = util.to_string(deleteObjectsRequest['quiet']).lower()
+            if deleteObjectsRequest.get('encoding_type') is not None:
+                ET.SubElement(root, 'EncodingType').text = util.to_string(deleteObjectsRequest['encoding_type'])
+                encoding_type = util.to_string(deleteObjectsRequest['encoding_type'])
             if isinstance(deleteObjectsRequest.get('objects'), list) and len(deleteObjectsRequest['objects']) > 0:
                 for obj in deleteObjectsRequest['objects']:
                     if obj.get('key') is not None:
                         objectEle = ET.SubElement(root, 'Object')
-                        ET.SubElement(objectEle, 'Key').text = util.safe_decode(obj['key'])
+                        key_text = self.url_encode(obj['key'], encoding_type)
+                        ET.SubElement(objectEle, 'Key').text = util.safe_decode(key_text)
                         if obj.get('versionId') is not None:
                             ET.SubElement(objectEle, 'VersionId').text = util.safe_decode(obj['versionId'])
         return ET.tostring(root, 'UTF-8')
 
-    def trans_version_status(self, status):
+    @staticmethod
+    def trans_version_status(status):
         root = ET.Element('VersioningConfiguration')
         ET.SubElement(root, 'Status').text = util.to_string(status)
         return ET.tostring(root, 'UTF-8')
@@ -540,7 +573,8 @@ class Convertor(object):
             root = self._trans_website_routingRules(root, website)
         return ET.tostring(root, 'UTF-8')
 
-    def _trans_website_routingRules(self, root, website):
+    @staticmethod
+    def _trans_website_routingRules(root, website):
         if isinstance(website.get('routingRules'), list) and bool(website['routingRules']):
             routingRulesEle = ET.SubElement(root, 'RoutingRules')
             for routingRule in website['routingRules']:
@@ -613,7 +647,8 @@ class Convertor(object):
 
         return ET.tostring(root, 'UTF-8')
 
-    def trans_complete_multipart_upload_request(self, completeMultipartUploadRequest):
+    @staticmethod
+    def trans_complete_multipart_upload_request(completeMultipartUploadRequest):
         root = ET.Element('CompleteMultipartUpload')
         parts = [] if completeMultipartUploadRequest.get('parts') is None else (
             sorted(completeMultipartUploadRequest['parts'], key=lambda d: d.partNum))
@@ -724,7 +759,7 @@ class Convertor(object):
     def trans_restore(self, days, tier):
         root = ET.Element('RestoreRequest')
         ET.SubElement(root, 'Days').text = util.to_string(days)
-        tier = self.ha.adapt_retore_tier(tier)
+        tier = self.ha.adapt_restore_tier(tier)
         if tier is not None:
             glacierJobEle = ET.SubElement(root, 'RestoreJob') if self.is_obs else ET.SubElement(root,
                                                                                                 'GlacierJobParameters')
@@ -742,6 +777,7 @@ class Convertor(object):
                 self._put_key_value(_headers, k, v)
         if headers is not None and len(headers) > 0:
             self._put_key_value(_headers, const.CONTENT_MD5_HEADER, headers.get('md5'))
+            self._put_key_value(_headers, self.ha.content_sha256_header(), headers.get('sha256'))
             self._put_key_value(_headers, self.ha.acl_header(), self.ha.adapt_acl_control(headers.get('acl')))
             self._put_key_value(_headers, self.ha.website_redirect_location_header(), headers.get('location'))
             self._put_key_value(_headers, const.CONTENT_TYPE_HEADER, headers.get('contentType'))
@@ -771,6 +807,8 @@ class Convertor(object):
         return _headers
 
     def trans_initiate_multipart_upload(self, **kwargs):
+        pathArgs = {'uploads': None}
+        self._put_key_value(pathArgs, "encoding-type", kwargs.get('encoding_type'))
         headers = {}
         self._put_key_value(headers, self.ha.acl_header(), self.ha.adapt_acl_control(kwargs.get('acl')))
         self._put_key_value(headers, self.ha.storage_class_header(),
@@ -800,7 +838,7 @@ class Convertor(object):
 
             for key, value in grantDict.items():
                 self._put_key_value(headers, key, ','.join(value))
-        return {'pathArgs': {'uploads': None}, 'headers': headers}
+        return {'pathArgs': pathArgs, 'headers': headers}
 
     def trans_set_object_metadata(self, **kwargs):
         versionId = kwargs.get('versionId')
@@ -955,6 +993,7 @@ class Convertor(object):
 
     def trans_list_multipart_uploads(self, **kwargs):
         pathArgs = {'uploads': None}
+        self._put_key_value(pathArgs, 'encoding-type', kwargs.get('encoding_type'))
         multipart = kwargs.get('multipart')
         if multipart is not None:
             self._put_key_value(pathArgs, 'delimiter', multipart.get('delimiter'))
@@ -1022,7 +1061,8 @@ class Convertor(object):
                             replicationRule['storageClass'])
         return ET.tostring(root, 'UTF-8')
 
-    def trans_bucket_request_payment(self, payer):
+    @staticmethod
+    def trans_bucket_request_payment(payer):
         root = ET.Element('RequestPaymentConfiguration')
         ET.SubElement(root, 'Payer').text = util.to_string(payer)
         return ET.tostring(root, 'UTF-8')
@@ -1059,13 +1099,18 @@ class Convertor(object):
         entity = json.dumps(fetchJob, ensure_ascii=False)
         return {'headers': headers, 'entity': entity}
 
-    def _find_item(self, root, itemname):
-        result = root.find(itemname)
+    @staticmethod
+    def _find_item(root, item_name, encoding_type=None):
+        result = root.find(item_name)
         if result is None:
             return None
         result = result.text
+        if result is None:
+            return None
         if const.IS_PYTHON2:
             result = util.safe_encode(result)
+        if encoding_type == "url":
+            return util.to_string(unquote_plus(result))
         return util.to_string(result)
 
     def parseListBuckets(self, xml, headers=None):
@@ -1100,20 +1145,21 @@ class Convertor(object):
 
     def parseListObjects(self, xml, headers=None):
         root = ET.fromstring(xml)
+        encoding_type = self._find_item(root, 'EncodingType')
 
         name = self._find_item(root, 'Name')
-        prefix = self._find_item(root, 'Prefix')
-        marker = self._find_item(root, 'Marker')
-        delimiter = self._find_item(root, 'Delimiter')
+        prefix = self._find_item(root, 'Prefix', encoding_type)
+        marker = self._find_item(root, 'Marker', encoding_type)
+        delimiter = self._find_item(root, 'Delimiter', encoding_type)
         max_keys = self._find_item(root, 'MaxKeys')
         is_truncated = self._find_item(root, 'IsTruncated')
-        next_marker = self._find_item(root, 'NextMarker')
+        next_marker = self._find_item(root, 'NextMarker', encoding_type)
 
         key_entries = []
         contents = root.findall('Contents')
         if contents is not None:
             for node in contents:
-                key = self._find_item(node, 'Key')
+                key = self._find_item(node, 'Key', encoding_type)
                 lastmodified = self._find_item(node, 'LastModified')
                 etag = self._find_item(node, 'ETag')
                 size = self._find_item(node, 'Size')
@@ -1130,19 +1176,19 @@ class Convertor(object):
                                     isAppendable=isAppendable == 'Appendable')
                 key_entries.append(key_entry)
 
-        commonprefixs = []
+        common_prefixes = []
         prefixes = root.findall('CommonPrefixes')
         if prefixes is not None:
             for p in prefixes:
-                pre = self._find_item(p, 'Prefix')
+                pre = self._find_item(p, 'Prefix', encoding_type)
                 commonprefix = CommonPrefix(prefix=pre)
-                commonprefixs.append(commonprefix)
+                common_prefixes.append(commonprefix)
 
         location = headers.get(self.ha.bucket_region_header())
         return ListObjectsResponse(name=name, location=location, prefix=prefix, marker=marker, delimiter=delimiter,
                                    max_keys=util.to_int(max_keys),
                                    is_truncated=util.to_bool(is_truncated), next_marker=next_marker,
-                                   contents=key_entries, commonPrefixs=commonprefixs)
+                                   contents=key_entries, commonPrefixs=common_prefixes, encoding_type=encoding_type)
 
     def parseGetBucketMetadata(self, headers):
         option = GetBucketMetadataResponse()
@@ -1169,7 +1215,8 @@ class Convertor(object):
         objectNumber = self._find_item(root, 'ObjectNumber')
         return GetBucketStorageInfoResponse(size=util.to_long(size), objectNumber=util.to_int(objectNumber))
 
-    def parseGetBucketPolicy(self, json_str, headers=None):
+    @staticmethod
+    def parseGetBucketPolicy(json_str, headers=None):
         return Policy(policyJSON=json_str)
 
     def parseGetBucketStoragePolicy(self, xml, headers=None):
@@ -1193,7 +1240,8 @@ class Convertor(object):
 
         return result
 
-    def parseGetBucketTagging(self, xml, headers=None):
+    @staticmethod
+    def parseGetBucketTagging(xml, headers=None):
         result = TagInfo()
         root = ET.fromstring(xml)
         tags = root.findall('TagSet/Tag')
@@ -1244,12 +1292,14 @@ class Convertor(object):
 
     def parseListVersions(self, xml, headers=None):
         root = ET.fromstring(xml)
+        encoding_type = self._find_item(root, 'EncodingType')
+
         Name = self._find_item(root, 'Name')
-        Prefix = self._find_item(root, 'Prefix')
-        Delimiter = self._find_item(root, 'Delimiter')
-        KeyMarker = self._find_item(root, 'KeyMarker')
+        Prefix = self._find_item(root, 'Prefix', encoding_type)
+        Delimiter = self._find_item(root, 'Delimiter', encoding_type)
+        KeyMarker = self._find_item(root, 'KeyMarker', encoding_type)
         VersionIdMarker = self._find_item(root, 'VersionIdMarker')
-        NextKeyMarker = self._find_item(root, 'NextKeyMarker')
+        NextKeyMarker = self._find_item(root, 'NextKeyMarker', encoding_type)
         NextVersionIdMarker = self._find_item(root, 'NextVersionIdMarker')
         MaxKeys = self._find_item(root, 'MaxKeys')
         IsTruncated = self._find_item(root, 'IsTruncated')
@@ -1258,12 +1308,12 @@ class Convertor(object):
                                  versionIdMarker=VersionIdMarker,
                                  nextKeyMarker=NextKeyMarker, nextVersionIdMarker=NextVersionIdMarker,
                                  maxKeys=util.to_int(MaxKeys),
-                                 isTruncated=util.to_bool(IsTruncated))
+                                 isTruncated=util.to_bool(IsTruncated), encoding_type=encoding_type)
 
         version_list = []
         versions = root.findall('Version')
         for version in versions:
-            Key = self._find_item(version, 'Key')
+            Key = self._find_item(version, 'Key', encoding_type)
             VersionId = self._find_item(version, 'VersionId')
             IsLatest = self._find_item(version, 'IsLatest')
             LastModified = self._find_item(version, 'LastModified')
@@ -1286,7 +1336,7 @@ class Convertor(object):
         marker_list = []
         markers = root.findall('DeleteMarker')
         for marker in markers:
-            Key = self._find_item(marker, 'Key')
+            Key = self._find_item(marker, 'Key', encoding_type)
             VersionId = self._find_item(marker, 'VersionId')
             IsLatest = self._find_item(marker, 'IsLatest')
             LastModified = self._find_item(marker, 'LastModified')
@@ -1300,15 +1350,16 @@ class Convertor(object):
                                         lastModified=DateTime.UTCToLocal(LastModified), owner=Owners)
             marker_list.append(Marker)
 
-        prefixs = root.findall('CommonPrefixes')
+        prefixes = root.findall('CommonPrefixes')
         prefix_list = []
-        for prefix in prefixs:
-            Prefix = self._find_item(prefix, 'Prefix')
+        for prefix in prefixes:
+            Prefix = self._find_item(prefix, 'Prefix', encoding_type)
             Pre = CommonPrefix(prefix=Prefix)
             prefix_list.append(Pre)
         return ObjectVersions(head=head, markers=marker_list, commonPrefixs=prefix_list, versions=version_list)
 
-    def parseOptionsBucket(self, headers):
+    @staticmethod
+    def parseOptionsBucket(headers):
         option = OptionsResponse()
         option.accessContorlAllowOrigin = headers.get('access-control-allow-origin')
         option.accessContorlAllowHeaders = headers.get('access-control-allow-headers')
@@ -1322,9 +1373,11 @@ class Convertor(object):
         deleted_list = []
         error_list = []
         deleteds = root.findall('Deleted')
+        encoding_type = self._find_item(root, 'EncodingType')
+
         if deleteds:
             for d in deleteds:
-                key = self._find_item(d, 'Key')
+                key = self._find_item(d, 'Key', encoding_type)
                 versionId = self._find_item(d, 'VersionId')
                 deleteMarker = d.find('DeleteMarker')
                 deleteMarker = util.to_bool(deleteMarker.text) if deleteMarker is not None else None
@@ -1334,12 +1387,12 @@ class Convertor(object):
         errors = root.findall('Error')
         if errors:
             for e in errors:
-                _key = self._find_item(e, 'Key')
+                _key = self._find_item(e, 'Key', encoding_type)
                 _versionId = self._find_item(e, 'VersionId')
                 _code = self._find_item(e, 'Code')
                 _message = self._find_item(e, 'Message')
                 error_list.append(ErrorResult(key=_key, versionId=_versionId, code=_code, message=_message))
-        return DeleteObjectsResponse(deleted=deleted_list, error=error_list)
+        return DeleteObjectsResponse(deleted=deleted_list, error=error_list, encoding_type=encoding_type)
 
     def parseDeleteObject(self, headers):
         deleteObjectResponse = DeleteObjectResponse()
@@ -1360,18 +1413,18 @@ class Convertor(object):
             _id = self._find_item(rule, 'ID')
             prefix = self._find_item(rule, 'Prefix')
             status = self._find_item(rule, 'Status')
-            expira = rule.find('Expiration')
+            expired = rule.find('Expiration')
             expiration = None
-            if expira is not None:
-                d = expira.find('Date')
+            if expired is not None:
+                d = expired.find('Date')
                 date = DateTime.UTCToLocalMid(d.text) if d is not None else None
-                day = expira.find('Days')
+                day = expired.find('Days')
                 days = util.to_int(day.text) if day is not None else None
                 expiration = Expiration(date=date, days=days)
 
-            nocurrentExpira = rule.find('NoncurrentVersionExpiration')
+            nocurrent_expire = rule.find('NoncurrentVersionExpiration')
             noncurrentVersionExpiration = NoncurrentVersionExpiration(noncurrentDays=util.to_int(
-                nocurrentExpira.find('NoncurrentDays').text)) if nocurrentExpira is not None else None
+                nocurrent_expire.find('NoncurrentDays').text)) if nocurrent_expire is not None else None
 
             transis = rule.findall('Transition')
 
@@ -1500,10 +1553,12 @@ class Convertor(object):
 
     def parseListMultipartUploads(self, xml, headers=None):
         root = ET.fromstring(xml)
+        encoding_type = self._find_item(root, 'EncodingType')
+
         bucket = self._find_item(root, 'Bucket')
-        KeyMarker = self._find_item(root, 'KeyMarker')
+        KeyMarker = self._find_item(root, 'KeyMarker', encoding_type)
         UploadIdMarker = self._find_item(root, 'UploadIdMarker')
-        NextKeyMarker = self._find_item(root, 'NextKeyMarker')
+        NextKeyMarker = self._find_item(root, 'NextKeyMarker', encoding_type)
         NextUploadIdMarker = self._find_item(root, 'NextUploadIdMarker')
 
         MaxUploads = root.find('MaxUploads')
@@ -1512,14 +1567,14 @@ class Convertor(object):
         IsTruncated = root.find('IsTruncated')
         IsTruncated = util.to_bool(IsTruncated.text) if IsTruncated is not None else None
 
-        prefix = self._find_item(root, 'Prefix')
-        delimiter = self._find_item(root, 'Delimiter')
+        prefix = self._find_item(root, 'Prefix', encoding_type)
+        delimiter = self._find_item(root, 'Delimiter', encoding_type)
 
         rules = root.findall('Upload')
         uploadlist = []
         if rules:
             for rule in rules:
-                Key = self._find_item(rule, 'Key')
+                Key = self._find_item(rule, 'Key', encoding_type)
                 UploadId = self._find_item(rule, 'UploadId')
 
                 ID = self._find_item(rule, 'Initiator/ID')
@@ -1529,36 +1584,38 @@ class Convertor(object):
 
                 owner_id = self._find_item(rule, 'Owner/ID')
                 owner_name = None if self.is_obs else self._find_item(rule, 'Owner/DisplayName')
-                ower = Owner(owner_id=owner_id, owner_name=owner_name)
+                owner = Owner(owner_id=owner_id, owner_name=owner_name)
 
                 StorageClass = self._find_item(rule, 'StorageClass')
 
                 Initiated = rule.find('Initiated')
                 Initiated = DateTime.UTCToLocal(Initiated.text) if Initiated is not None else None
-                upload = Upload(key=Key, uploadId=UploadId, initiator=initiator, owner=ower, storageClass=StorageClass,
+                upload = Upload(key=Key, uploadId=UploadId, initiator=initiator, owner=owner, storageClass=StorageClass,
                                 initiated=Initiated)
                 uploadlist.append(upload)
         common = root.findall('CommonPrefixes')
         commonlist = []
         if common:
             for comm in common:
-                comm_prefix = self._find_item(comm, 'Prefix')
+                comm_prefix = self._find_item(comm, 'Prefix', encoding_type)
                 Comm_Prefix = CommonPrefix(prefix=comm_prefix)
                 commonlist.append(Comm_Prefix)
         return ListMultipartUploadsResponse(bucket=bucket, keyMarker=KeyMarker, uploadIdMarker=UploadIdMarker,
                                             nextKeyMarker=NextKeyMarker, nextUploadIdMarker=NextUploadIdMarker,
                                             maxUploads=MaxUploads,
                                             isTruncated=IsTruncated, prefix=prefix, delimiter=delimiter,
-                                            upload=uploadlist, commonPrefixs=commonlist)
+                                            upload=uploadlist, commonPrefixs=commonlist, encoding_type=encoding_type)
 
     def parseCompleteMultipartUpload(self, xml, headers=None):
         root = ET.fromstring(xml)
+        encoding_type = self._find_item(root, 'EncodingType')
+
         location = self._find_item(root, 'Location')
         bucket = self._find_item(root, 'Bucket')
-        key = self._find_item(root, 'Key')
+        key = self._find_item(root, 'Key', encoding_type)
         eTag = self._find_item(root, 'ETag')
         completeMultipartUploadResponse = CompleteMultipartUploadResponse(location=location, bucket=bucket, key=key,
-                                                                          etag=eTag)
+                                                                          etag=eTag, encoding_type=encoding_type)
         completeMultipartUploadResponse.versionId = headers.get(self.ha.version_id_header())
         completeMultipartUploadResponse.sseKms = headers.get(self.ha.sse_kms_header())
         completeMultipartUploadResponse.sseKmsKey = headers.get(self.ha.sse_kms_key_header())
@@ -1569,8 +1626,10 @@ class Convertor(object):
 
     def parseListParts(self, xml, headers=None):
         root = ET.fromstring(xml)
+        encoding_type = self._find_item(root, 'EncodingType')
+
         bucketName = self._find_item(root, 'Bucket')
-        objectKey = self._find_item(root, 'Key')
+        objectKey = self._find_item(root, 'Key', encoding_type)
         uploadId = self._find_item(root, 'UploadId')
 
         storageClass = self._find_item(root, 'StorageClass')
@@ -1588,30 +1647,30 @@ class Convertor(object):
 
         initiator = Initiator(id=initiatorid, name=displayname)
 
-        ownerid = self._find_item(root, 'Owner/ID')
-        ownername = self._find_item(root, 'Owner/DisplayName')
-        owner = Owner(owner_id=ownerid, owner_name=ownername)
+        owner_id = self._find_item(root, 'Owner/ID')
+        owner_name = self._find_item(root, 'Owner/DisplayName')
+        owner = Owner(owner_id=owner_id, owner_name=owner_name)
 
         parts = self._parseListPartsHandleParts(root)
 
         return ListPartsResponse(bucketName=bucketName, objectKey=objectKey, uploadId=uploadId, initiator=initiator,
                                  owner=owner, storageClass=storageClass,
                                  partNumberMarker=partNumbermarker, nextPartNumberMarker=nextPartNumberMarker,
-                                 maxParts=maxParts, isTruncated=isTruncated, parts=parts)
+                                 maxParts=maxParts, isTruncated=isTruncated, parts=parts, encoding_type=encoding_type)
 
     def _parseListPartsHandleParts(self, root):
         part_list = root.findall('Part')
         parts = []
         if part_list:
             for part in part_list:
-                partnumber = part.find('PartNumber')
-                partnumber = util.to_int(partnumber.text) if partnumber is not None else None
-                modifieddate = part.find('LastModified')
-                modifieddate = DateTime.UTCToLocal(modifieddate.text) if modifieddate is not None else None
+                part_number = part.find('PartNumber')
+                part_number = util.to_int(part_number.text) if part_number is not None else None
+                modified_date = part.find('LastModified')
+                modified_date = DateTime.UTCToLocal(modified_date.text) if modified_date is not None else None
                 etag = self._find_item(part, 'ETag')
                 size = part.find('Size')
                 size = util.to_long(size.text) if size is not None else None
-                parts.append(Part(partNumber=partnumber, lastModified=modifieddate, etag=etag, size=size))
+                parts.append(Part(partNumber=part_number, lastModified=modified_date, etag=etag, size=size))
         return parts
 
     def parseGetBucketAcl(self, xml, headers=None):
@@ -1706,10 +1765,13 @@ class Convertor(object):
 
     def parseInitiateMultipartUpload(self, xml, headers=None):
         root = ET.fromstring(xml)
+        encoding_type = self._find_item(root, 'EncodingType')
+
         bucketName = self._find_item(root, 'Bucket')
-        objectKey = self._find_item(root, 'Key')
+        objectKey = self._find_item(root, 'Key', encoding_type)
         uploadId = self._find_item(root, 'UploadId')
-        response = InitiateMultipartUploadResponse(bucketName=bucketName, objectKey=objectKey, uploadId=uploadId)
+        response = InitiateMultipartUploadResponse(bucketName=bucketName, objectKey=objectKey, uploadId=uploadId,
+                                                   encoding_type=encoding_type)
         response.sseKms = headers.get(self.ha.sse_kms_header())
         response.sseKmsKey = headers.get(self.ha.sse_kms_key_header())
         response.sseC = headers.get(self.ha.sse_c_header())
@@ -1822,8 +1884,9 @@ class Convertor(object):
         payment = GetBucketRequestPaymentResponse(payer=payer)
         return payment
 
-    def _find_json_item(self, value, itemname):
-        result = value.get(itemname)
+    @staticmethod
+    def _find_json_item(value, item_name):
+        result = value.get(item_name)
         if result is None:
             return None
         if const.IS_PYTHON2:
@@ -1890,15 +1953,18 @@ class Convertor(object):
     # begin workflow related
     # begin workflow related
 
-    def parseGetJsonResponse(self, jsons, header=None):
+    @staticmethod
+    def parseGetJsonResponse(jsons, header=None):
         return jsons
 
-    def parseCreateWorkflowTemplateResponse(self, jsons, header=None):
+    @staticmethod
+    def parseCreateWorkflowTemplateResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         templateName = result.get('template_name')
         return CreateWorkflowTemplateResponse(templateName=templateName)
 
-    def parseGetWorkflowTemplateResponse(self, jsons, header=None):
+    @staticmethod
+    def parseGetWorkflowTemplateResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         templateName = result.get('template_name')
         description = result.get('description')
@@ -1911,7 +1977,8 @@ class Convertor(object):
                                            inputs=inputs, tags=tags, createTime=createTime,
                                            lastModifyTime=lastModifyTime)
 
-    def parseListWorkflowTemplateResponse(self, jsons, header=None):
+    @staticmethod
+    def parseListWorkflowTemplateResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         count = result.get('count')
         templates = result.get('templates')
@@ -1920,14 +1987,16 @@ class Convertor(object):
         return ListWorkflowTemplateResponse(templates=templates, count=count, nextStart=nextStart,
                                             isTruncated=isTruncated)
 
-    def parseCreateWorkflowResponse(self, jsons, header=None):
+    @staticmethod
+    def parseCreateWorkflowResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         graphName = result.get('graph_name')
         graphUrn = result.get('graph_urn')
         createdAt = result.get('created_at')
         return CreateWorkflowResponse(graphName=graphName, graphUrn=graphUrn, createdAt=createdAt)
 
-    def parseGetWorkflowResponse(self, jsons, header=None):
+    @staticmethod
+    def parseGetWorkflowResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         name = result.get('name')
         createdAt = result.get('created_at')
@@ -1937,14 +2006,16 @@ class Convertor(object):
         return GetWorkflowResponse(name=name, createdAt=createdAt, definition=definition, graphUrn=graphUrn,
                                    description=description)
 
-    def parseUpdateWorkflowResponse(self, jsons, header=None):
+    @staticmethod
+    def parseUpdateWorkflowResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         graphName = result.get('graph_name')
         graphUrn = result.get('graph_urn')
         lastModified = result.get('last_modified')
         return UpdateWorkflowResponse(graphName=graphName, graphUrn=graphUrn, lastModified=lastModified)
 
-    def parseListWorkflowResponse(self, jsons, header=None):
+    @staticmethod
+    def parseListWorkflowResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         count = result.get('count')
         graphs = result.get('graphs')
@@ -1952,7 +2023,8 @@ class Convertor(object):
         isTruncated = result.get('is_truncated')
         return ListWorkflowResponse(graphs=graphs, count=count, nextStart=nextStart, isTruncated=isTruncated)
 
-    def parseAsyncAPIStartWorkflowResponse(self, jsons, header=None):
+    @staticmethod
+    def parseAsyncAPIStartWorkflowResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         executionUrn = result.get('execution_urn')
         startedAt = result.get('started_at')
@@ -1960,7 +2032,8 @@ class Convertor(object):
         return AsyncAPIStartWorkflowResponse(executionUrn=executionUrn, startedAt=startedAt,
                                              executionName=executionName)
 
-    def parseListWorkflowExecutionResponse(self, jsons, header=None):
+    @staticmethod
+    def parseListWorkflowExecutionResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         count = result.get('count')
         nextMarker = result.get('next_marker')
@@ -1969,12 +2042,14 @@ class Convertor(object):
         return ListWorkflowExecutionResponse(count=count, nextMarker=nextMarker, isTruncated=isTruncated,
                                              executions=executions)
 
-    def parseGetWorkflowExecutionResponse(self, jsons, header=None):
+    @staticmethod
+    def parseGetWorkflowExecutionResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         executionInfo = result.get('execution_info')
         return GetWorkflowExecutionResponse(executionInfo=executionInfo)
 
-    def parseRestoreFailedWorkflowExecutionResponse(self, jsons, header=None):
+    @staticmethod
+    def parseRestoreFailedWorkflowExecutionResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         executionUrn = result.get('execution_urn')
         restoredAt = result.get('restored_at')
@@ -1982,7 +2057,8 @@ class Convertor(object):
         return RestoreFailedWorkflowExecutionResponse(executionUrn=executionUrn, restoredAt=restoredAt,
                                                       executionName=executionName)
 
-    def parseGetTriggerPolicyResponse(self, jsons, header=None):
+    @staticmethod
+    def parseGetTriggerPolicyResponse(jsons, header=None):
         result = util.jsonLoadsForPy2(jsons) if const.IS_PYTHON2 else json.loads(jsons)
         rules = result.get('rules')
         return GetTriggerPolicyResponse(rules=rules)
