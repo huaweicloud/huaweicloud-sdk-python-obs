@@ -2,6 +2,8 @@
   "ak": "",
   "sk": "",
   "endpoint": "",
+  "location": "",
+  "bucket_prefix": "",
   "bucketName": "",
   "path_prefix": "",
   "public_key": "",

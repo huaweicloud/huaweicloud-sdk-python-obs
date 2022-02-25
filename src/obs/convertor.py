@@ -16,6 +16,7 @@ try:
     import xml.etree.cElementTree as ET
 except Exception:
     import xml.etree.ElementTree as ET
+
 import json
 from obs import util
 from obs import const
@@ -36,7 +37,7 @@ from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowR
 from obs.model import DateTime, ListObjectsResponse, Content, CorsRule, ObjectVersionHead, ObjectVersion, \
     ObjectDeleteMarker, DeleteObjectResult, NoncurrentVersionExpiration, NoncurrentVersionTransition, Rule, Condition, \
     Redirect, FilterRule, FunctionGraphConfiguration, Upload, CompleteMultipartUploadResponse, ListPartsResponse, \
-    Grant, ReplicationRule, Transition, Grantee
+    Grant, ReplicationRule, Transition, Grantee, BucketAliasModel, ListBucketAliasModel
 
 if const.IS_PYTHON2:
     from urllib import unquote_plus, quote_plus
@@ -87,6 +88,10 @@ class Adapter(object):
     def epid_header(self):
         return self._get_header_prefix() + 'epid'
 
+    @staticmethod
+    def pfs_header():
+        return 'x-obs-fs-file-interface'
+
     def date_header(self):
         return self._get_header_prefix() + 'date'
 
@@ -115,6 +120,10 @@ class Adapter(object):
 
     def location_header(self):
         return self._get_header_prefix() + 'location'
+
+    @staticmethod
+    def queryPFS_header():
+        return 'x-obs-bucket-type'
 
     def bucket_region_header(self):
         return self._get_header_prefix() + 'bucket-location' if self.is_obs \
@@ -206,6 +215,9 @@ class Adapter(object):
 
     def request_payer_header(self):
         return self._get_header_prefix() + 'request-payer'
+
+    def location_clustergroup_id_header(self):
+        return self._get_header_prefix() + const.LOCATION_CLUSTERGROUP_ID
 
     def oef_marker_header(self):
         return self._get_header_prefix() + 'oef-marker'
@@ -305,6 +317,8 @@ class Convertor(object):
                                 self.ha.adapt_storage_class(header.get('storageClass')))
             self._put_key_value(headers, self.ha.az_redundancy_header(), header.get('availableZone'))
             self._put_key_value(headers, self.ha.epid_header(), header.get('epid'))
+            if header.get('isPFS'):
+                self._put_key_value(headers, self.ha.pfs_header(), "Enabled")
             extensionGrants = header.get('extensionGrants')
             if extensionGrants is not None and len(extensionGrants) > 0:
                 grantDict = {}
@@ -331,6 +345,8 @@ class Convertor(object):
         headers = {}
         if kwargs.get('isQueryLocation'):
             self._put_key_value(headers, self.ha.location_header(), 'true')
+        if kwargs.get('bucketType'):
+            self._put_key_value(headers, self.ha.queryPFS_header(), kwargs.get('bucketType'))
         return {'headers': headers}
 
     def trans_list_objects(self, **kwargs):
@@ -1049,16 +1065,23 @@ class Convertor(object):
                     ET.SubElement(ruleEle, 'Prefix').text = util.safe_decode(replicationRule['prefix'])
                 if replicationRule.get('status') is not None:
                     ET.SubElement(ruleEle, 'Status').text = util.to_string(replicationRule['status'])
+                if replicationRule.get('historicalObjectReplication') is not None:
+                    ET.SubElement(ruleEle, 'HistoricalObjectReplication').text = util.to_string(
+                        replicationRule['historicalObjectReplication'])
 
-                if replication.get('bucket') is not None:
+                if replicationRule.get('bucket') is not None:
                     destinationEle = ET.SubElement(ruleEle, 'Destination')
                     bucket_name = util.to_string(replicationRule['bucket'])
                     bucket_name = bucket_name if self.is_obs else bucket_name if bucket_name.startswith(
                         'arn:aws:s3:::') else 'arn:aws:s3:::' + bucket_name
                     ET.SubElement(destinationEle, 'Bucket').text = bucket_name
+
                     if replicationRule.get('storageClass') is not None:
-                        ET.SubElement(destinationEle, 'Bucket').text = self.ha.adapt_storage_class(
+                        ET.SubElement(destinationEle, 'StorageClass').text = self.ha.adapt_storage_class(
                             replicationRule['storageClass'])
+
+                    if replicationRule.get('deleteData') is not None:
+                        ET.SubElement(destinationEle, 'DeleteData').text = util.to_string(replicationRule['deleteData'])
         return ET.tostring(root, 'UTF-8')
 
     @staticmethod
@@ -1070,7 +1093,9 @@ class Convertor(object):
     def trans_get_extension_headers(self, headers):
         _headers = {}
         if headers is not None and len(headers) > 0:
-            self._put_key_value(_headers, self.ha.request_payer_header(), (headers.get('requesterPayer')))
+            self._put_key_value(_headers, self.ha.request_payer_header(), headers.get('requesterPayer'))
+            self._put_key_value(_headers, self.ha.location_clustergroup_id_header(),
+                                headers.get('locationClusterGroupId'))
         return _headers
 
     # OEF trans func
@@ -1113,6 +1138,16 @@ class Convertor(object):
             return util.to_string(unquote_plus(result))
         return util.to_string(result)
 
+    @staticmethod
+    def _find_text(result, encoding_type=None):
+        if result is None:
+            return None
+        if const.IS_PYTHON2:
+            result = util.safe_encode(result)
+        if encoding_type == "url":
+            return util.to_string(unquote_plus(result))
+        return util.to_string(result)
+
     def parseListBuckets(self, xml, headers=None):
         root = ET.fromstring(xml)
         owner = root.find('Owner')
@@ -1129,8 +1164,9 @@ class Convertor(object):
             name = self._find_item(bucket, 'Name')
             d = self._find_item(bucket, 'CreationDate')
             location = self._find_item(bucket, 'Location')
+            bucket_type = self._find_item(bucket, 'BucketType')
             create_date = DateTime.UTCToLocal(d)
-            curr_bucket = Bucket(name=name, create_date=create_date, location=location)
+            curr_bucket = Bucket(name=name, create_date=create_date, location=location, bucket_type=bucket_type)
             entries.append(curr_bucket)
         return ListBucketsResponse(buckets=entries, owner=Owners)
 
@@ -1873,8 +1909,11 @@ class Convertor(object):
                 status = self._find_item(rule, 'Status')
                 bucket = self._find_item(rule, 'Destination/Bucket')
                 storageClass = self._find_item(rule, 'Destination/StorageClass')
+                deleteData = self._find_item(rule, 'Destination/DeleteData')
+                historicalObjectReplication = self._find_item(rule, 'Destination/HistoricalObjectReplication')
                 _rules.append(
-                    ReplicationRule(id=_id, prefix=prefix, status=status, bucket=bucket, storageClass=storageClass))
+                    ReplicationRule(id=_id, prefix=prefix, status=status, bucket=bucket, storageClass=storageClass,
+                                    deleteData=deleteData, historicalObjectReplication=historicalObjectReplication))
         replication = Replication(agency=agency, replicationRules=_rules)
         return replication
 
@@ -2066,3 +2105,79 @@ class Convertor(object):
     # end workflow related
     # end workflow related
     # end workflow related
+
+    # begin virtual bucket related
+    # begin virtual bucket related
+    # begin virtual bucket related
+
+    def trans_set_bucket_alias(self, **kwargs):
+        aliasInfo = kwargs.get('aliasInfo')
+        entity = None if aliasInfo is None or len(aliasInfo) == 0 else self.trans_set_aliasInfo(aliasInfo)
+        return {'pathArgs': {const.OBSBUCKETALIAS_PARAM: None}, 'entity': entity}
+
+    def trans_set_aliasInfo(self, aliasInfo):
+        root = ET.Element('CreateBucketAlias')
+        bucketListEle = ET.SubElement(root, 'BucketList')
+        ET.SubElement(bucketListEle, 'Bucket').text = util.to_string(aliasInfo.get('bucket1'))
+        ET.SubElement(bucketListEle, 'Bucket').text = util.to_string(aliasInfo.get('bucket2'))
+        return ET.tostring(root, 'UTF-8')
+
+    def trans_bind_bucket_alias(self, **kwargs):
+        aliasInfo = kwargs.get('aliasInfo')
+        entity = None if aliasInfo is None or len(aliasInfo) == 0 else self.trans_bind_aliasInfo(aliasInfo)
+        return {'pathArgs': {const.OBSALIAS_PARAM: None}, 'entity': entity}
+
+    def trans_bind_aliasInfo(self, aliasInfo):
+        root = ET.Element('AliasList')
+        ET.SubElement(root, 'Alias').text = util.to_string(aliasInfo.get('alias'))
+        return ET.tostring(root, 'UTF-8')
+
+    def parseGetBucketAlias(self, xml, header=None):
+        root = ET.fromstring(xml)
+        bucketAliasXml = root.find('BucketAlias')
+        alias = self._find_item(bucketAliasXml, 'Alias')
+        bucketAlias = BucketAliasModel(alias=alias)
+
+        bucketListXml = bucketAliasXml.find('BucketList').findall('Bucket')
+        bucketNameList = []
+        for bucketXml in bucketListXml:
+            bucketNameList.append(self._find_text(bucketXml.text))
+
+        if len(bucketNameList) > 0:
+            bucketAlias.bucket1 = bucketNameList[0]
+        if len(bucketNameList) > 1:
+            bucketAlias.bucket2 = bucketNameList[1]
+
+        return bucketAlias
+
+    def parseListBucketAlias(self, xml, header=None):
+        root = ET.fromstring(xml)
+        ownerXml = root.find('Owner')
+        ownerID = self._find_item(ownerXml, 'ID')
+        listBucketAlias = ListBucketAliasModel(owner=ownerID)
+
+        bucketAliasListXml = root.find('BucketAliasList').findall('BucketAlias')
+        bucketAliasList = []
+        for bucketAliasXml in bucketAliasListXml:
+            alias = self._find_item(bucketAliasXml, 'Alias')
+            creationDate = self._find_item(bucketAliasXml, 'CreationDate')
+            bucketAlias = BucketAliasModel(alias=alias, creationDate=creationDate)
+
+            bucketListXml = bucketAliasXml.find('BucketList').findall('Bucket')
+            bucketNameList = []
+            for bucketXml in bucketListXml:
+                bucketNameList.append(self._find_text(bucketXml.text))
+
+            if len(bucketNameList) > 0:
+                bucketAlias.bucket1 = bucketNameList[0]
+            if len(bucketNameList) > 1:
+                bucketAlias.bucket2 = bucketNameList[1]
+
+            bucketAliasList.append(bucketAlias)
+
+        listBucketAlias.bucketAlias = bucketAliasList
+        return listBucketAlias
+
+    # end virtual bucket related
+    # end virtual bucket related
+    # end virtual bucket related

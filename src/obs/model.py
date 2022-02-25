@@ -132,7 +132,9 @@ __all__ = [
     'ListWorkflowExecutionResponse',
     'GetWorkflowExecutionResponse',
     'RestoreFailedWorkflowExecutionResponse',
-    'GetTriggerPolicyResponse'
+    'GetTriggerPolicyResponse',
+    'BucketAliasModel',
+    'ListBucketAliasModel'
 ]
 
 
@@ -291,12 +293,13 @@ class ACL(BaseModel):
 
 
 class Bucket(BaseModel):
-    allowedAttr = {'name': BASESTRING, 'create_date': BASESTRING, 'location': BASESTRING}
+    allowedAttr = {'name': BASESTRING, 'create_date': BASESTRING, 'location': BASESTRING, "bucket_type": BASESTRING}
 
-    def __init__(self, name=None, create_date=None, location=None):
+    def __init__(self, name=None, create_date=None, location=None, bucket_type=None):
         self.name = name
         self.create_date = create_date
         self.location = location
+        self.bucket_type = bucket_type
 
 
 class CommonPrefix(BaseModel):
@@ -476,14 +479,28 @@ class CorsRule(BaseModel):
 
 class CreateBucketHeader(BaseModel):
     allowedAttr = {'aclControl': BASESTRING, 'storageClass': BASESTRING, 'extensionGrants': list,
-                   'availableZone': BASESTRING, 'epid': BASESTRING}
+                   'availableZone': BASESTRING, 'epid': BASESTRING, "isPFS": bool}
 
-    def __init__(self, aclControl=None, storageClass=None, extensionGrants=None, availableZone=None, epid=None):
+    def __init__(self, aclControl=None, storageClass=None, extensionGrants=None,
+                 availableZone=None, epid=None, isPFS=False):
+        """
+        Headers that can be carried during bucket creation
+        :param aclControl: ACL policy of a bucket
+        :param storageClass: Specifies the default storage class of a bucket. The value can be "STANDARD" (Standard),
+               "WARM" (Infrequent Access), and "COLD" (Archive). The Standard storage class is used by default.
+        :param extensionGrants: Extended permission list that can be specified during bucket creation.
+        :param availableZone: AZ type that can be specified during bucket creation. A single AZ is used by default.
+               You can also use "3az".
+        :param epid: Enterprise project ID. Users who have enabled the enterprise project function can obtain this ID
+               from the enterprise project management service.
+        :param isPFS: Specifies whether to create a parallel file system.
+        """
         self.aclControl = aclControl
         self.storageClass = storageClass
         self.extensionGrants = extensionGrants
         self.availableZone = availableZone
         self.epid = epid
+        self.isPFS = isPFS
 
 
 class ExtensionGrant(BaseModel):
@@ -558,14 +575,17 @@ class Replication(BaseModel):
 
 class ReplicationRule(BaseModel):
     allowedAttr = {'id': BASESTRING, 'prefix': BASESTRING, 'status': BASESTRING, 'bucket': BASESTRING,
-                   'storageClass': BASESTRING}
+                   'storageClass': BASESTRING, 'deleteData': BASESTRING, 'historicalObjectReplication': BASESTRING}
 
-    def __init__(self, id=None, prefix=None, status=None, bucket=None, storageClass=None):
+    def __init__(self, id=None, prefix=None, status=None, bucket=None, storageClass=None, deleteData=None,
+                 historicalObjectReplication=None):
         self.id = id
         self.prefix = prefix
         self.status = status
         self.bucket = bucket
         self.storageClass = storageClass
+        self.deleteData = deleteData
+        self.historicalObjectReplication = historicalObjectReplication
 
 
 class Notification(BaseModel):
@@ -1393,10 +1413,11 @@ class ObjectStream(BaseModel):
 
 
 class ExtensionHeader(BaseModel):
-    allowedAttr = {'requesterPayer': BASESTRING}
+    allowedAttr = {'requesterPayer': BASESTRING, 'locationClusterGroupId': BASESTRING}
 
-    def __init__(self, requesterPayer=None):
+    def __init__(self, requesterPayer=None, locationClusterGroupId=None):
         self.requesterPayer = requesterPayer
+        self.locationClusterGroupId = locationClusterGroupId
 
 
 # OEF Model
@@ -1594,6 +1615,32 @@ class GetTriggerPolicyResponse(BaseModel):
     def __init__(self, rules=None):
         self.rules = rules
 
+
 # end workflow related
 # end workflow related
 # end workflow related
+
+# begin virtual bucket related
+# begin virtual bucket related
+# begin virtual bucket related
+
+class BucketAliasModel(BaseModel):
+    allowedAttr = {'alias': BASESTRING, 'bucket1': BASESTRING, 'bucket2': BASESTRING, 'creationDate': BASESTRING}
+
+    def __init__(self, alias=None, bucket1=None, bucket2=None, creationDate=None):
+        self.alias = alias
+        self.bucket1 = bucket1
+        self.bucket2 = bucket2
+        self.creationDate = creationDate
+
+
+class ListBucketAliasModel(BaseModel):
+    allowedAttr = {'owner': BASESTRING, 'bucketAlias': list}
+
+    def __init__(self, owner=None, bucketAlias=None):
+        self.owner = owner
+        self.bucketAlias = bucketAlias
+
+# end virtual bucket related
+# end virtual bucket related
+# end virtual bucket related

@@ -8,7 +8,7 @@ from datetime import datetime
 import pytest
 
 import conftest
-from obs import GetObjectHeader, ObsClient, UploadFileHeader
+from obs import CreateBucketHeader, GetObjectHeader, ObsClient, UploadFileHeader
 from conftest import test_config
 
 from obs.const import IS_PYTHON2
@@ -28,6 +28,75 @@ class TestOBSClient(object):
                                    server=test_config["endpoint"],
                                    is_signature_negotiation=False, path_style=path_style)
         return client_type, uploadClient, downloadClient
+
+    def test_create_PFS_bucket(self, delete_bucket_after_test):
+        _, uploadClient, _ = self.get_client()
+        bucket_name = test_config["bucket_prefix"] + "create-pfs-001"
+        delete_bucket_after_test["client"] = uploadClient
+        delete_bucket_after_test["need_delete_buckets"].append(bucket_name)
+        create_bucket_header = CreateBucketHeader(isPFS=True)
+        create_result = uploadClient.createBucket(bucket_name, header=create_bucket_header,
+                                                  location=test_config["location"])
+        assert create_result.status == 200
+
+        bucket_metadata = uploadClient.getBucketMetadata(bucket_name)
+        assert bucket_metadata.status == 200
+        assert ("fs-file-interface", 'Enabled') in bucket_metadata.header
+
+    def test_create_object_bucket(self, delete_bucket_after_test):
+        _, uploadClient, _ = self.get_client()
+        bucket_name = test_config["bucket_prefix"] + "create-pfs-002"
+        delete_bucket_after_test["client"] = uploadClient
+        delete_bucket_after_test["need_delete_buckets"].append(bucket_name)
+        create_bucket_header = CreateBucketHeader(isPFS=False)
+        create_result = uploadClient.createBucket(bucket_name, header=create_bucket_header,
+                                                  location=test_config["location"])
+        assert create_result.status == 200
+
+        bucket_metadata = uploadClient.getBucketMetadata(bucket_name)
+        assert bucket_metadata.status == 200
+        assert ("fs-file-interface", 'Enabled') not in bucket_metadata.header
+
+        list_bucket_result = uploadClient.listBuckets(bucketType="OBJECT")
+        assert list_bucket_result.status == 200
+        all_object_buckets = [i["name"] for i in list_bucket_result.body["buckets"]]
+        assert bucket_name in all_object_buckets
+
+    def test_list_buckets(self, delete_bucket_after_test):
+        _, uploadClient, _ = self.get_client()
+        bucket_name = test_config["bucket_prefix"] + "list-pfs-001"
+        delete_bucket_after_test["client"] = uploadClient
+        delete_bucket_after_test["need_delete_buckets"].append(bucket_name)
+        create_bucket_header = CreateBucketHeader(isPFS=True)
+        create_result = uploadClient.createBucket(bucket_name, header=create_bucket_header,
+                                                  location=test_config["location"])
+        assert create_result.status == 200
+        bucket_name2 = test_config["bucket_prefix"] + "list-pfs-002"
+        delete_bucket_after_test["need_delete_buckets"].append(bucket_name2)
+        create_result2 = uploadClient.createBucket(bucket_name2, location=test_config["location"])
+        assert create_result2.status == 200
+
+        list_bucket_result = uploadClient.listBuckets(bucketType="POSIX")
+        assert list_bucket_result.status == 200
+        all_pfs_buckets = [i["name"] for i in list_bucket_result.body["buckets"]]
+        assert bucket_name in all_pfs_buckets
+        assert bucket_name2 not in all_pfs_buckets
+
+        list_bucket_result2 = uploadClient.listBuckets()
+        all_buckets = [i["name"] for i in list_bucket_result2.body["buckets"]]
+        assert bucket_name in all_buckets
+        assert bucket_name2 in all_buckets
+
+        list_bucket_result3 = uploadClient.listBuckets(bucketType="OBJECT")
+        assert list_bucket_result3.status == 200
+        all_object_buckets = [i["name"] for i in list_bucket_result3.body["buckets"]]
+        assert bucket_name not in all_object_buckets
+        assert bucket_name2 in all_object_buckets
+
+        list_bucket_result4 = uploadClient.listBuckets(bucketType="Wrong_Value")
+        all_buckets2 = [i["name"] for i in list_bucket_result4.body["buckets"]]
+        assert bucket_name in all_buckets2
+        assert bucket_name2 in all_buckets2
 
     def test_uploadFile_and_getObject_to_file(self, gen_test_file):
         client_type, uploadClient, downloadClient = self.get_client()
@@ -206,7 +275,10 @@ class TestOBSClient(object):
                                                     checkSum=True, taskNum=10)
             assert upload_result.status == 200
             object_metadata = uploadClient.getObjectMetadata(test_config["bucketName"], object_name)
-            assert dict(object_metadata.header)["storage-class"] == i
+            if i == "WARM":
+                assert dict(object_metadata.header)["storage-class"] in (i, "STANDARD_IA")
+            else:
+                assert dict(object_metadata.header)["storage-class"] in (i, "GLACIER")
             uploadClient.deleteObject(test_config["bucketName"], object_name)
         os.remove(test_config["path_prefix"] + object_name)
 
