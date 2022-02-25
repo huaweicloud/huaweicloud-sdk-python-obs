@@ -68,6 +68,16 @@ def gen_test_file(request):
     os.remove(test_config["path_prefix"] + file_name)
 
 
+@pytest.fixture()
+def delete_bucket_after_test():
+    results = {"need_delete_buckets": []}
+    yield results
+    if "client" in results:
+        for bucket_name in results["need_delete_buckets"]:
+            delete_result = results["client"].deleteBucket(bucket_name)
+            assert delete_result.status == 204
+
+
 def gen_random_file(file_name, file_size):
     tmp_1024 = "".join(chr(random.randint(10000, 40000)) for _ in range(341)).encode("UTF-8")
     tmp_1024 += b"m"

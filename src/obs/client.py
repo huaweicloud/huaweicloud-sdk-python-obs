@@ -22,8 +22,8 @@ import re
 import threading
 import time
 import traceback
+import json
 from inspect import isfunction
-
 from obs import auth, const, convertor, loadtoken, locks, progress, util
 from obs.bucket import BucketClient
 from obs.cache import LocalCache
@@ -31,7 +31,8 @@ from obs.extension import _download_files
 from obs.ilog import DEBUG, ERROR, INFO, LogClient, NoneLogClient, WARNING
 from obs.model import ACL, AppendObjectContent, AppendObjectHeader, BaseModel, CopyObjectHeader, CreateBucketHeader, \
     FetchPolicy, GetObjectHeader, GetObjectRequest, GetResult, ListMultipartUploadsRequest, Logging, Notification, \
-    ObjectStream, PutObjectHeader, ResponseWrapper, SetObjectMetadataHeader, Versions, _FetchJob
+    ObjectStream, PutObjectHeader, ResponseWrapper, SetObjectMetadataHeader, Versions, _FetchJob, ExtensionHeader, \
+    BucketAliasModel, Replication, ReplicationRule
 from obs.transfer import _resume_download, _resume_upload
 
 if const.IS_PYTHON2:
@@ -68,8 +69,9 @@ class _SecurityProvider(object):
         self.security_token = security_token
 
 
-def _isCopyOrList(name, obsClient, *args, **kwargs):
+def _getCacheKey(name, obsClient, *args, **kwargs):
     key = ''
+    list_operation = ['listBuckets', 'listBucketAlias']
     if name == 'copyObject':
         if kwargs.get('destBucketName'):
             key = kwargs['destBucketName']
@@ -79,7 +81,7 @@ def _isCopyOrList(name, obsClient, *args, **kwargs):
         if not obsClient.is_cname:
             obsClient._assert_not_null(key, 'destBucketName is empty')
 
-    elif name != 'listBuckets':
+    elif name not in list_operation:
         if len(args) > 1:
             key = args[1]
         elif kwargs.get('bucketName'):
@@ -139,12 +141,17 @@ def funcCache(func):
         try:
             if obsClient:
                 obsClient.log_client.log(INFO, 'enter %s ...' % func.__name__)
-                key = _isCopyOrList(func.__name__, obsClient, *args, **kwargs)
+                key = _getCacheKey(func.__name__, obsClient, *args, **kwargs)
 
                 if obsClient.is_signature_negotiation:
-                    authType, resp = _is_signature_negotiation(obsClient, func.__name__, key)
-                    if not authType:
-                        return resp
+                    black_list = ['listAvailableZoneInfo', 'createVirtualBucket', 'createBucketAlias',
+                                  'listBucketAlias', 'deleteBucketAlias']
+                    if func.__name__ in black_list:
+                        obsClient.thread_local.signature = const.OBS_SIGNATURE
+                    else:
+                        authType, resp = _is_signature_negotiation(obsClient, func.__name__, key)
+                        if not authType:
+                            return resp
             ret = func(*args, **kwargs)
         except Exception as e:
             if obsClient and obsClient.log_client:
@@ -261,6 +268,7 @@ class _BasicClient(object):
         else:
             self.ha = convertor.Adapter(self.signature)
             self.convertor = convertor.Convertor(self.signature, self.ha)
+        self.json_response_method_name = 'GetJsonResponse'
 
     @staticmethod
     def _parse_server_hostname(server):
@@ -667,7 +675,7 @@ class _BasicClient(object):
                     conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout)
             else:
                 conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout, context=self.context,
-                                               check_hostname=False)
+                                               check_hostname=None)
         else:
             conn = httplib.HTTPConnection(server, port=port, timeout=self.timeout)
 
@@ -1272,11 +1280,22 @@ class ObsClient(_BasicClient):
         return const.V2_SIGNATURE, res
 
     @funcCache
-    def listBuckets(self, isQueryLocation=True, extensionHeaders=None):
+    def listBuckets(self, isQueryLocation=True, extensionHeaders=None, bucketType=None):
+        """
+        Obtain a bucket list.
+        :param isQueryLocation: Whether to query the bucket location.
+        :param extensionHeaders: Other headers
+        :param bucketType: Type of the buckets you want to list. The value can be OBJECT or POSIX, or be left blank.
+               "OBJECT": To list common buckets.
+               "POSIX": To list parallel file systems.
+                If this parameter is left blank, both buckets and parallel file systems will be listed.
+        :return: A bucket list
+        """
         if self.is_cname:
             raise Exception('listBuckets is not allowed in custom domain mode')
         return self._make_get_request(methodName='listBuckets', extensionHeaders=extensionHeaders,
-                                      **self.convertor.trans_list_buckets(isQueryLocation=isQueryLocation))
+                                      **self.convertor.trans_list_buckets(isQueryLocation=isQueryLocation,
+                                                                          bucketType=bucketType))
 
     @funcCache
     def createBucket(self, bucketName, header=None, location=None, extensionHeaders=None):
@@ -2173,6 +2192,270 @@ class ObsClient(_BasicClient):
     def getBucketRequestPayment(self, bucketName, extensionHeaders=None):
         return self._make_get_request(bucketName, pathArgs={'requestPayment': None},
                                       methodName='getBucketRequestPayment', extensionHeaders=extensionHeaders)
+
+    # begin virtual bucket related
+    # begin virtual bucket related
+    # begin virtual bucket related
+
+    @funcCache
+    def listAvailableZoneInfo(self, regionId, token, extensionHeaders=None):
+        self._assert_not_null(regionId, 'regionId should not be empty')
+        self._assert_not_null(token, 'token should not be empty')
+
+        pathArgs = {'regionId': regionId}
+        header = {
+            const.X_AUTH_TOKEN_HEADER: token,
+            const.CONTENT_TYPE_HEADER: const.MIME_TYPES.get('json')
+        }
+
+        return self._make_get_request(
+            objectKey='v1/services/clusters',
+            pathArgs=pathArgs,
+            headers=header,
+            methodName=self.json_response_method_name,
+            extensionHeaders=extensionHeaders
+        )
+
+    @funcCache
+    def createBucketAlias(self, bucketName, aliasInfo=None, extensionHeaders=None):
+        if aliasInfo is None:
+            raise Exception('aliasInfo is None')
+        self._assert_not_null(aliasInfo.get('bucket1'), 'bucket1 should not be empty')
+        self._assert_not_null(aliasInfo.get('bucket2'), 'bucket2 should not be empty')
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders,
+                                      **self.convertor.trans_set_bucket_alias(aliasInfo=aliasInfo))
+
+    @funcCache
+    def bindBucketAlias(self, bucketName, aliasInfo=None, extensionHeaders=None):
+        if aliasInfo is None:
+            raise Exception('aliasInfo is None')
+        self._assert_not_null(aliasInfo.get('alias'), 'bucket alias should not be empty')
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders,
+                                      **self.convertor.trans_bind_bucket_alias(aliasInfo=aliasInfo))
+
+    @funcCache
+    def deleteBucketAlias(self, bucketAlias, extensionHeaders=None):
+        self._assert_not_null(bucketAlias, 'bucket alias should not be empty')
+        pathArgs = {const.OBSBUCKETALIAS_PARAM: None}
+        return self._make_delete_request(bucketName=bucketAlias, pathArgs=pathArgs, extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def unbindBucketAlias(self, bucketName, extensionHeaders=None):
+        pathArgs = {const.OBSALIAS_PARAM: None}
+        return self._make_delete_request(bucketName, pathArgs=pathArgs, extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def getBucketAlias(self, bucketName, extensionHeaders=None):
+        pathArgs = {const.OBSALIAS_PARAM: None}
+        return self._make_get_request(bucketName, pathArgs=pathArgs, methodName='getBucketAlias',
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def listBucketAlias(self, extensionHeaders=None):
+        pathArgs = {const.OBSBUCKETALIAS_PARAM: None}
+        return self._make_get_request(pathArgs=pathArgs, methodName='ListBucketAlias',
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def createVirtualBucket(self, regionId, token, bucketName1, bucketName2, bucketAlias, agencyName, header=None):
+        # step 1: 列举指定region下的集群信息
+        azResp = self.listAvailableZoneInfo(regionId, token)
+        if azResp.status != 200:
+            raise Exception('list AZ infos failed, resp: %s' % azResp)
+
+        firstAZCgId, secondAZCgId = self._get_cluster_group_id(azResp)
+
+        # step 2: 指定集群id创桶
+        self._create_bucket_with_cluster_id(firstAZCgId, secondAZCgId, bucketName1, bucketName2, bucketAlias, header)
+
+        # step 3: 创建一次别名
+        aliasInfo = BucketAliasModel()
+        aliasInfo.bucket1 = bucketName1
+        aliasInfo.bucket2 = bucketName2
+        cbaResp = self.createBucketAlias(bucketAlias, aliasInfo)
+        if cbaResp.status != 200:
+            self._clear_virtual_bucket(const.VIRTUAL_BUCKET_CREATEBUCKET_STAGED, bucketName1, bucketName2, bucketAlias)
+            raise Exception('create bucket alias failed, resp: %s' % cbaResp)
+
+        # step 4: 绑定两次别名，为两个真实桶分别绑定
+        aliasInfo.alias = bucketAlias
+        bindResp = self.bindBucketAlias(bucketName1, aliasInfo)
+        if bindResp.status != 200:
+            self._clear_virtual_bucket(const.VIRTUAL_BUCKET_CREATEALIAS_STAGED, bucketName1, bucketName2, bucketAlias)
+            raise Exception('binding bucket alias failed, resp: %s' % bindResp)
+
+        bindResp = self.bindBucketAlias(bucketName2, aliasInfo)
+        if bindResp.status != 200:
+            self._clear_virtual_bucket(const.VIRTUAL_BUCKET_BINDALIAS_STAGED, bucketName1, bucketName2, bucketAlias)
+            raise Exception('binding bucket alias failed, resp: %s' % bindResp)
+
+        # step 5: 双向配置复制关系，并开启历史对象复制
+        replicationResp = self._set_virtual_replication(agencyName, bucketName1, bucketName2)
+        if replicationResp.status != 200:
+            self._clear_virtual_bucket(const.VIRTUAL_BUCKET_BINDALIAS_STAGED, bucketName1, bucketName2, bucketAlias)
+            raise Exception('set replication failed, resp: %s' % replicationResp)
+
+        replicationResp = self._set_virtual_replication(agencyName, bucketName2, bucketName1)
+        if replicationResp.status != 200:
+            self._clear_virtual_bucket(const.VIRTUAL_BUCKET_BINDALIAS_STAGED, bucketName1, bucketName2, bucketAlias)
+            raise Exception('set replication failed, resp: %s' % replicationResp)
+
+        return {'code': 'OK', 'message': 'create virtual bucket success', 'virtualBucketName': bucketAlias,
+                'bucketName1': bucketName1, 'bucketName2': bucketName2}
+
+    def _get_cluster_group_id(self, azResp):
+        azJsonResp = util.jsonLoadsForPy2(azResp.body) if const.IS_PYTHON2 else json.loads(azResp.body)
+        azInfos = azJsonResp.get('infos')
+
+        if len(azInfos) != const.VIRTUAL_BUCKET_NEED_AZ_COUNT:
+            raise Exception('the number of AZs does not meet the requirements')
+
+        firstAZKey = next(iter(azInfos))
+        firstAZValue = azInfos.get(firstAZKey)
+        if len(firstAZValue) == 0:
+            raise Exception('no cluster exists in the AZ, AZ key: %s' % firstAZKey)
+
+        firstAZCgId = firstAZValue[0].get(const.KEY_CLUSTER_GROUP_ID)
+        if not firstAZCgId:
+            raise Exception('this AZs first cluster group id is None, AZ key: %s' % firstAZKey)
+
+        secondAZKey = list(azInfos.keys())[-1]
+        secondAZValue = azInfos.get(secondAZKey)
+        if len(secondAZValue) == 0:
+            raise Exception('no cluster exists in the AZ, AZ key: %s' % secondAZKey)
+
+        secondAZCgId = secondAZValue[0].get(const.KEY_CLUSTER_GROUP_ID)
+        if not secondAZCgId:
+            raise Exception('this AZs first cluster group id is None, AZ key: %s' % secondAZKey)
+
+        return firstAZCgId, secondAZCgId
+
+    def _create_bucket_with_cluster_id(self, firstAZCgId, secondAZCgId, bucketName1, bucketName2, bucketAlias, header):
+        # 判断桶是否存在
+        bucket1CgId, bucket2CgId = self._head_virtual_bucket(bucketName1, bucketName2)
+
+        # 两个桶都存在，且cluster group id一致
+        if bucket1CgId and bucket2CgId and bucket1CgId == bucket2CgId:
+            raise Exception('create bucket failed, both buckets exist and cluster group id is the same')
+
+        extensionHeaders = ExtensionHeader()
+
+        # 只存在桶1
+        if bucket1CgId:
+            extensionHeaders.locationClusterGroupId = secondAZCgId if bucket1CgId == firstAZCgId else firstAZCgId
+            cbResp = self.createBucket(bucketName2, header=header, extensionHeaders=extensionHeaders)
+            if cbResp.status != 200:
+                self._clear_virtual_bucket(const.VIRTUAL_BUCKET_CREATEBUCKET_STAGED, bucketName1, bucketName2,
+                                           bucketAlias)
+                raise Exception('create bucket failed, cluster group id: %s, resp: %s' % (
+                    extensionHeaders.locationClusterGroupId, cbResp))
+
+        # 只存在桶2
+        if bucket2CgId:
+            extensionHeaders.locationClusterGroupId = secondAZCgId if bucket2CgId == firstAZCgId else firstAZCgId
+            cbResp = self.createBucket(bucketName1, header=header, extensionHeaders=extensionHeaders)
+            if cbResp.status != 200:
+                self._clear_virtual_bucket(const.VIRTUAL_BUCKET_CREATEBUCKET_STAGED, bucketName1, bucketName2,
+                                           bucketAlias)
+                raise Exception('create bucket failed, cluster group id: %s, resp: %s' % (
+                    extensionHeaders.locationClusterGroupId, cbResp))
+
+        # 两个桶都不存在
+        if not bucket1CgId and not bucket2CgId:
+            extensionHeaders.locationClusterGroupId = firstAZCgId
+            cbResp = self.createBucket(bucketName1, header=header, extensionHeaders=extensionHeaders)
+            if cbResp.status != 200:
+                self._clear_virtual_bucket(const.VIRTUAL_BUCKET_CREATEBUCKET_STAGED, bucketName1, bucketName2,
+                                           bucketAlias)
+                raise Exception('create bucket failed, cluster group id: %s, resp: %s' % (firstAZCgId, cbResp))
+
+            extensionHeaders.locationClusterGroupId = secondAZCgId
+            cbResp = self.createBucket(bucketName2, header=header, extensionHeaders=extensionHeaders)
+            if cbResp.status != 200:
+                self._clear_virtual_bucket(const.VIRTUAL_BUCKET_CREATEBUCKET_STAGED, bucketName1, bucketName2,
+                                           bucketAlias)
+                raise Exception('create bucket failed, cluster group id: %s, resp: %s' % (secondAZCgId, cbResp))
+
+    def _head_virtual_bucket(self, bucketName1, bucketName2):
+        bucket1CgId = None
+        bucket2CgId = None
+
+        head1Resp = self.headBucket(bucketName1)
+        if head1Resp.status == 200:
+            for h in head1Resp.header:
+                if const.LOCATION_CLUSTERGROUP_ID in h:
+                    bucket1CgId = h[1]
+                    break
+
+        head2Resp = self.headBucket(bucketName2)
+        if head2Resp.status == 200:
+            for h in head2Resp.header:
+                if const.LOCATION_CLUSTERGROUP_ID in h:
+                    bucket2CgId = h[1]
+                    break
+
+        return bucket1CgId, bucket2CgId
+
+    def _set_virtual_replication(self, agencyName, sourceBucketName, destBucketName):
+        replication = Replication()
+        replication.agency = agencyName
+
+        # rule的默认规则如下：
+        # id：{sourceBucketName}_to_{destBucketName}
+        # prefix为空
+        # status为Enabled
+        # storageClass为STANDARD
+        # deleteData为Enabled
+        # historicalObjectReplication为Enabled
+        _rules = []
+        replicationRule = ReplicationRule()
+        replicationRule.id = sourceBucketName + '_to_' + destBucketName
+        replicationRule.prefix = ''
+        replicationRule.status = 'Enabled'
+        replicationRule.bucket = destBucketName
+        replicationRule.storageClass = 'STANDARD'
+        replicationRule.deleteData = 'Enabled'
+        replicationRule.historicalObjectReplication = 'Enabled'
+
+        _rules.append(replicationRule)
+        replication.replicationRules = _rules
+        resp = self.setBucketReplication(sourceBucketName, replication)
+        return resp
+
+    def _clear_virtual_bucket(self, staged, bucketName1, bucketName2, bucketAlias):
+        # staged取值：
+        # 1：创建真实桶
+        # 2：创建桶别名
+        # 3：绑定桶别名
+        if staged >= const.VIRTUAL_BUCKET_BINDALIAS_STAGED:
+            # 解绑桶别名
+            unbindResp = self.unbindBucketAlias(bucketName1)
+            if unbindResp.status != 204:
+                raise Exception('unbind bucket alias failed, resp: %s' % unbindResp)
+
+            unbindResp = self.unbindBucketAlias(bucketName2)
+            if unbindResp.status != 204:
+                raise Exception('unbind bucket alias failed, resp: %s' % unbindResp)
+
+        if staged >= const.VIRTUAL_BUCKET_CREATEALIAS_STAGED:
+            # 删除桶别名
+            deleteAliasResp = self.deleteBucketAlias(bucketAlias)
+            if deleteAliasResp.status != 204:
+                raise Exception('delete bucket alias failed, resp: %s' % deleteAliasResp)
+
+        if staged >= const.VIRTUAL_BUCKET_CREATEBUCKET_STAGED:
+            # 删除真实桶
+            deleteBucketResp = self.deleteBucket(bucketName1)
+            if deleteBucketResp.status != 204:
+                raise Exception('delete bucket failed, resp: %s' % deleteBucketResp)
+
+            deleteBucketResp = self.deleteBucket(bucketName2)
+            if deleteBucketResp.status != 204:
+                raise Exception('delete bucket failed, resp: %s' % deleteBucketResp)
+
+    # end virtual bucket related
+    # end virtual bucket related
+    # end virtual bucket related
 
     @funcCache
     def uploadFile(self, bucketName, objectKey, uploadFile, partSize=9 * 1024 * 1024,

@@ -1,3 +1,12 @@
+Version 3.22.2
+
+New Features:
+
+1. Added interfaces related to virtual buckets
+2. Compatibility changes have been made for the use of the Python3 HTTPS parameter
+
+------------------------------------------------------------------------------------------------- 
+
 Version 3.21.8
 
 New Features:

@@ -26,7 +26,6 @@ CONTENT_DISPOSITION_HEADER = 'Content-Disposition'
 CONTENT_ENCODING_HEADER = 'Content-Encoding'
 CONTENT_LANGUAGE_HEADER = 'Content-Language'
 EXPIRES_HEADER = 'Expires'
-
 DATE_HEADER = 'Date'
 
 CONTENT_LIST = [CONTENT_TYPE_HEADER.lower(), CONTENT_MD5_HEADER.lower(), DATE_HEADER.lower()]
@@ -54,6 +53,14 @@ LOCATION_HEADER = 'Location'
 ETAG_HEADER = 'ETag'
 LAST_MODIFIED_HEADER = 'Last-Modified'
 
+LOCATION_CLUSTERGROUP_ID = 'location-clustergroup-id'
+X_AUTH_TOKEN_HEADER = 'X-Auth-Token'
+KEY_CLUSTER_GROUP_ID = 'cgId'
+VIRTUAL_BUCKET_NEED_AZ_COUNT = 2
+VIRTUAL_BUCKET_CREATEBUCKET_STAGED = 1
+VIRTUAL_BUCKET_CREATEALIAS_STAGED = 2
+VIRTUAL_BUCKET_BINDALIAS_STAGED = 3
+
 VERSION_ID_PARAM = 'versionId'
 RESPONSE_CACHE_CONTROL_PARAM = 'response-cache-control'
 RESPONSE_CONTENT_DISPOSITION_PARAM = 'response-content-disposition'
@@ -62,6 +69,8 @@ RESPONSE_CONTENT_LANGUAGE_PARAM = 'response-content-language'
 RESPONSE_CONTENT_TYPE_PARAM = 'response-content-type'
 RESPONSE_EXPIRES_PARAM = 'response-expires'
 X_IMAGE_PROCESS_PARAM = 'x-image-process'
+OBSALIAS_PARAM = 'obsalias'
+OBSBUCKETALIAS_PARAM = 'obsbucketalias'
 
 HTTP_METHOD_PUT = 'PUT'
 HTTP_METHOD_POST = 'POST'
@@ -87,7 +96,7 @@ DEFAULT_TASK_INTTERVAL = 100
 DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 
-OBS_SDK_VERSION = '3.21.8'
+OBS_SDK_VERSION = '3.21.12'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -176,7 +185,11 @@ ALLOWED_RESOURCE_PARAMTER_NAMES = (
     'x-workflow-execution-state',
     'x-workflow-execution-type',
     'x-workflow-next-marker',
-    'obsworkflowtriggerpolicy'
+    'obsworkflowtriggerpolicy',
+
+    # virtual bucket api
+    'obsbucketalias',
+    'obsalias'
 )
 
 ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES = (
@@ -203,7 +216,8 @@ ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES = (
     'if-match',
     'if-none-match',
     'last-modified',
-    'content-range'
+    'content-range',
+    'x-auth-token'
 )
 
 ALLOWED_RESPONSE_HTTP_HEADER_METADATA_NAMES = (

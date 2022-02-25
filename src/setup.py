@@ -21,13 +21,16 @@ from setuptools import setup, find_packages
 
 setup(
     name='esdk-obs-python',
-    version='3.21.4',
-    packages=find_packages(),
+    version='3.21.12',
+    packages=find_packages(exclude=['tests']),
     zip_safe=False,
     description='OBS Python SDK',
     long_description='OBS Python SDK',
     license='Apache-2.0',
     keywords=('obs', 'python'),
+    install_requires=[
+        'pycryptodome==3.10.1'
+    ],
     platforms='Independant',
     url='',
 )
