@@ -23,7 +23,7 @@ from obs.model import Options, PutObjectHeader, AppendObjectHeader, AppendObject
 from obs.model import Redirect, RoutingRule, Tag, TagInfo, Transition, NoncurrentVersionTransition, Rule, Versions
 from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUploadRequest, DeleteObjectsRequest
 from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileHeader, Payer
-from obs.model import ExtensionHeader, FetchStatus, BucketAliasModel, ListBucketAliasModel
+from obs.model import ExtensionHeader, FetchStatus, BucketAliasModel, ListBucketAliasModel, AvailableZone
 from obs.workflow import WorkflowClient
 from obs.crypto_client import CryptoObsClient
 from obs.obs_cipher_suite import CTRCipherGenerator
@@ -93,5 +93,6 @@ __all__ = [
     'CTRCipherGenerator',
     'CtrRSACipherGenerator',
     'BucketAliasModel',
-    'ListBucketAliasModel'
+    'ListBucketAliasModel',
+    'AvailableZone',
 ]
