@@ -99,8 +99,8 @@ class ECS(object):
                 try:
                     reAccessKey = r'.*"access": "(.*?)",'
                     reSecretKey = r'.*"secret": "(.*?)",'
-                    reSecurityToken = r'.*"securitytoken": "(.*?)",'
-                    reExpires = r'.*"expires_at": "(.*?)"'
+                    reSecurityToken = r'.*"securitytoken": "(.*?)"'
+                    reExpires = r'.*"expires_at": "(.*?)",'
 
                     patternA = re.compile(reAccessKey)
                     patternS = re.compile(reSecretKey)

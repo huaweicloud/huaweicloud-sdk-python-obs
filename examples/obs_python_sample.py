@@ -32,7 +32,7 @@ bucketClient = obsClient.bucketClient(bucketName)
 
 # init log
 def initLog():
-    obsClient.initLog(LogConf('../log.conf'), 'obsclient')
+    obsClient.initLog(LogConf('../src/log.conf'), 'obsclient')
 
 
 # create bucket
@@ -141,7 +141,6 @@ def SetBucketAcl():
     Lacl = ACL(owner=Lowner, grants=Lgrants)
 
     resp = bucketClient.setBucketAcl(acl=Lacl)
-    # resp = obsClient.setBucketAcl(bucketName=bucketName, aclControl='public-read-write')
     print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
 
 
@@ -747,65 +746,10 @@ def GetObject():
 
 
 if __name__ == '__main__':
-    #     initLog()
     # =========================================================
     #     bucket operations
     # =========================================================
-    #     CreateBucket()
-    #     DeleteBucket()
-    #     ListBuckets()
-    #     HeadBucket()
-    #     GetBucketMetadata()
-    #     SetBucketQuota()
-    #     GetBucketQuota()
-    #     SetBucketStoragePolicy()
-    #     GetBucketStoragePolicy()
-    #     GetBucketStorageInfo()
-    #     SetBucketAcl()
-    #     GetBucketAcl()
-    #     SetBucketPolicy()
-    #     GetBucketPolicy()
-    #     DeleteBucketPolicy()
-    #     SetBucketVersioning()
-    #     GetBucketVersioning()
-    #     ListVersions()
-    #     ListObjects()
-    #     ListMultipartUploads()
-    #     SetBucketLifecycle()
-    #     GetBucketLifecycle()
-    #     DeleteBucketLifecycle()
-    #     SetBucketWebsite()
-    #     GetBucketWebsite()
-    #     DeleteBucketWebsite()
-    #     SetBucketLogging()
-    #     GetBucketLogging()
-    #     GetBucketLocation()
-    #     SetBucketTagging()
-    #     GetBucketTagging()
-    #     DeleteBucketTagging()
-    #     SetBucketCors()
-    #     GetBucketCors()
-    #     DeleteBucketCors()
-    #     SetBucketNotification()
-    #     GetBucketNotification()
     # =========================================================
     #     object operations
     # =========================================================
-    #     PutContent()
-    #     AppendObject()
-    #     CopyObject()
-    #     PutFile()
-    #     GetObject()
-    #     GetObjectMetadata()
-    #     SetObjectAcl()
-    #     GetObjectAcl()
-    #     DeleteObject()
-    #     DeleteObjects()
-    #     RestoreObject()
-    #     AbortMultipartUpload()
-    #     InitiateMultipartUpload()
-    #     UploadPart()
-    #     CompleteMultipartUpload()
-    #     CopyPart()
-    #     ListParts()
     pass

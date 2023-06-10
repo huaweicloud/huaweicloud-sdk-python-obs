@@ -88,6 +88,15 @@ class Adapter(object):
     def epid_header(self):
         return self._get_header_prefix() + 'epid'
 
+    def bucket_redundancy_header(self):
+        return self._get_header_prefix() + 'bucket-redundancy'
+
+    def fusion_allow_upgrade_header(self):
+        return self._get_header_prefix() + 'fusion-allow-upgrade'
+
+    def fusion_allow_alternative_header(self):
+        return self._get_header_prefix() + 'fusion-allow-alternative'
+
     @staticmethod
     def pfs_header():
         return 'x-obs-fs-file-interface'
@@ -317,6 +326,9 @@ class Convertor(object):
                                 self.ha.adapt_storage_class(header.get('storageClass')))
             self._put_key_value(headers, self.ha.az_redundancy_header(), header.get('availableZone'))
             self._put_key_value(headers, self.ha.epid_header(), header.get('epid'))
+            self._put_key_value(headers, self.ha.bucket_redundancy_header(), header.get('redundancy'))
+            self._put_key_value(headers, self.ha.fusion_allow_upgrade_header(), util.to_string(header.get('isFusionAllowUpgrade')).lower())
+            self._put_key_value(headers, self.ha.fusion_allow_alternative_header(), util.to_string(header.get('isFusionAllowAlternative')).lower())
             if header.get('isPFS'):
                 self._put_key_value(headers, self.ha.pfs_header(), "Enabled")
             extensionGrants = header.get('extensionGrants')
@@ -1096,6 +1108,9 @@ class Convertor(object):
             self._put_key_value(_headers, self.ha.request_payer_header(), headers.get('requesterPayer'))
             self._put_key_value(_headers, self.ha.location_clustergroup_id_header(),
                                 headers.get('locationClusterGroupId'))
+            for key, val in headers.items():
+                if key != 'requesterPayer' or 'locationClusterGroupId':
+                    self._put_key_value(_headers, key, val)
         return _headers
 
     # OEF trans func
@@ -1151,6 +1166,10 @@ class Convertor(object):
     def parseListBuckets(self, xml, headers=None):
         root = ET.fromstring(xml)
         owner = root.find('Owner')
+        marker = self._find_item(root, 'Marker')
+        maxKeys = self._find_item(root, 'MaxKeys')
+        isTruncated = self._find_item(root, 'IsTruncated')
+        nextMarker = self._find_item(root, 'NextMarker')
         Owners = None
         if owner is not None:
             ID = self._find_item(owner, 'ID')
@@ -1168,7 +1187,8 @@ class Convertor(object):
             create_date = DateTime.UTCToLocal(d)
             curr_bucket = Bucket(name=name, create_date=create_date, location=location, bucket_type=bucket_type)
             entries.append(curr_bucket)
-        return ListBucketsResponse(buckets=entries, owner=Owners)
+        return ListBucketsResponse(buckets=entries, owner=Owners, maxKeys=maxKeys,
+                                   marker=marker, isTruncated=isTruncated, nextMarker=nextMarker)
 
     def parseErrorResult(self, xml, headers=None):
         root = ET.fromstring(xml)
@@ -1238,6 +1258,7 @@ class Convertor(object):
         option.obsVersion = headers.get(self.ha.server_version_header())
         option.availableZone = headers.get(self.ha.az_redundancy_header())
         option.epid = headers.get(self.ha.epid_header())
+        option.redundancy = headers.get(self.ha.bucket_redundancy_header())
         return option
 
     def parseGetBucketLocation(self, xml, headers=None):
@@ -1249,7 +1270,29 @@ class Convertor(object):
         root = ET.fromstring(xml)
         size = self._find_item(root, 'Size')
         objectNumber = self._find_item(root, 'ObjectNumber')
-        return GetBucketStorageInfoResponse(size=util.to_long(size), objectNumber=util.to_int(objectNumber))
+        standardSize = self._find_item(root, 'StandardSize')
+        standardObjectNumber = self._find_item(root, 'StandardObjectNumber')
+        warmSize = self._find_item(root, 'WarmSize')
+        warmObjectNumber = self._find_item(root, 'WarmObjectNumber')
+        coldSize = self._find_item(root, 'ColdSize')
+        coldObjectNumber = self._find_item(root, 'ColdObjectNumber')
+        deepArchiveSize = self._find_item(root, 'DeepArchiveSize')
+        deepArchiveObjectNumber = self._find_item(root, 'DeepArchiveObjectNumber')
+        highPerformanceSize = self._find_item(root, 'HighPerformanceSize')
+        highPerformanceObjectNumber = self._find_item(root, 'HighPerformanceObjectNumber')
+        standard_IASize = self._find_item(root, 'Standard_IASize')
+        standard_IAObjectNumber = self._find_item(root, 'Standard_IAObjectNumber')
+        glacierSize = self._find_item(root, 'GlacierSize')
+        glacierObjectNumber = self._find_item(root, 'GlacierObjectNumber')
+
+        return GetBucketStorageInfoResponse(size=util.to_long(size), objectNumber=util.to_int(objectNumber),
+                                            standardSize=util.to_long(standardSize), standardObjectNumber=util.to_int(standardObjectNumber),
+                                            warmSize=util.to_long(warmSize), warmObjectNumber=util.to_int(warmObjectNumber),
+                                            coldSize=util.to_long(coldSize), coldObjectNumber=util.to_int(coldObjectNumber),
+                                            deepArchiveSize=util.to_long(deepArchiveSize), deepArchiveObjectNumber=util.to_int(deepArchiveObjectNumber),
+                                            highPerformanceSize=util.to_long(highPerformanceSize), highPerformanceObjectNumber=util.to_int(highPerformanceObjectNumber),
+                                            standard_IASize=util.to_long(standard_IASize), standard_IAObjectNumber=util.to_int(standard_IAObjectNumber),
+                                            glacierSize=util.to_long(glacierSize), glacierObjectNumber=util.to_int(glacierObjectNumber))
 
     @staticmethod
     def parseGetBucketPolicy(json_str, headers=None):

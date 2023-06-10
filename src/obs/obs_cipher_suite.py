@@ -2,8 +2,9 @@
 import binascii
 import hashlib
 import os
+import secrets
 
-from Crypto.Cipher import AES, PKCS1_v1_5
+from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Util import Counter
 from Crypto.Util.number import bytes_to_long
@@ -22,7 +23,7 @@ class CipherGenerator(object):
 
     @staticmethod
     def gen_random_key(key_length):
-        return os.urandom(key_length)
+        return secrets.token_bytes(key_length)
 
     def get_crypto_info_from_headers(self, header_dict):
         key_list = [i for i in header_dict.keys()]
@@ -259,7 +260,7 @@ class CtrRSACipherGenerator(CipherGenerator):
             key = f.read()
             self.master_key_sha256 = hashlib.sha256(key).hexdigest()
             self.master_crypto_key = RSA.importKey(key)
-        self.rsa = PKCS1_v1_5.new(self.master_crypto_key)
+        self.rsa = PKCS1_OAEP.new(self.master_crypto_key)
         self.crypto_mod = "AES256-Ctr/RSA-Object-Key/NoPadding"
         self.master_key_info = "" if master_key_info is None else master_key_info
 
@@ -284,7 +285,7 @@ class CtrRSACipherGenerator(CipherGenerator):
         return binascii.b2a_base64(self.rsa.encrypt(key_str)).strip().decode("UTF-8")
 
     def decrypt_object_encryption_key(self, key_str):
-        return self.rsa.decrypt(binascii.a2b_base64(key_str), 0)
+        return self.rsa.decrypt(binascii.a2b_base64(key_str))
 
     def get_crypto_info_from_headers(self, header_dict):
         header_dict = super(CtrRSACipherGenerator, self).get_crypto_info_from_headers(header_dict)

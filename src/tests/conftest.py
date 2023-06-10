@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import random
+import stat
 import sys
 
 import pytest
@@ -75,12 +76,16 @@ def delete_bucket_after_test():
     if "client" in results:
         for bucket_name in results["need_delete_buckets"]:
             delete_result = results["client"].deleteBucket(bucket_name)
-            assert delete_result.status == 204
+            if not delete_result.status == 204:
+                raise AssertionError
 
 
 def gen_random_file(file_name, file_size):
     tmp_1024 = "".join(chr(random.randint(10000, 40000)) for _ in range(341)).encode("UTF-8")
     tmp_1024 += b"m"
-    with open(test_config["path_prefix"] + file_name, "wb") as f:
+
+    modes = stat.S_IWUSR | stat.S_IRUSR
+    flags = os.O_RDWR | os.O_TRUNC | os.O_CREAT
+    with os.fdopen(os.open(test_config["path_prefix"] + file_name, flags, modes), 'wb') as f:
         for _ in range(file_size):
             f.write(tmp_1024)

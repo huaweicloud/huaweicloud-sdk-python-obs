@@ -43,6 +43,20 @@ class TestOBSClient(object):
         assert bucket_metadata.status == 200
         assert ("fs-file-interface", 'Enabled') in bucket_metadata.header
 
+    def test_delete_posix_folder(self):
+        client_type, uploadClient, deleteClient = self.get_client()
+        bucket_name = test_config["bucketName"]
+        file1 =test_config["path_prefix"] + "file-001"
+        file2 =test_config["path_prefix"] + "file-002"
+        upload_result1 = uploadClient.putContent(bucket_name, file1, content='Hello OBS')
+        assert upload_result1.status == 200
+        upload_result2 = uploadClient.putContent(bucket_name, file2, content='Hello OBS')
+        assert upload_result2.status == 200
+        delete_list, error_list = deleteClient.deletePosixFloder(bucket_name, test_config["path_prefix"])
+        assert len(delete_list) == 3
+        assert len(error_list) == 0
+
+
     def test_create_object_bucket(self, delete_bucket_after_test):
         _, uploadClient, _ = self.get_client()
         bucket_name = test_config["bucket_prefix"] + "create-pfs-002"

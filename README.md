@@ -1,3 +1,15 @@
+Version 3.23.5
+
+New Features:
+
+1. The interface adds three types of capacity statistics to be queried: warm, cold, and deepArchiveSize
+2. Allowed you to add any custom header field in a request
+   
+Resolved Issues:
+
+1. Fix the bug that regular matching fails when ECS obtains credentials through Agencies
+
+------------------------------------------------------------------------------------------------- 
 Version 3.22.2
 
 New Features:

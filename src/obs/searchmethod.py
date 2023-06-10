@@ -21,7 +21,7 @@ def get_token(security_providers, name='OBS_DEFAULT'):
             try:
                 value = method.search()
             except Exception:
-                pass
+                print("Method search Error")
             else:
                 return {'accessKey': value.get('accessKey'),
                         'secretKey': value.get('secretKey'),

@@ -16,6 +16,7 @@ import json
 import math
 import operator
 import os
+import stat
 import sys
 import threading
 import traceback
@@ -56,7 +57,10 @@ def _resume_download_with_operation(down_operation):
     if down_operation.size == 0:
         down_operation._delete_record()
         down_operation._delete_tmp_file()
-        with open(down_operation.fileName, 'wb'):
+
+        modes = stat.S_IWUSR | stat.S_IRUSR
+        flags = os.O_RDWR | os.O_TRUNC | os.O_CREAT
+        with os.fdopen(os.open(down_operation.fileName, flags, modes), 'wb'):
             pass
         if down_operation.progressCallback is not None and callable(down_operation.progressCallback):
             down_operation.progressCallback(0, 0, 0)
@@ -111,7 +115,9 @@ class Operation(object):
                                           'delete checkpoint file success. path is:{0}'.format(self.checkPointFile))
 
     def _write_record(self, record):
-        with open(self.checkPointFile, 'w') as f:
+        modes = stat.S_IWUSR | stat.S_IRUSR
+        flags = os.O_RDWR | os.O_TRUNC | os.O_CREAT
+        with os.fdopen(os.open(self.checkPointFile, flags, modes), 'w') as f:
             json.dump(record, f)
             self.obsClient.log_client.log(INFO,
                                           'write checkpoint file success. file path is {0}'.format(self.checkPointFile))
@@ -157,10 +163,16 @@ class uploadOperation(Operation):
             self.taskNum = 1
         else:
             self.taskNum = int(math.ceil(self.taskNum))
-        self.total_parts = int(self.size / self.partSize)
+            try:
+                self.total_parts = int(self.size / self.partSize)
+            except ZeroDivisionError:
+                print("You can't divide by 0!")
         if self.total_parts >= 10000:
             self.partSize = int(self.size / 10000) if self.size % 10000 == 0 else int(self.size / 10000) + 1
-            self.total_parts = int(self.size / self.partSize)
+            try:
+                self.total_parts = int(self.size / self.partSize)
+            except ZeroDivisionError:
+                print("You can't divide by 0!")
         if self.size % self.partSize != 0:
             self.total_parts += 1
 
@@ -305,7 +317,7 @@ class uploadOperation(Operation):
             return False
         if self.checkSum and len(record['fileStatus']) >= 3:
             checkSum = util.base64_encode(
-                util.md5_file_encode_by_size_offset(file_path=self.fileName, size=self.size, offset=0))
+                util.sha256_file_encode_by_size_offset(file_path=self.fileName, size=self.size, offset=0))
             if record['fileStatus'][2] and record['fileStatus'][2] != checkSum:
                 self.obsClient.log_client.log(INFO, '{0} content was changed, clear the record.'.format(self.fileName))
                 return False
@@ -343,7 +355,7 @@ class uploadOperation(Operation):
     def _prepare(self):
         fileStatus = [self.size, self.lastModified]
         if self.checkSum:
-            fileStatus.append(util.base64_encode(util.md5_file_encode_by_size_offset(self.fileName, self.size, 0)))
+            fileStatus.append(util.base64_encode(util.sha256_file_encode_by_size_offset(self.fileName, self.size, 0)))
 
         resp = self.get_init_upload_result()
 
@@ -448,7 +460,9 @@ class downloadOperation(Operation):
 
     def _do_rename(self):
         try:
-            with open(self.fileName, 'wb') as wf:
+            modes = stat.S_IWUSR | stat.S_IRUSR
+            flags = os.O_RDWR | os.O_TRUNC | os.O_CREAT
+            with os.fdopen(os.open(self.fileName, flags, modes), 'wb') as wf:
                 with open(self._tmp_file, 'rb') as rf:
                     while True:
                         chunk = rf.read(const.READ_ONCE_LENGTH)
@@ -539,7 +553,9 @@ class downloadOperation(Operation):
 
     def _prepare(self):
         object_status = [self.objectKey, self.size, self.lastModified, self.versionId, self.imageProcess]
-        with open(_to_unicode(self._tmp_file), 'wb') as f:
+        modes = stat.S_IWUSR | stat.S_IRUSR
+        flags = os.O_RDWR | os.O_TRUNC | os.O_CREAT
+        with os.fdopen(os.open(_to_unicode(self._tmp_file), flags, modes), 'wb') as f:
             if self.size > 0:
                 f.seek(self.size - 1, 0)
             f.write('b' if const.IS_PYTHON2 else 'b'.encode('UTF-8'))
@@ -596,10 +612,16 @@ class downloadOperation(Operation):
 
     def _split_object(self):
         downloadParts = []
-        num_counts = int(self.size / self.partSize)
+        try:
+            num_counts = int(self.size / self.partSize)
+        except ZeroDivisionError:
+            print("You can't divide by 0!")
         if num_counts >= 10000:
             self.partSize = int(self.size / 10000) if self.size % 10000 == 0 else int(self.size / 10000) + 1
-            num_counts = int(self.size / self.partSize)
+            try:
+                num_counts = int(self.size / self.partSize)
+            except ZeroDivisionError:
+                print("You can't divide by 0!")
         if self.size % self.partSize != 0:
             num_counts += 1
         start = 0

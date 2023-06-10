@@ -20,8 +20,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='esdk-obs-python',
-    version='3.22.2',
+    name='sdk-obs-python',
+    version='3.23.5',
     packages=find_packages(exclude=['tests']),
     zip_safe=False,
     description='OBS Python SDK',

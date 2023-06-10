@@ -19,6 +19,7 @@ import math
 import os
 import random
 import re
+import stat
 import threading
 import time
 import traceback
@@ -31,9 +32,11 @@ from obs.extension import _download_files
 from obs.ilog import DEBUG, ERROR, INFO, LogClient, NoneLogClient, WARNING
 from obs.model import ACL, AppendObjectContent, AppendObjectHeader, BaseModel, CopyObjectHeader, CreateBucketHeader, \
     FetchPolicy, GetObjectHeader, GetObjectRequest, GetResult, ListMultipartUploadsRequest, Logging, Notification, \
-    ObjectStream, PutObjectHeader, ResponseWrapper, SetObjectMetadataHeader, Versions, _FetchJob, ExtensionHeader, \
+    ObjectStream, PutObjectHeader, ResponseWrapper, SetObjectMetadataHeader, RenameFileHeader, Versions, _FetchJob, \
+    ExtensionHeader, \
     BucketAliasModel, Replication, ReplicationRule
 from obs.transfer import _resume_download, _resume_upload
+from obs.posix_transfer import _resume_delete
 
 if const.IS_PYTHON2:
     from urlparse import urlparse
@@ -223,6 +226,8 @@ class _BasicClient(object):
         self.calling_format = self._parse_calling_format()
         self.port = self._parse_port(port, is_secure)
 
+        if timeout is None:
+            raise Exception('timeout can not be None')
         self.max_retry_count = max_retry_count
         self.timeout = timeout
         self.chunk_size = chunk_size
@@ -526,8 +531,7 @@ class _BasicClient(object):
             path = self.calling_format.get_url(bucketName, objectKey, pathArgs)
 
         extension_headers = self.convertor.trans_get_extension_headers(extensionHeaders)
-        headers = self._parse_extension_headers(headers, extension_headers)
-        headers = self._rename_request_headers(headers, method)
+        headers = self._rename_request_headers(headers, extension_headers, method)
 
         entity, headers = self._parse_entity(entity, headers)
 
@@ -543,17 +547,6 @@ class _BasicClient(object):
         conn = self._send_request(connect_server, method, path, header_config, entity, port, scheme, redirect,
                                   chunkedMode)
         return conn
-
-    @staticmethod
-    def _parse_extension_headers(headers, extension_headers):
-        if len(extension_headers) > 0:
-            if headers is None or not isinstance(headers, dict):
-                headers = {}
-            else:
-                headers = headers.copy()
-            for key, value in extension_headers.items():
-                headers[key] = value
-        return headers
 
     @staticmethod
     def _parse_entity(entity, headers):
@@ -612,7 +605,7 @@ class _BasicClient(object):
             headers[const.AUTHORIZATION_HEADER] = ret[const.AUTHORIZATION_HEADER]
         return headers
 
-    def _rename_request_headers(self, headers, method):
+    def _rename_request_headers(self, headers, extension_headers, method):
         new_headers = {}
         if isinstance(headers, dict):
             for k, v in headers.items():
@@ -628,6 +621,8 @@ class _BasicClient(object):
                         k = util.encode_item(k, ' ;/?:@&=+$,')
 
                     new_headers = self._rename_request_headers_handle(k, v, new_headers)
+            for k, v in extension_headers.items():
+                new_headers = self._rename_request_headers_handle(k, v, new_headers)
         return new_headers
 
     def _rename_request_headers_handle(self, k, v, new_headers):
@@ -861,7 +856,10 @@ class _BasicClient(object):
         pathDir = os.path.dirname(downloadPath)
         if not os.path.exists(pathDir):
             os.makedirs(pathDir, 0o755)
-        with open(downloadPath, 'wb') as f:
+
+        modes = stat.S_IWUSR | stat.S_IRUSR
+        flags = os.O_RDWR | os.O_TRUNC | os.O_CREAT
+        with os.fdopen(os.open(downloadPath, flags, modes), 'wb') as f:
             while True:
                 chunk = resultWrapper.read(chuckSize)
                 if not chunk:
@@ -1280,7 +1278,7 @@ class ObsClient(_BasicClient):
         return const.V2_SIGNATURE, res
 
     @funcCache
-    def listBuckets(self, isQueryLocation=True, extensionHeaders=None, bucketType=None):
+    def listBuckets(self, isQueryLocation=True, extensionHeaders=None, bucketType=None, maxKeys=100, marker=None):
         """
         Obtain a bucket list.
         :param isQueryLocation: Whether to query the bucket location.
@@ -1291,9 +1289,10 @@ class ObsClient(_BasicClient):
                 If this parameter is left blank, both buckets and parallel file systems will be listed.
         :return: A bucket list
         """
+        pathArgs = {'marker':marker, 'max-keys':maxKeys}
         if self.is_cname:
             raise Exception('listBuckets is not allowed in custom domain mode')
-        return self._make_get_request(methodName='listBuckets', extensionHeaders=extensionHeaders,
+        return self._make_get_request(methodName='listBuckets', pathArgs=pathArgs, extensionHeaders=extensionHeaders,
                                       **self.convertor.trans_list_buckets(isQueryLocation=isQueryLocation,
                                                                           bucketType=bucketType))
 
@@ -1509,6 +1508,14 @@ class ObsClient(_BasicClient):
         return self._make_put_request(bucketName, pathArgs={'notification': None},
                                       entity=self.convertor.trans_notification(notification),
                                       extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def renameFile(self, bucketName, objectKey, newObjectKey=None, headers=RenameFileHeader(),
+                   extensionHeaders=None):
+        return self._make_post_request(bucketName, objectKey,
+                                       pathArgs={'rename': None, 'name': util.to_string(newObjectKey)},
+                                       headers=headers,
+                                       extensionHeaders=extensionHeaders)
 
     @funcCache
     def getBucketNotification(self, bucketName, extensionHeaders=None):
@@ -1759,10 +1766,17 @@ class ObsClient(_BasicClient):
             for f in os.listdir(file_path):
                 f = util.safe_encode(f)
                 __file_path = os.path.join(file_path, f)
-                if not objectKey:
-                    key = util.safe_trans_to_gb2312('{0}/'.format(os.path.split(file_path)[1]) + f)
+                if not const.IS_PYTHON2:
+                    if not objectKey:
+                        key = util.safe_trans_to_gb2312('{0}/'.format(os.path.split(file_path)[1]) + f)
+                    else:
+                        key = '{0}/'.format(objectKey) + util.safe_trans_to_gb2312(f)
                 else:
-                    key = '{0}/'.format(objectKey) + util.safe_trans_to_gb2312(f)
+                    if not objectKey:
+                        key = util.safe_trans_to_gb2312('{0}/'.format(os.path.split(file_path)[1]) + f).decode(
+                            'GB2312').encode('UTF-8')
+                    else:
+                        key = '{0}/'.format(objectKey) + util.safe_trans_to_gb2312(f).decode('GB2312').encode('UTF-8')
                 result = self.putFile(bucketName, key, __file_path, metadata, headers,
                                       extensionHeaders=extensionHeaders)
                 results.append((key, result))
@@ -2056,6 +2070,10 @@ class ObsClient(_BasicClient):
         self._assert_not_null(deleteObjectsRequest, 'deleteObjectsRequest is empty')
         return self._make_post_request(bucketName, methodName='deleteObjects', extensionHeaders=extensionHeaders,
                                        **self.convertor.trans_delete_objects(deleteObjectsRequest=deleteObjectsRequest))
+
+    def deletePosixFloder(self, bucketName, folderName):
+        self.log_client.log(INFO, 'enter resume delete posix floder...')
+        return _resume_delete(bucketName, folderName, self)
 
     @funcCache
     def restoreObject(self, bucketName, objectKey, days, tier=None, versionId=None, extensionHeaders=None):
@@ -2400,13 +2418,6 @@ class ObsClient(_BasicClient):
         replication = Replication()
         replication.agency = agencyName
 
-        # rule的默认规则如下：
-        # id：{sourceBucketName}_to_{destBucketName}
-        # prefix为空
-        # status为Enabled
-        # storageClass为STANDARD
-        # deleteData为Enabled
-        # historicalObjectReplication为Enabled
         _rules = []
         replicationRule = ReplicationRule()
         replicationRule.id = sourceBucketName + '_to_' + destBucketName

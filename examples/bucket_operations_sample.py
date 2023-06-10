@@ -35,7 +35,7 @@ bucketClient = obsClient.bucketClient(bucketName)
 
 
 def createBucket():
-    #     resp = obsClient.createBucket(bucketName)
+
     resp = bucketClient.createBucket()
     if resp.status < 300:
         print('Create bucket:' + bucketName + ' successfully!\n')
@@ -44,7 +44,7 @@ def createBucket():
 
 
 def getBucketLocation():
-    #     resp = obsClient.getBucketLocation(bucketName)
+
     resp = bucketClient.getBucketLocation()
     if resp.status < 300:
         print('Getting bucket location ' + str(resp.body) + ' \n')
@@ -53,7 +53,7 @@ def getBucketLocation():
 
 
 def getBucketStorageInfo():
-    #     resp = obsClient.getBucketStorageInfo(bucketName)
+
     resp = bucketClient.getBucketStorageInfo()
     if resp.status < 300:
         print('Getting bucket storageInfo ' + str(resp.body) + ' \n')
@@ -63,9 +63,9 @@ def getBucketStorageInfo():
 
 def doBucketQuotaOperation():
     # Set bucket quota to 1GB
-    #     obsClient.setBucketQuota(bucketName, 1024 * 1024 * 1024)
+
     bucketClient.setBucketQuota(1024 * 1024 * 1024)
-    #     resp = obsClient.getBucketQuota(bucketName)
+
     resp = bucketClient.getBucketQuota()
 
     print('Getting bucket quota ' + str(resp.body) + ' \n')
@@ -75,19 +75,19 @@ def doBucketVersioningOperation():
     #     print('Getting bucket versioning config ' + str(obsClient.getBucketVersioning(bucketName).body) + ' \n')
     print('Getting bucket versioning config ' + str(bucketClient.getBucketVersioning().body) + ' \n')
     # Enable bucket versioning
-    #     obsClient.setBucketVersioning(bucketName, 'Enabled')
+
     bucketClient.setBucketVersioning('Enabled')
     print('Current bucket versioning config ' + str(obsClient.getBucketVersioning(bucketName).body) + ' \n')
 
     # Suspend bucket versioning
-    #     obsClient.setBucketVersioning(bucketName, 'Suspended')
+
     bucketClient.setBucketVersioning('Suspended')
     print('Current bucket versioning config ' + str(obsClient.getBucketVersioning(bucketName).body) + ' \n')
 
 
 def doBucketAclOperation():
     print('Setting bucket ACL to public-read \n')
-    #     obsClient.setBucketAcl(bucketName, aclControl='public-read')
+
     bucketClient.setBucketAcl(aclControl='public-read')
 
     #     print('Getting bucket ACL ' + str(obsClient.getBucketAcl(bucketName).body) + ' \n')
@@ -109,7 +109,7 @@ def doBucketCorsOperation():
 
     corsList = [cors1, cors2]
 
-    #     obsClient.setBucketCors(bucketName, corsList)
+
     bucketClient.setBucketCors(corsList)
 
     #     print('Getting bucket CORS ' + str(obsClient.getBucketCors(bucketName).body) + '\n')
@@ -127,7 +127,7 @@ def optionsBucket():
 def getBucketMetadata():
     print('Getting bucket metadata\n')
 
-    #     resp = obsClient.getBucketMetadata(bucketName, origin='http://www.b.com', requestHeaders='Authorization1')
+
     resp = bucketClient.getBucketMetadata(origin='http://www.b.com', requestHeaders='Authorization1')
     print('storageClass:', resp.body.storageClass)
     print('accessContorlAllowOrigin:', resp.body.accessContorlAllowOrigin)
@@ -137,7 +137,7 @@ def getBucketMetadata():
     print('accessContorlAllowHeaders:', resp.body.accessContorlAllowHeaders)
 
     print('Deleting bucket CORS\n')
-    #     obsClient.deleteBucketCors(bucketName)
+
     resp = bucketClient.deleteBucketCors()
     print('status' + str(resp.status))
 
@@ -152,24 +152,24 @@ def doBucketLifycleOperation():
                  noncurrentVersionExpiration=NoncurrentVersionExpiration(noncurrentDays=10))
 
     Llifecycle = Lifecycle(rule=[rule1, rule2, rule3])
-    #     obsClient.setBucketLifecycle(bucketName, Llifecycle)
+
     bucketClient.setBucketLifecycle(Llifecycle)
 
     print('Getting bucket lifecycle:')
-    #     resp = obsClient.getBucketLifecycle(bucketName)
+
     resp = bucketClient.getBucketLifecycle()
     print('\t' + str(resp.body) + '\n')
 
     print('Deleting bucket lifecyle\n')
-    #     obsClient.deleteBucketLifecycle(bucketName)
+
     bucketClient.deleteBucketLifecycle()
 
 
 def doBucketLoggingOperation():
     print('Setting bucket logging\n')
 
-    # obsClient.setBucketLogging(bucketName, Logging(targetBucket=bucketName,
-    # targetPrefix='log-', agency='your agency'))
+
+
     bucketClient.setBucketLogging(Logging(targetBucket=bucketName, targetPrefix='log-', agency='your agency'))
 
     print('Getting bucket logging:')
@@ -187,14 +187,12 @@ def doBucketWebsiteOperation():
     print('Setting bucket website\n')
     Lwebsite = WebsiteConfiguration(indexDocument=IndexDocument(suffix='index.html'),
                                     errorDocument=ErrorDocument(key='error.html'))
-    #     obsClient.setBucketWebsite(bucketName, Lwebsite)
     bucketClient.setBucketWebsite(Lwebsite)
 
     print('Getting bucket website:')
     #     print('\t' + str(obsClient.getBucketWebsite(bucketName).body) + '\n')
     print('\t' + str(bucketClient.getBucketWebsite().body) + '\n')
     print('Deleting bucket website\n')
-    #     obsClient.deleteBucketWebsite(bucketName)
     bucketClient.deleteBucketWebsite()
 
 
@@ -202,18 +200,15 @@ def doBucketTaggingOperation():
     print('Setting bucket tagging\n')
     tagInfo = TagInfo()
     tagInfo.addTag('key1', 'value1').addTag('key2', 'value2')
-    #     resp = obsClient.setBucketTagging(bucketName, tagInfo)
     resp = bucketClient.setBucketTagging(tagInfo)
 
     if resp.status < 300:
         print('Getting bucket tagging\n')
-        #         resp = obsClient.getBucketTagging(bucketName)
         resp = bucketClient.getBucketTagging()
         for item in resp.body.tagSet:
             print('\t' + item.key + ':' + item.value + '\n')
 
         print('Deleting bucket tagging\n')
-        #         obsClient.deleteBucketTagging(bucketName)
         bucketClient.deleteBucketTagging()
     else:
         print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
@@ -221,7 +216,6 @@ def doBucketTaggingOperation():
 
 def deleteBucket():
     print('Deleting bucket ' + bucketName + '\n')
-    #     resp = obsClient.deleteBucket(bucketName)
     resp = bucketClient.deleteBucket()
     print('common msg:status:', resp.status, ',errorCode:', resp.errorCode, ',errorMessage:', resp.errorMessage)
 

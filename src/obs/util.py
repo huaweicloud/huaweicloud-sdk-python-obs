@@ -349,6 +349,23 @@ def md5_file_encode_by_size_offset(file_path=None, size=None, offset=None, chuck
                 read_count += read_count_once
         return m.digest()
 
+def sha256_file_encode_by_size_offset(file_path=None, size=None, offset=None, chuckSize=None):
+    if file_path is not None and size is not None and offset is not None:
+        m = hashlib.sha256()
+        with open(file_path, 'rb') as fp:
+            CHUNK_SIZE = const.READ_ONCE_LENGTH if chuckSize is None else chuckSize
+            fp.seek(offset)
+            read_count = 0
+            while read_count < size:
+                read_size = CHUNK_SIZE if size - read_count >= CHUNK_SIZE else size - read_count
+                data = fp.read(read_size)
+                read_count_once = len(data)
+                if read_count_once <= 0:
+                    break
+                m.update(data)
+                read_count += read_count_once
+        return m.digest()
+
 
 def do_close(result, conn, connHolder, log_client=None):
     if not result:

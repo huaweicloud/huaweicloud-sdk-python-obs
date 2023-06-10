@@ -462,6 +462,14 @@ class SetObjectMetadataHeader(BaseModel):
         self.expires = expires
         self.storageClass = storageClass
 
+class RenameFileHeader(BaseModel,object):
+    allowedAttr = {'objectKey': BASESTRING, 'newObjectKey': BASESTRING}
+
+    def __init__(self, objectKey=None, newObjectKey=None):
+        super(RenameFileHeader, self).__init__()
+        self.objectKey = objectKey
+        self.newObjectKey = newObjectKey
+
 
 class CorsRule(BaseModel):
     allowedAttr = {'id': BASESTRING, 'allowedMethod': list, 'allowedOrigin': list,
@@ -479,10 +487,12 @@ class CorsRule(BaseModel):
 
 class CreateBucketHeader(BaseModel):
     allowedAttr = {'aclControl': BASESTRING, 'storageClass': BASESTRING, 'extensionGrants': list,
-                   'availableZone': BASESTRING, 'epid': BASESTRING, "isPFS": bool}
+                   'availableZone': BASESTRING, 'epid': BASESTRING, "isPFS": bool, "redundancy": BASESTRING,
+                   "isFusionAllowUpgrade": bool, "isFusionAllowAlternative": bool}
 
     def __init__(self, aclControl=None, storageClass=None, extensionGrants=None,
-                 availableZone=None, epid=None, isPFS=False):
+                 availableZone=None, epid=None, isPFS=False, redundancy=None, 
+                 isFusionAllowUpgrade=None, isFusionAllowAlternative=None):
         """
         Headers that can be carried during bucket creation
         :param aclControl: ACL policy of a bucket
@@ -501,7 +511,9 @@ class CreateBucketHeader(BaseModel):
         self.availableZone = availableZone
         self.epid = epid
         self.isPFS = isPFS
-
+        self.redundancy = redundancy
+        self.isFusionAllowUpgrade = isFusionAllowUpgrade
+        self.isFusionAllowAlternative = isFusionAllowAlternative
 
 class ExtensionGrant(BaseModel):
     allowedAttr = {'permission': BASESTRING, 'granteeId': BASESTRING}
@@ -1065,16 +1077,16 @@ class ListPartsResponse(BaseModel):
 
 
 class GetBucketMetadataResponse(BaseModel):
-    allowedAttr = {'storageClass': BASESTRING, 'accessContorlAllowOrigin': BASESTRING,
+    allowedAttr = {'storageClass': BASESTRING, 'accessContorlAllowOrigin': BASESTRING, 
                    'accessContorlAllowHeaders': BASESTRING,
                    'accessContorlAllowMethods': BASESTRING,
                    'accessContorlExposeHeaders': BASESTRING,
                    'accessContorlMaxAge': int, 'location': BASESTRING, 'obsVersion': BASESTRING,
-                   'availableZone': BASESTRING, 'epid': BASESTRING}
+                   'availableZone': BASESTRING, 'epid': BASESTRING, 'redundancy': BASESTRING}
 
     def __init__(self, storageClass=None, accessContorlAllowOrigin=None, accessContorlAllowHeaders=None,
                  accessContorlAllowMethods=None, accessContorlExposeHeaders=None, accessContorlMaxAge=None,
-                 location=None, obsVersion=None, availableZone=None, epid=None):
+                 location=None, obsVersion=None, availableZone=None, epid=None, redundancy=None):
         self.storageClass = storageClass
         self.accessContorlAllowOrigin = accessContorlAllowOrigin
         self.accessContorlAllowHeaders = accessContorlAllowHeaders
@@ -1085,6 +1097,7 @@ class GetBucketMetadataResponse(BaseModel):
         self.obsVersion = obsVersion
         self.availableZone = availableZone
         self.epid = epid
+        self.redundancy = redundancy
 
 
 class GetBucketQuotaResponse(BaseModel):
@@ -1095,12 +1108,29 @@ class GetBucketQuotaResponse(BaseModel):
 
 
 class GetBucketStorageInfoResponse(BaseModel):
-    allowedAttr = {'size': LONG, 'objectNumber': int}
+    allowedAttr = {'size': LONG, 'objectNumber': int, 'standardSize': LONG, 'standardObjectNumber': int, 'warmSize': LONG,
+                   'warmObjectNumber': int, 'coldSize': LONG, 'coldObjectNumber': int, 'deepArchiveSize': LONG, 'deepArchiveObjectNumber': int,
+                   'highPerformanceSize': LONG, 'highPerformanceObjectNumber': int, 'standard_IASize': LONG, 'standard_IAObjectNumber': int, 'glacierObjectNumber': LONG}
 
-    def __init__(self, size=None, objectNumber=None):
+    def __init__(self, size=None, objectNumber=None, standardSize=None, standardObjectNumber=None, warmSize=None,
+                 warmObjectNumber=None, coldSize=None, coldObjectNumber=None, deepArchiveSize=None, deepArchiveObjectNumber=None,
+                 highPerformanceSize=None, highPerformanceObjectNumber=None, standard_IASize=None, standard_IAObjectNumber=None, glacierSize=None, glacierObjectNumber=None):
         self.size = size
         self.objectNumber = objectNumber
-
+        self.standardSize = standardSize
+        self.standardObjectNumber = standardObjectNumber
+        self.warmSize = warmSize
+        self.warmObjectNumber = warmObjectNumber
+        self.coldSize = coldSize
+        self.coldObjectNumber = coldObjectNumber
+        self.deepArchiveSize = deepArchiveSize
+        self.deepArchiveObjectNumber = deepArchiveObjectNumber
+        self.highPerformanceSize = highPerformanceSize
+        self.highPerformanceObjectNumber = highPerformanceObjectNumber
+        self.standard_IASize = standard_IASize
+        self.standard_IAObjectNumber = standard_IAObjectNumber
+        self.glacierSize = glacierSize
+        self.glacierObjectNumber = glacierObjectNumber
 
 class GetBucketEncryptionResponse(BaseModel):
     allowedAttr = {'encryption': BASESTRING, 'key': BASESTRING}
@@ -1196,12 +1226,15 @@ class LifecycleResponse(BaseModel):
 
 
 class ListBucketsResponse(BaseModel):
-    allowedAttr = {'buckets': list, 'owner': Owner}
+    allowedAttr = {'buckets': list, 'owner': Owner, 'maxKeys': int, 'marker': BASESTRING, 'isTruncated': bool, 'nextMarker': BASESTRING}
 
-    def __init__(self, buckets=None, owner=None):
+    def __init__(self, buckets=None, owner=None, maxKeys=None, marker=None, isTruncated=None, nextMarker=None):
         self.buckets = buckets
         self.owner = owner
-
+        self.maxKeys = maxKeys
+        self.marker = marker
+        self.isTruncated = isTruncated
+        self.nextMarker = nextMarker
 
 class ListMultipartUploadsResponse(BaseModel):
     allowedAttr = {'bucket': BASESTRING, 'keyMarker': BASESTRING, 'uploadIdMarker': BASESTRING,

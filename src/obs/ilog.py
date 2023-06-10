@@ -123,8 +123,7 @@ class LogClient(object):
             try:
                 handle.close()
             except Exception:
-                # ignore exception of log handle close.
-                pass
+                print("exception of log handle close")
 
     def log(self, level, msg, *args, **kwargs):
         base_back = sys._getframe().f_back
