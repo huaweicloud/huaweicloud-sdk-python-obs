@@ -67,7 +67,7 @@ class TestUtilGetEntity(unittest.TestCase):
             file_path = self.path_prefix + i
             file_total_count = os.path.getsize(file_path)
             readable_object = open(file_path, "rb")
-            entity = util.get_entity_for_send_with_total_count(readable_object, file_total_count)
+            entity = util.get_entity_for_send_with_total_count(read_able=readable_object, totalCount=file_total_count)
             while True:
                 entity(new_conn)
                 if new_conn.end or new_conn.not_data_times > 10:
@@ -85,7 +85,7 @@ class TestUtilGetEntity(unittest.TestCase):
             offset = partSize
             readable_object = open(file_path, "rb")
             readable_object.seek(offset)
-            entity = util.get_entity_for_send_with_total_count(readable_object, partSize)
+            entity = util.get_entity_for_send_with_total_count(read_able=readable_object, totalCount=partSize)
             while True:
                 entity(new_conn)
                 if new_conn.end or new_conn.not_data_times > 10:
@@ -107,7 +107,7 @@ class TestUtilGetEntity(unittest.TestCase):
                 readable_object2 = open(file_path, "rb")
                 readable_object.seek(int(file_total_count * offset_percent))
                 readable_object2.seek(int(file_total_count * offset_percent))
-                entity = util.get_entity_for_send_with_total_count(readable_object, file_total_count
+                entity = util.get_entity_for_send_with_total_count(read_able=readable_object, totalCount=file_total_count
                                                                    - int(file_total_count * offset_percent))
                 entity2 = util.get_readable_entity_by_total_count(readable_object2, file_total_count
                                                                   - int(file_total_count * offset_percent))

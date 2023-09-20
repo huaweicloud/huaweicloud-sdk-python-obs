@@ -199,21 +199,25 @@ def get_readable_entity(readable, chunk_size=const.READ_ONCE_LENGTH, notifier=No
 
 def get_readable_entity_by_total_count(readable, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None,
                                        auto_close=True):
-    return get_entity_for_send_with_total_count(readable, totalCount, chunk_size, notifier, auto_close)
+    return get_entity_for_send_with_total_count(totalCount=totalCount, chunk_size=chunk_size, notifier=notifier, auto_close=auto_close, read_able=readable)
 
 
 def get_file_entity_by_total_count(file_path, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None):
-    f = open(file_path, "rb")
-    return get_entity_for_send_with_total_count(f, totalCount, chunk_size, notifier)
+    return get_entity_for_send_with_total_count(file_path, totalCount, None, chunk_size, notifier)
 
 
-def get_entity_for_send_with_total_count(readable, totalCount=None, chunk_size=const.READ_ONCE_LENGTH, notifier=None,
-                                         auto_close=True):
+def get_entity_for_send_with_total_count(file_path=None, totalCount=None, offset=None, chunk_size=const.READ_ONCE_LENGTH,
+                                         notifier=None, auto_close=True, read_able=None):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
-
     def entity(conn):
         readCount = 0
+        if file_path:
+            readable = open(file_path, "rb")
+            if offset:
+                readable.seek(offset)
+        else:
+            readable = read_able
         try:
             while True:
                 if totalCount is None or totalCount - readCount >= chunk_size:
@@ -237,9 +241,7 @@ def get_entity_for_send_with_total_count(readable, totalCount=None, chunk_size=c
 
 
 def get_file_entity_by_offset_partsize(file_path, offset, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None):
-    f = open(file_path, "rb")
-    f.seek(offset)
-    return get_entity_for_send_with_total_count(f, totalCount, chunk_size, notifier)
+    return get_entity_for_send_with_total_count(file_path, totalCount, offset, chunk_size, notifier)
 
 
 def is_ipaddress(item):

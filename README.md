@@ -1,3 +1,14 @@
+Version 3.23.9
+
+New Features:
+
+1. The setBucketLifecycle interface supports setting the expiration time of fragments in the bucket. 
+   
+Resolved Issues:
+
+1. Fix the bug that read of closed file may be reported when uploading retrying
+
+------------------------------------------------------------------------------------------------- 
 Version 3.23.5
 
 New Features:

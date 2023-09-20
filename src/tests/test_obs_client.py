@@ -8,7 +8,10 @@ from datetime import datetime
 import pytest
 
 import conftest
-from obs import CreateBucketHeader, GetObjectHeader, ObsClient, UploadFileHeader
+from obs import CreateBucketHeader, GetObjectHeader, ObsClient, UploadFileHeader, \
+Expiration, NoncurrentVersionExpiration, AbortIncompleteMultipartUpload, DateTime, \
+Rule, Lifecycle
+
 from conftest import test_config
 
 from obs.const import IS_PYTHON2
@@ -382,6 +385,19 @@ class TestOBSClient(object):
         assert meta_dict["expires"] == '1'
         assert meta_dict["meta_key1"] == "value1"
         assert meta_dict["meta_key-2"] == "value-2"
+
+    def test_setBucketLifecycle_and_getBucketLifecycle_success(self):
+        client_type, bucketLifecycleClient, obsClient = self.get_client()
+        rule1 = Rule(id='rule1', prefix='prefix1', status='Enabled', expiration=Expiration(days=60),
+                    noncurrentVersionExpiration=NoncurrentVersionExpiration(10))
+        rule2 = Rule(id='rule2', prefix='prefix2', status='Enabled', expiration=Expiration(date=DateTime(2023, 12, 31)),
+                    abortIncompleteMultipartUpload=AbortIncompleteMultipartUpload(10))
+        lifecycle = Lifecycle(rule=[rule1, rule2])
+        set_rul_result = bucketLifecycleClient.setBucketLifecycle(test_config["bucketName"], lifecycle)
+        assert set_rul_result.status == 200
+        get_rul_result = bucketLifecycleClient.getBucketLifecycle(test_config["bucketName"])
+        assert get_rul_result.status == 200
+        assert get_rul_result.body.lifecycleConfig.rule[1].abortIncompleteMultipartUpload.daysAfterInitiation == 10
 
 
 if __name__ == "__main__":

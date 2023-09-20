@@ -621,6 +621,7 @@ class _BasicClient(object):
                         k = util.encode_item(k, ' ;/?:@&=+$,')
 
                     new_headers = self._rename_request_headers_handle(k, v, new_headers)
+        if isinstance(extension_headers, dict):
             for k, v in extension_headers.items():
                 new_headers = self._rename_request_headers_handle(k, v, new_headers)
         return new_headers
@@ -1278,7 +1279,7 @@ class ObsClient(_BasicClient):
         return const.V2_SIGNATURE, res
 
     @funcCache
-    def listBuckets(self, isQueryLocation=True, extensionHeaders=None, bucketType=None, maxKeys=100, marker=None):
+    def listBuckets(self, isQueryLocation=True, extensionHeaders=None, bucketType=None, maxKeys=None, marker=None):
         """
         Obtain a bucket list.
         :param isQueryLocation: Whether to query the bucket location.
@@ -1289,7 +1290,9 @@ class ObsClient(_BasicClient):
                 If this parameter is left blank, both buckets and parallel file systems will be listed.
         :return: A bucket list
         """
-        pathArgs = {'marker':marker, 'max-keys':maxKeys}
+        pathArgs = None
+        if maxKeys or marker:
+            pathArgs = {'marker': marker, 'max-keys': maxKeys}
         if self.is_cname:
             raise Exception('listBuckets is not allowed in custom domain mode')
         return self._make_get_request(methodName='listBuckets', pathArgs=pathArgs, extensionHeaders=extensionHeaders,
@@ -1613,9 +1616,7 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback, totalCount)
             else:
                 notifier = progress.NONE_NOTIFIER
-            readable_object = self.gen_readable_object_from_file(file_path)
-            readable_object.seek(offset)
-            entity = util.get_entity_for_send_with_total_count(readable_object, totalCount, self.chunk_size, notifier)
+            entity = util.get_entity_for_send_with_total_count(file_path, totalCount, offset, self.chunk_size, notifier)
         else:
             totalCount = headers['contentLength']
             if totalCount > 0 and progressCallback is not None:
@@ -1623,8 +1624,7 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback, totalCount)
             else:
                 notifier = progress.NONE_NOTIFIER
-            readable_object = self.gen_readable_object_from_file(file_path)
-            entity = util.get_entity_for_send_with_total_count(readable_object, totalCount, self.chunk_size, notifier)
+            entity = util.get_entity_for_send_with_total_count(file_path, totalCount, None, self.chunk_size, notifier)
 
         return headers, readable, notifier, entity
 
@@ -1644,8 +1644,8 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback,
                                                      totalCount) if totalCount > 0 and progressCallback is not None \
                     else progress.NONE_NOTIFIER
-                entity = util.get_entity_for_send_with_total_count(entity, totalCount, self.chunk_size, notifier,
-                                                                   autoClose)
+                entity = util.get_entity_for_send_with_total_count(read_able=entity, totalCount=totalCount, chunk_size=self.chunk_size, notifier=notifier,
+                                                                   auto_close=autoClose)
 
         return entity, readable, chunkedMode, notifier
 
@@ -1728,8 +1728,9 @@ class ObsClient(_BasicClient):
                     notifier = progress.ProgressNotifier(progressCallback,
                                                          totalCount) if totalCount > 0 and progressCallback \
                                                                         is not None else progress.NONE_NOTIFIER
-                    entity = util.get_entity_for_send_with_total_count(entity, totalCount, self.chunk_size, notifier,
-                                                                       autoClose)
+                    entity = util.get_entity_for_send_with_total_count(read_able=entity, totalCount=totalCount,
+                                                                       chunk_size=self.chunk_size, notifier=notifier,
+                                                                       auto_close=autoClose)
 
                 notifier.start()
             ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity,
@@ -1789,8 +1790,6 @@ class ObsClient(_BasicClient):
 
         headers = self._putFileHandleHeader(headers, size, objectKey, file_path)
 
-        readable_object = self.gen_readable_object_from_file(file_path)
-        metadata = self.add_metadata_from_content(metadata, headers, readable_object)
         _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
         if const.CONTENT_LENGTH_HEADER not in _headers:
             _headers[const.CONTENT_LENGTH_HEADER] = util.to_string(size)
@@ -1805,7 +1804,7 @@ class ObsClient(_BasicClient):
             notifier = progress.NONE_NOTIFIER
             readable = False
 
-        entity = util.get_entity_for_send_with_total_count(readable_object, totalCount, self.chunk_size, notifier)
+        entity = util.get_entity_for_send_with_total_count(file_path, totalCount, None, self.chunk_size, notifier)
         try:
             notifier.start()
             ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity,
@@ -1814,13 +1813,6 @@ class ObsClient(_BasicClient):
             notifier.end()
         self._generate_object_url(ret, bucketName, objectKey)
         return ret
-
-    @staticmethod
-    def add_metadata_from_content(metadata, headers, content):
-        return metadata
-
-    def gen_readable_object_from_file(self, file_path):
-        return open(file_path, "rb")
 
     @staticmethod
     def _putFileHandleHeader(headers, size, objectKey, file_path):
@@ -1920,9 +1912,7 @@ class ObsClient(_BasicClient):
 
             readable, notifier = self._prepare_upload_part_notifier(checked_file_part_info["partSize"],
                                                                     progressCallback, readable)
-            readable_object = open(checked_file_part_info["file_path"], "rb")
-            readable_object.seek(checked_file_part_info["offset"])
-            entity = util.get_entity_for_send_with_total_count(readable_object, checked_file_part_info["partSize"],
+            entity = util.get_entity_for_send_with_total_count(checked_file_part_info["file_path"], checked_file_part_info["partSize"], checked_file_part_info["offset"],
                                                                self.chunk_size, notifier)
         else:
             headers = {}
@@ -1939,8 +1929,9 @@ class ObsClient(_BasicClient):
                     headers[const.CONTENT_LENGTH_HEADER] = util.to_string(partSize)
                     totalCount = util.to_long(partSize)
                     notifier = self._get_notifier_with_size(progressCallback, totalCount)
-                    entity = util.get_entity_for_send_with_total_count(content, totalCount, self.chunk_size, notifier,
-                                                                       autoClose)
+                    entity = util.get_entity_for_send_with_total_count(read_able=content, totalCount=totalCount,
+                                                                       chunk_size=self.chunk_size, notifier=notifier,
+                                                                       auto_close=autoClose)
             else:
                 entity = content
                 if entity is None:
@@ -1989,9 +1980,8 @@ class ObsClient(_BasicClient):
 
             if notifier is not None and not isinstance(notifier, progress.NoneNotifier):
                 readable = True
-            readable_object = open(checked_file_part_info["file_path"], "rb")
-            readable_object.seek(checked_file_part_info["offset"])
-            entity = util.get_entity_for_send_with_total_count(readable_object, partSize, self.chunk_size, notifier)
+            entity = util.get_entity_for_send_with_total_count(checked_file_part_info["file_path"], partSize, checked_file_part_info["offset"],
+                                                               self.chunk_size, notifier)
         else:
             if content is not None and hasattr(content, 'read') and callable(content.read):
                 readable = True
@@ -2002,8 +1992,8 @@ class ObsClient(_BasicClient):
                     entity = util.get_readable_entity(content, self.chunk_size, notifier)
                 else:
                     headers[const.CONTENT_LENGTH_HEADER] = util.to_string(partSize)
-                    entity = util.get_entity_for_send_with_total_count(content, util.to_long(partSize), self.chunk_size,
-                                                                       notifier)
+                    entity = util.get_entity_for_send_with_total_count(read_able=content, totalCount=util.to_long(partSize),
+                                                                       chunk_size=self.chunk_size, notifier=notifier)
             else:
                 entity = content
                 if entity is None:

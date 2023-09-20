@@ -20,7 +20,7 @@ from obs.model import SetObjectMetadataHeader,RenameFileHeader, CorsRule, Create
 from obs.model import NoncurrentVersionExpiration, GetObjectHeader, HeadPermission, Lifecycle, Notification
 from obs.model import TopicConfiguration, FunctionGraphConfiguration, FilterRule, Replication, ReplicationRule
 from obs.model import Options, PutObjectHeader, AppendObjectHeader, AppendObjectContent, RedirectAllRequestTo
-from obs.model import Redirect, RoutingRule, Tag, TagInfo, Transition, NoncurrentVersionTransition, Rule, Versions
+from obs.model import Redirect, RoutingRule, Tag, TagInfo, Transition, NoncurrentVersionTransition, Rule, Versions, AbortIncompleteMultipartUpload
 from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUploadRequest, DeleteObjectsRequest
 from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileHeader, Payer
 from obs.model import ExtensionHeader, FetchStatus, BucketAliasModel, ListBucketAliasModel
@@ -56,6 +56,7 @@ __all__ = [
     'IndexDocument',
     'Expiration',
     'NoncurrentVersionExpiration',
+    'AbortIncompleteMultipartUpload',
     'GetObjectHeader',
     'HeadPermission',
     'Lifecycle',

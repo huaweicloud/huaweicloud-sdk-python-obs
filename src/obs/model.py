@@ -48,6 +48,7 @@ __all__ = [
     'IndexDocument',
     'Expiration',
     'NoncurrentVersionExpiration',
+    'AbortIncompleteMultipartUpload',
     'GetObjectHeader',
     'HeadPermission',
     'Lifecycle',
@@ -831,13 +832,22 @@ class NoncurrentVersionTransition(BaseModel):
         self.storageClass = storageClass
 
 
+class AbortIncompleteMultipartUpload(BaseModel):
+    allowedAttr = {'daysAfterInitiation': int}
+
+    def __init__(self, daysAfterInitiation=None):
+        super(AbortIncompleteMultipartUpload, self).__init__()
+        self.daysAfterInitiation = daysAfterInitiation
+
+
 class Rule(BaseModel):
     allowedAttr = {'id': BASESTRING, 'prefix': BASESTRING, 'status': BASESTRING, 'expiration': Expiration,
                    'noncurrentVersionExpiration': NoncurrentVersionExpiration,
-                   'transition': [Transition, list], 'noncurrentVersionTransition': [NoncurrentVersionTransition, list]}
+                   'transition': [Transition, list], 'noncurrentVersionTransition': [NoncurrentVersionTransition, list],
+                   'abortIncompleteMultipartUpload': AbortIncompleteMultipartUpload}
 
     def __init__(self, id=None, prefix=None, status=None, expiration=None, noncurrentVersionExpiration=None,
-                 transition=None, noncurrentVersionTransition=None):
+                 transition=None, noncurrentVersionTransition=None, abortIncompleteMultipartUpload=None):
         self.id = id
         self.prefix = prefix
         self.status = status
@@ -845,6 +855,7 @@ class Rule(BaseModel):
         self.noncurrentVersionExpiration = noncurrentVersionExpiration
         self.transition = transition
         self.noncurrentVersionTransition = noncurrentVersionTransition
+        self.abortIncompleteMultipartUpload = abortIncompleteMultipartUpload
 
 
 class Upload(BaseModel):

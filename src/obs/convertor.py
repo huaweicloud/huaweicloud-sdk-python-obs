@@ -37,7 +37,7 @@ from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowR
 from obs.model import DateTime, ListObjectsResponse, Content, CorsRule, ObjectVersionHead, ObjectVersion, \
     ObjectDeleteMarker, DeleteObjectResult, NoncurrentVersionExpiration, NoncurrentVersionTransition, Rule, Condition, \
     Redirect, FilterRule, FunctionGraphConfiguration, Upload, CompleteMultipartUploadResponse, ListPartsResponse, \
-    Grant, ReplicationRule, Transition, Grantee, BucketAliasModel, ListBucketAliasModel
+    Grant, ReplicationRule, Transition, Grantee, BucketAliasModel, ListBucketAliasModel, AbortIncompleteMultipartUpload
 
 if const.IS_PYTHON2:
     from urllib import unquote_plus, quote_plus
@@ -558,6 +558,11 @@ class Convertor(object):
                     ET.SubElement(noncurrentVersionExpirationEle, 'NoncurrentDays').text = util.to_string(
                         item['noncurrentVersionExpiration']['noncurrentDays'])
 
+                if item.get('abortIncompleteMultipartUpload') is not None and item['abortIncompleteMultipartUpload'].get(
+                        'daysAfterInitiation') is not None:
+                    abortIncompleteMultipartUploadEle = ET.SubElement(ruleEle, 'AbortIncompleteMultipartUpload')
+                    ET.SubElement(abortIncompleteMultipartUploadEle, 'DaysAfterInitiation').text = util.to_string(
+                        item['abortIncompleteMultipartUpload']['daysAfterInitiation'])
         return ET.tostring(root, 'UTF-8')
 
     def _trans_lifecycle_transition_expiration(self, item, ruleEle):
@@ -1047,7 +1052,9 @@ class Convertor(object):
             headers = {}
         if isinstance(sseHeader, SseCHeader):
             self._put_key_value(headers, self.ha.sse_c_header(), sseHeader.get('encryption'))
-            key = util.to_string(sseHeader.get('key'))
+            key = sseHeader.get('key')
+            if not isinstance(key, bytes):
+                key = util.to_string(sseHeader.get('key'))
             self._put_key_value(headers, self.ha.sse_c_key_header(), util.base64_encode(key))
             self._put_key_value(headers, self.ha.sse_c_key_md5_header(), util.base64_encode(util.md5_encode(key)))
         elif isinstance(sseHeader, SseKmsHeader) and not onlySseCHeader:
@@ -1520,8 +1527,13 @@ class Convertor(object):
                                                                               noncurrentDays=noncurrentDays)
                     noncurrentVersionTransitions.append(noncurrentVersionTransition)
 
+            abort_parts = rule.find('AbortIncompleteMultipartUpload')
+            abortIncompleteMultipartUpload = AbortIncompleteMultipartUpload(daysAfterInitiation=util.to_int(
+                abort_parts.find('DaysAfterInitiation').text)) if abort_parts is not None else None
+
             rule = Rule(id=_id, prefix=prefix, status=status, expiration=expiration,
-                        noncurrentVersionExpiration=noncurrentVersionExpiration)
+                        noncurrentVersionExpiration=noncurrentVersionExpiration,
+                        abortIncompleteMultipartUpload=abortIncompleteMultipartUpload)
             rule.transition = transitions
             rule.noncurrentVersionTransition = noncurrentVersionTransitions
             entries.append(rule)
