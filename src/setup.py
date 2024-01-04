@@ -29,7 +29,7 @@ setup(
     license='Apache-2.0',
     keywords=('obs', 'python'),
     install_requires=[
-        'pycryptodome>=3.10.1'
+        'pycryptodome >= 3.10.1'
     ],
     platforms='Independant',
     url='',
