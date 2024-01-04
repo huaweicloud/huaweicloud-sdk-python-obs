@@ -54,7 +54,7 @@ class Adapter(object):
     OBS_ALLOWED_STORAGE_CLASS = ['STANDARD', 'WARM', 'COLD']
     V2_ALLOWED_STORAGE_CLASS = ['STANDARD', 'STANDARD_IA', 'GLACIER']
 
-    OBS_ALLOWED_GROUP = ['Everyone']
+    OBS_ALLOWED_GROUP = ['Everyone','AuthenticatedUsers','LogDelivery']
     V2_ALLOWED_GROUP = ['http://acs.amazonaws.com/groups/global/AllUsers',
                         'http://acs.amazonaws.com/groups/global/AuthenticatedUsers',
                         'http://acs.amazonaws.com/groups/s3/LogDelivery']

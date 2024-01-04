@@ -1759,12 +1759,11 @@ class ObsClient(_BasicClient):
             metadata = dict()
 
         if _flag:
-            headers['contentLength'] = None
-            headers['md5'] = None
-            headers['contentType'] = None
-
             results = []
             for f in os.listdir(file_path):
+                headers['contentLength'] = None
+                headers['md5'] = None
+                headers['contentType'] = None
                 f = util.safe_encode(f)
                 __file_path = os.path.join(file_path, f)
                 if not const.IS_PYTHON2:

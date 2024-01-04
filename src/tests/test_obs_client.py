@@ -1,4 +1,17 @@
-# coding:utf-8
+#!/usr/bin/python
+# -*- coding:utf-8 -*-
+# Copyright 2019 Huawei Technologies Co.,Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+# this file except in compliance with the License.  You may obtain a copy of the
+# License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software distributed
+# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations under the License.
+
 import io
 import os
 import random
@@ -385,6 +398,30 @@ class TestOBSClient(object):
         assert meta_dict["expires"] == '1'
         assert meta_dict["meta_key1"] == "value1"
         assert meta_dict["meta_key-2"] == "value-2"
+
+    def test_putFile_with_content_type(self):
+        # 测试使用putFile上传文件夹content-Type是否前后一致
+        client_type, uploadClient, downloadClient = self.get_client()
+        object_list = ['test.pdf', 'test.png', 'test.txt']
+        old_content_list = ['application/pdf', 'image/png', 'text/plain']
+        new_content_list = []
+        folder_name = "test_putFile_with_content_type"
+        folder = test_config["path_prefix"] + folder_name
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+        for f in object_list:
+            object_name = folder_name + '/' + f
+            conftest.gen_random_file(object_name, 1024)
+
+        put_result = uploadClient.putFile(test_config["bucketName"], folder_name, folder)
+        for res in put_result:
+            assert res[1].status == 200
+            object_metadata = uploadClient.getObjectMetadata(test_config["bucketName"], res[0])
+            new_content_list.append(object_metadata.body.contentType)
+
+        assert new_content_list == old_content_list
+
+
 
     def test_setBucketLifecycle_and_getBucketLifecycle_success(self):
         client_type, bucketLifecycleClient, obsClient = self.get_client()
