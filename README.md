@@ -1,3 +1,10 @@
+Version 3.23.12
+   
+Resolved Issues:
+
+1. Fix the bug of inconsistent contentType when uploading folders using the putFile method
+
+------------------------------------------------------------------------------------------------- 
 Version 3.23.9
 
 New Features:
