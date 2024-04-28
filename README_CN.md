@@ -1,6 +1,13 @@
-﻿Version 3.23.12
+﻿Version 3.24.3
 
-修复问题
+新特性：
+
+1. 新增accessLabel相关接口(ObsClient.setAccesslabel/ObsClient.getAccessLabel/ObsClient.deleteAccessLabel)
+
+-------------------------------------------------------------------------------------------------
+Version 3.23.12
+
+修复问题:
 
 1. 修复putFile上传文件夹时可能导致contentType不一致问题。
 

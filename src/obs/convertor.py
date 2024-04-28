@@ -1919,6 +1919,10 @@ class Convertor(object):
             option.nextPosition = util.to_long(headers.get(self.ha.next_position_header()))
         return option
 
+    def parseGetAccessLabel(self, jsons, headers=None):
+        result = json.loads(jsons)
+        return result
+    
     def parseGetObject(self, headers, option):
         self._parseGetObjectCommonHeader(headers, option)
         option.deleteMarker = headers.get(self.ha.delete_marker_header())

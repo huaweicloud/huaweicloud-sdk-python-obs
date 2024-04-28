@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # -*- coding:utf-8 -*-
 # Copyright 2019 Huawei Technologies Co.,Ltd.
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use
@@ -21,7 +22,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='esdk-obs-python',
-    version='3.23.12',
+    version='3.24.3',
     packages=find_packages(exclude=['tests']),
     zip_safe=False,
     description='OBS Python SDK',

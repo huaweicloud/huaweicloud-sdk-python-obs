@@ -1,3 +1,10 @@
+Version 3.24.3
+   
+New Features:
+
+1. Added APIs related to accessLabel, including ObsClient.setAccesslabel,ObsClient.getAccessLabel and ObsClient.deleteAccessLabel.
+
+------------------------------------------------------------------------------------------------- 
 Version 3.23.12
    
 Resolved Issues:

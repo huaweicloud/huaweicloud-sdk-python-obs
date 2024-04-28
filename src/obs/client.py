@@ -670,8 +670,12 @@ class _BasicClient(object):
                 except Exception:
                     conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout)
             else:
-                conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout, context=self.context,
-                                               check_hostname=None)
+                try:
+                    conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout, context=self.context,
+                                                   check_hostname=None)
+                except Exception:
+                    conn = httplib.HTTPSConnection(server, port=port, timeout=self.timeout, context=self.context)
+
         else:
             conn = httplib.HTTPConnection(server, port=port, timeout=self.timeout)
 
@@ -1566,6 +1570,23 @@ class ObsClient(_BasicClient):
                                       extensionHeaders=extensionHeaders,
                                       **self.convertor.trans_set_object_metadata(metadata=metadata, headers=headers,
                                                                                  versionId=versionId))
+
+    @funcCache
+    def setAccessLabel(self, bucketName, objectKey, accesslabel, extensionHeaders=None):
+        return self._make_put_request(bucketName, objectKey, pathArgs={'x-obs-accesslabel': None},
+                                      entity={'accesslabel': accesslabel},
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def getAccessLabel(self, bucketName, objectKey, extensionHeaders=None):
+        return self._make_get_request(bucketName, objectKey, pathArgs={'x-obs-accesslabel': None},
+                                      methodName='getAccessLabel',
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def deleteAccessLabel(self, bucketName, objectKey, extensionHeaders=None):
+        return self._make_delete_request(bucketName, objectKey, pathArgs={'x-obs-accesslabel': None},
+                                         extensionHeaders=extensionHeaders)
 
     @funcCache
     def getObject(self, bucketName, objectKey, downloadPath=None, getObjectRequest=None,

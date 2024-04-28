@@ -22,8 +22,8 @@ import pytest
 
 import conftest
 from obs import CreateBucketHeader, GetObjectHeader, ObsClient, UploadFileHeader, \
-Expiration, NoncurrentVersionExpiration, AbortIncompleteMultipartUpload, DateTime, \
-Rule, Lifecycle
+    Expiration, NoncurrentVersionExpiration, AbortIncompleteMultipartUpload, DateTime, \
+    Rule, Lifecycle
 
 from conftest import test_config
 
@@ -62,8 +62,8 @@ class TestOBSClient(object):
     def test_delete_posix_folder(self):
         client_type, uploadClient, deleteClient = self.get_client()
         bucket_name = test_config["bucketName"]
-        file1 =test_config["path_prefix"] + "file-001"
-        file2 =test_config["path_prefix"] + "file-002"
+        file1 = test_config["path_prefix"] + "file-001"
+        file2 = test_config["path_prefix"] + "file-002"
         upload_result1 = uploadClient.putContent(bucket_name, file1, content='Hello OBS')
         assert upload_result1.status == 200
         upload_result2 = uploadClient.putContent(bucket_name, file2, content='Hello OBS')
@@ -71,7 +71,6 @@ class TestOBSClient(object):
         delete_list, error_list = deleteClient.deletePosixFloder(bucket_name, test_config["path_prefix"])
         assert len(delete_list) == 3
         assert len(error_list) == 0
-
 
     def test_create_object_bucket(self, delete_bucket_after_test):
         _, uploadClient, _ = self.get_client()
@@ -421,14 +420,12 @@ class TestOBSClient(object):
 
         assert new_content_list == old_content_list
 
-
-
     def test_setBucketLifecycle_and_getBucketLifecycle_success(self):
         client_type, bucketLifecycleClient, obsClient = self.get_client()
         rule1 = Rule(id='rule1', prefix='prefix1', status='Enabled', expiration=Expiration(days=60),
-                    noncurrentVersionExpiration=NoncurrentVersionExpiration(10))
+                     noncurrentVersionExpiration=NoncurrentVersionExpiration(10))
         rule2 = Rule(id='rule2', prefix='prefix2', status='Enabled', expiration=Expiration(date=DateTime(2023, 12, 31)),
-                    abortIncompleteMultipartUpload=AbortIncompleteMultipartUpload(10))
+                     abortIncompleteMultipartUpload=AbortIncompleteMultipartUpload(10))
         lifecycle = Lifecycle(rule=[rule1, rule2])
         set_rul_result = bucketLifecycleClient.setBucketLifecycle(test_config["bucketName"], lifecycle)
         assert set_rul_result.status == 200
@@ -436,6 +433,91 @@ class TestOBSClient(object):
         assert get_rul_result.status == 200
         assert get_rul_result.body.lifecycleConfig.rule[1].abortIncompleteMultipartUpload.daysAfterInitiation == 10
 
+    def test_setAccessLabel_success(self):
+        client_type, accessLabelClient, obsClient = self.get_client()
+        accessLabelList = ['role_label_01', 'role_label_02']
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
+        set_al_result = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1', accessLabelList)
+        assert set_al_result.status == 204
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
+
+    def test_setAccessLabel_fail(self):
+        client_type, accessLabelClient, obsClient = self.get_client()
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
+        obsClient.putContent('pythonsdktestbucket-posix', 'file1', content='123')
+        set_al_result1 = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1', ['role-label-01'])
+        assert set_al_result1.status == 400
+        set_al_result2 = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1',
+                                                          ['abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ'])
+        assert set_al_result2.status == 400
+        set_al_result3 = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1',
+                                                          ["role_label_" + str(i + 1) for i in range(513)])
+        assert set_al_result3.status == 405
+        set_al_result4 = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'file1',
+                                                          ['role_label_01', 'role_label_02'])
+        assert set_al_result4.status == 405
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'file1')
+
+    def test_getAccessLabel_success(self):
+        client_type, accessLabelClient, obsClient = self.get_client()
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir2/')
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir3/')
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir4/')
+        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1', ['role_label_01', 'role_label_02'])
+        get_al_result1 = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir1')
+        assert get_al_result1.status == 200
+        assert get_al_result1.body['accesslabel'] == ['role_label_01', 'role_label_02']
+        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir2',
+                                         ['abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'])
+        get_al_result2 = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir2')
+        assert get_al_result2.status == 200
+        assert get_al_result2.body['accesslabel'] == ['abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ']
+        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir3',
+                                         ["role_label_" + str(i + 1) for i in range(512)])
+        get_al_result3 = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir3')
+        assert get_al_result3.status == 200
+        assert get_al_result3.body['accesslabel'] == ["role_label_" + str(i + 1) for i in range(512)]
+        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir4',
+                                         ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW" + str(i + 1) for i in
+                                          range(512)])
+        get_al_result4 = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir4')
+        assert get_al_result4.status == 200
+        assert get_al_result4.body['accesslabel'] == ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW" + str(i + 1) for
+                                                   i in range(512)]
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir2/')
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir3/')
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir4/')
+
+    def test_getAccessLabel_fail(self):
+        client_type, accessLabelClient, obsClient = self.get_client()
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
+        get_al_result = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir1')
+        assert get_al_result.status == 404
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
+
+    def test_deleteAccessLabel_success(self):
+        client_type, accessLabelClient, obsClient = self.get_client()
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
+        obsClient.putContent('pythonsdktestbucket-posix', 'dir2/')
+        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1', ['role_label_01', 'role_label_02'])
+        del_al_result1 = accessLabelClient.deleteAccessLabel('pythonsdktestbucket-posix', 'dir1')
+        del_al_result2 = accessLabelClient.deleteAccessLabel('pythonsdktestbucket-posix', 'dir2')
+        del_al_result3 = accessLabelClient.deleteAccessLabel('pythonsdktestbucket-posix', 'dir3')
+        assert del_al_result1.status == 204
+        assert del_al_result2.status == 204
+        assert del_al_result3.status == 204
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir2/')
+
+    def test_deleteAccessLabel_fail(self):
+        client_type, accessLabelClient, obsClient = self.get_client()
+        obsClient.putContent('pythonsdktestbucket-posix', 'file1', content='123')
+        del_al_result1 = accessLabelClient.deleteAccessLabel('pythonsdktestbucket-posix', 'file1')
+        assert del_al_result1.status == 405
+        obsClient.deleteObject('pythonsdktestbucket-posix', 'file1')
 
 if __name__ == "__main__":
     pytest.main(["-v", 'test_obs_client.py::TestOBSClient::test_uploadFile_with_metadata'])
