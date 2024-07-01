@@ -1,4 +1,11 @@
-﻿Version 3.24.3
+﻿Version 3.24.6
+
+新特性：
+
+1. 支持crc64校验(ObsClient.putFile/ObsClient.putContent/ObsClient.appendObject/ObsClient.uploadPart/ObsClient.completeMultipartUpload)
+
+-------------------------------------------------------------------------------------------------
+Version 3.24.3
 
 新特性：
 

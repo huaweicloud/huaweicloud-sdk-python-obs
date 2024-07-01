@@ -17,7 +17,7 @@ import hashlib
 import json
 import re
 
-from obs import const, progress
+from obs import const, progress, crc64mod
 
 if const.IS_PYTHON2:
     import urllib
@@ -430,3 +430,71 @@ def _byteify(data, ignore_dicts=False):
             for key, value in data.iteritems()
         }
     return data
+
+
+class Crc64(object):
+    _POLY = 0x142F0E1EBA9EA3693
+    _XOROUT = 0XFFFFFFFFFFFFFFFF
+
+    def __init__(self, init_crc=0):
+        self.crc64 = crc64mod.Crc(self._POLY, initCrc=init_crc, rev=True, xorOut=self._XOROUT)
+
+        self.crc64_combineFun = crc64mod.mkCombineFun(self._POLY, initCrc=init_crc, rev=True, xorOut=self._XOROUT)
+
+    def __call__(self, data):
+        self.update(data)
+
+    def update(self, data):
+        self.crc64.update(data)
+
+    def combine(self, crc1, crc2, len2):
+        return self.crc64_combineFun(crc1, crc2, len2)
+    @property
+    def crc(self):
+        return self.crc64.crcValue
+
+
+def calculate_file_crc64(file_name, block_size=64 * 1024, init_crc=0, offset=None, totalCount=None):
+    readCount = 0
+    with open(file_name, 'rb') as f:
+        if offset:
+            f.seek(offset)
+        crc64 = Crc64(init_crc)
+        while True:
+            if totalCount is None or totalCount - readCount >= block_size:
+                readCountOnce = block_size
+            else:
+                readCountOnce = totalCount -readCount
+            data = f.read(readCountOnce)
+            readCount += readCountOnce
+            if (totalCount is not None and readCount >= totalCount) or not data:
+                crc64.update(data)
+                break
+            crc64.update(data)
+    f.close()
+    return crc64.crc
+
+
+
+def calculate_content_crc64(content, block_size=64 * 1024, init_crc=0):
+    crc64 = Crc64(init_crc)
+    if hasattr(content, 'read'):
+        while True:
+            data = content.read(block_size)
+            if not data:
+                break
+            crc64.update(data)
+    else:
+        crc64.update(content)
+
+    return crc64.crc
+
+def calc_obj_crc_from_parts(parts, init_crc=0):
+    object_crc = 0
+    crc_obj = Crc64(init_crc)
+    for part in parts:
+        if not part.crc64 or not part.size:
+            raise Exception('part {0} has no size or crc64'.format(part.partNum))
+        else:
+            object_crc = crc_obj.combine(object_crc, to_int(part.crc64), part.size)
+    return object_crc

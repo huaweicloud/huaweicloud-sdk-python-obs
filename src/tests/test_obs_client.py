@@ -23,7 +23,8 @@ import pytest
 import conftest
 from obs import CreateBucketHeader, GetObjectHeader, ObsClient, UploadFileHeader, \
     Expiration, NoncurrentVersionExpiration, AbortIncompleteMultipartUpload, DateTime, \
-    Rule, Lifecycle
+    Rule, Lifecycle, PutObjectHeader, AppendObjectHeader, AppendObjectContent, util, CompleteMultipartUploadRequest, \
+    CompletePart
 
 from conftest import test_config
 
@@ -436,88 +437,214 @@ class TestOBSClient(object):
     def test_setAccessLabel_success(self):
         client_type, accessLabelClient, obsClient = self.get_client()
         accessLabelList = ['role_label_01', 'role_label_02']
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
-        set_al_result = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1', accessLabelList)
+        obsClient.putContent('accesslabel-posix-bucket', 'dir1/')
+        set_al_result = accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir1', accessLabelList)
         assert set_al_result.status == 204
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir1/')
 
     def test_setAccessLabel_fail(self):
         client_type, accessLabelClient, obsClient = self.get_client()
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
-        obsClient.putContent('pythonsdktestbucket-posix', 'file1', content='123')
-        set_al_result1 = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1', ['role-label-01'])
+        obsClient.putContent('accesslabel-posix-bucket', 'dir1/')
+        obsClient.putContent('accesslabel-posix-bucket', 'file1', content='123')
+        set_al_result1 = accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir1', ['role-label-01'])
         assert set_al_result1.status == 400
-        set_al_result2 = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1',
+        set_al_result2 = accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir1',
                                                           ['abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ'])
         assert set_al_result2.status == 400
-        set_al_result3 = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1',
+        set_al_result3 = accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir1',
                                                           ["role_label_" + str(i + 1) for i in range(513)])
         assert set_al_result3.status == 405
-        set_al_result4 = accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'file1',
+        set_al_result4 = accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'file1',
                                                           ['role_label_01', 'role_label_02'])
         assert set_al_result4.status == 405
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'file1')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir1/')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'file1')
 
     def test_getAccessLabel_success(self):
         client_type, accessLabelClient, obsClient = self.get_client()
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir2/')
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir3/')
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir4/')
-        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1', ['role_label_01', 'role_label_02'])
-        get_al_result1 = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir1')
+        obsClient.putContent('accesslabel-posix-bucket', 'dir1/')
+        obsClient.putContent('accesslabel-posix-bucket', 'dir2/')
+        obsClient.putContent('accesslabel-posix-bucket', 'dir3/')
+        obsClient.putContent('accesslabel-posix-bucket', 'dir4/')
+        accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir1', ['role_label_01', 'role_label_02'])
+        get_al_result1 = accessLabelClient.getAccessLabel('accesslabel-posix-bucket', 'dir1')
         assert get_al_result1.status == 200
         assert get_al_result1.body['accesslabel'] == ['role_label_01', 'role_label_02']
-        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir2',
+        accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir2',
                                          ['abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'])
-        get_al_result2 = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir2')
+        get_al_result2 = accessLabelClient.getAccessLabel('accesslabel-posix-bucket', 'dir2')
         assert get_al_result2.status == 200
         assert get_al_result2.body['accesslabel'] == ['abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ']
-        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir3',
+        accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir3',
                                          ["role_label_" + str(i + 1) for i in range(512)])
-        get_al_result3 = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir3')
+        get_al_result3 = accessLabelClient.getAccessLabel('accesslabel-posix-bucket', 'dir3')
         assert get_al_result3.status == 200
         assert get_al_result3.body['accesslabel'] == ["role_label_" + str(i + 1) for i in range(512)]
-        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir4',
+        accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir4',
                                          ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW" + str(i + 1) for i in
                                           range(512)])
-        get_al_result4 = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir4')
+        get_al_result4 = accessLabelClient.getAccessLabel('accesslabel-posix-bucket', 'dir4')
         assert get_al_result4.status == 200
-        assert get_al_result4.body['accesslabel'] == ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW" + str(i + 1) for
-                                                   i in range(512)]
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir2/')
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir3/')
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir4/')
+        assert get_al_result4.body['accesslabel'] == ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW" + str(i + 1)
+                                                      for
+                                                      i in range(512)]
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir1/')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir2/')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir3/')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir4/')
 
     def test_getAccessLabel_fail(self):
         client_type, accessLabelClient, obsClient = self.get_client()
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
-        get_al_result = accessLabelClient.getAccessLabel('pythonsdktestbucket-posix', 'dir1')
+        obsClient.putContent('accesslabel-posix-bucket', 'dir1/')
+        get_al_result = accessLabelClient.getAccessLabel('accesslabel-posix-bucket', 'dir1')
         assert get_al_result.status == 404
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir1/')
 
     def test_deleteAccessLabel_success(self):
         client_type, accessLabelClient, obsClient = self.get_client()
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir1/')
-        obsClient.putContent('pythonsdktestbucket-posix', 'dir2/')
-        accessLabelClient.setAccessLabel('pythonsdktestbucket-posix', 'dir1', ['role_label_01', 'role_label_02'])
-        del_al_result1 = accessLabelClient.deleteAccessLabel('pythonsdktestbucket-posix', 'dir1')
-        del_al_result2 = accessLabelClient.deleteAccessLabel('pythonsdktestbucket-posix', 'dir2')
-        del_al_result3 = accessLabelClient.deleteAccessLabel('pythonsdktestbucket-posix', 'dir3')
+        obsClient.putContent('accesslabel-posix-bucket', 'dir1/')
+        obsClient.putContent('accesslabel-posix-bucket', 'dir2/')
+        accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir1', ['role_label_01', 'role_label_02'])
+        del_al_result1 = accessLabelClient.deleteAccessLabel('accesslabel-posix-bucket', 'dir1')
+        del_al_result2 = accessLabelClient.deleteAccessLabel('accesslabel-posix-bucket', 'dir2')
+        del_al_result3 = accessLabelClient.deleteAccessLabel('accesslabel-posix-bucket', 'dir3')
         assert del_al_result1.status == 204
         assert del_al_result2.status == 204
         assert del_al_result3.status == 204
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir1/')
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'dir2/')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir1/')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'dir2/')
 
     def test_deleteAccessLabel_fail(self):
         client_type, accessLabelClient, obsClient = self.get_client()
-        obsClient.putContent('pythonsdktestbucket-posix', 'file1', content='123')
-        del_al_result1 = accessLabelClient.deleteAccessLabel('pythonsdktestbucket-posix', 'file1')
+        obsClient.putContent('accesslabel-posix-bucket', 'file1', content='123')
+        del_al_result1 = accessLabelClient.deleteAccessLabel('accesslabel-posix-bucket', 'file1')
         assert del_al_result1.status == 405
-        obsClient.deleteObject('pythonsdktestbucket-posix', 'file1')
+        obsClient.deleteObject('accesslabel-posix-bucket', 'file1')
+
+    def test_putObject_with_crc64(self):
+        client_type, crc64Client, obsClient = self.get_client()
+        object_name = "test_crc64_object"
+        conftest.gen_random_file(object_name, 1024)
+        crc64 = util.calculate_file_crc64(test_config["path_prefix"] + object_name)
+        headers = PutObjectHeader()
+        headers.isAttachCrc64 = True
+        put_result = crc64Client.putFile(test_config["bucketName"], object_name,
+                                         test_config["path_prefix"] + object_name,
+                                         headers=headers)
+        assert put_result.status == 200
+        get_result = crc64Client.getObject(test_config["bucketName"], object_name)
+        assert int(get_result.body.crc64) == crc64
+        wrong_crc64 = 123456789
+        headers.crc64 = wrong_crc64
+        wrong_crc64_result = crc64Client.putFile(test_config["bucketName"], object_name,
+                                                 test_config["path_prefix"] + object_name, headers=headers)
+        assert wrong_crc64_result.status == 400
+        obsClient.deleteObject(test_config["bucketName"], object_name)
+
+    def test_putEmptyObject_with_crc64(self):
+        client_type, crc64Client, obsClient = self.get_client()
+        object_name = "test_empty_crc64_object"
+        content = ""
+        headers = PutObjectHeader()
+        headers.isAttachCrc64 = True
+        put_result = crc64Client.putContent(test_config["bucketName"], object_name, content,
+                                            headers=headers)
+        assert put_result.status == 200
+        get_result = crc64Client.getObject(test_config["bucketName"], object_name)
+        assert get_result.body.crc64 == '0'
+        obsClient.deleteObject(test_config["bucketName"], object_name)
+
+    def test_putObject_to_posixBucket_with_crc64(self):
+        client_type, crc64Client, obsClient = self.get_client()
+        bucketName = 'accesslabel-posix-bucket'
+        object_name = "test_crc64_object"
+        conftest.gen_random_file(object_name, 1024)
+        headers = PutObjectHeader()
+        headers.isAttachCrc64 = True
+        put_result = crc64Client.putFile(bucketName, object_name, test_config["path_prefix"] + object_name,
+                                         headers=headers)
+        assert put_result.status == 405
+
+    def test_uploadPart_with_crc64(self):
+        client_type, crc64Client, obsClient = self.get_client()
+        object_name = "test_crc64_object"
+        conftest.gen_random_file(object_name, 1024)
+        crc64 = util.calculate_file_crc64(test_config["path_prefix"] + object_name)
+
+        init_result = crc64Client.initiateMultipartUpload(test_config["bucketName"], object_name)
+        uploadId = init_result.body.uploadId
+        wrong_crc64_result = crc64Client.uploadPart(test_config["bucketName"], object_name, 1, uploadId,
+                                                    test_config["path_prefix"] + object_name, True, 1024 * 1024,
+                                                    crc64=123456789)
+        assert wrong_crc64_result.status == 400
+
+        put_result = crc64Client.uploadPart(test_config["bucketName"], object_name, 1, uploadId,
+                                            test_config["path_prefix"] + object_name, True, 1024 * 1024,
+                                            isAttachCrc64=True)
+        assert put_result.status == 200
+        part1 = CompletePart(partNum=1, etag=put_result.body.etag, crc64=put_result.body.crc64, size=1024 * 1024)
+        completeMultipartUploadRequest = CompleteMultipartUploadRequest(parts=[part1])
+        complete_result = crc64Client.completeMultipartUpload(test_config["bucketName"], object_name, uploadId,
+                                                            completeMultipartUploadRequest, isAttachCrc64=True)
+        assert int(complete_result.body.crc64) == crc64
+        get_result = crc64Client.getObject(test_config["bucketName"], object_name)
+        assert int(get_result.body.crc64) == crc64
+        obsClient.deleteObject(test_config["bucketName"], object_name)
+
+    def test_appendObject_with_crc64(self):
+        client_type, crc64Client, obsClient = self.get_client()
+        object_name = "test_crc64_object"
+        object_name2 = "test_crc64_object2"
+        headers = AppendObjectHeader()
+        headers.isAttachCrc64 = True
+        content = AppendObjectContent()
+        content.content = 'Hello OBS'
+        content.position = 0
+        crc64 = util.calculate_content_crc64(content.content)
+        put_result = crc64Client.appendObject(test_config["bucketName"], object_name,
+                                              content, headers=headers)
+        assert put_result.status == 200
+        get_result = crc64Client.getObject(test_config["bucketName"], object_name)
+        assert int(get_result.body.crc64) == crc64
+        wrong_crc64 = 123456789
+        headers.crc64 = wrong_crc64
+        wrong_crc64_result = crc64Client.appendObject(test_config["bucketName"], object_name2,
+                                                      content, headers=headers)
+        assert wrong_crc64_result.status == 400
+        obsClient.deleteObject(test_config["bucketName"], object_name)
+
+    def test_getObjectMetadata_crc64(self):
+        client_type, crc64Client, obsClient = self.get_client()
+        object_name = "test_crc64_object"
+        conftest.gen_random_file(object_name, 1024)
+        crc64 = util.calculate_file_crc64(test_config["path_prefix"] + object_name)
+        headers = PutObjectHeader()
+        headers.isAttachCrc64 = True
+        put_result = crc64Client.putFile(test_config["bucketName"], object_name,
+                                         test_config["path_prefix"] + object_name, headers=headers)
+        assert put_result.status == 200
+        get_result = crc64Client.getObjectMetadata(test_config["bucketName"], object_name)
+        assert int(get_result.body.crc64) == crc64
+
+        obsClient.deleteObject(test_config["bucketName"], object_name)
+
+    def test_getRangeObject_crc64(self):
+        client_type, crc64Client, obsClient = self.get_client()
+        object_name = "test_crc64_object"
+        conftest.gen_random_file(object_name, 1024)
+        crc64 = util.calculate_file_crc64(test_config["path_prefix"] + object_name)
+        headers = PutObjectHeader()
+        headers.isAttachCrc64 = True
+        put_result = crc64Client.putFile(test_config["bucketName"], object_name,
+                                         test_config["path_prefix"] + object_name, headers=headers)
+        assert put_result.status == 200
+        get_headers = GetObjectHeader()
+        get_headers.range = '0-512'
+        get_result = crc64Client.getObject(test_config["bucketName"], object_name, headers=get_headers)
+        assert int(get_result.body.crc64) == crc64
+
+        obsClient.deleteObject(test_config["bucketName"], object_name)
+
 
 if __name__ == "__main__":
     pytest.main(["-v", 'test_obs_client.py::TestOBSClient::test_uploadFile_with_metadata'])

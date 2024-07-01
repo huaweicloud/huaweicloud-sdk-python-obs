@@ -1,3 +1,10 @@
+Version 3.24.6
+   
+New Features:
+
+1. Supported check data integrity by crc64, including ObsClient.putFile,ObsClient.putContent,ObsClient.appendObject,ObsClient.uploadPart,ObsClient.completeMultipartUpload.
+
+------------------------------------------------------------------------------------------------- 
 Version 3.24.3
    
 New Features:

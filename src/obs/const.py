@@ -96,7 +96,7 @@ DEFAULT_TASK_INTTERVAL = 100
 DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 
-OBS_SDK_VERSION = '3.24.3'
+OBS_SDK_VERSION = '3.24.6'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -223,6 +223,7 @@ ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES = (
 ALLOWED_RESPONSE_HTTP_HEADER_METADATA_NAMES = (
     'content-type',
     'content-md5',
+    'checksum-crc64ecma',
     'content-length',
     'content-language',
     'expires',

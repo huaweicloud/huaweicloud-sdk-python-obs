@@ -184,11 +184,13 @@ class GetResult(BaseModel):
 
 
 class CompletePart(BaseModel):
-    allowedAttr = {'partNum': int, 'etag': BASESTRING}
+    allowedAttr = {'partNum': int, 'etag': BASESTRING, "crc64": [int, LONG, BASESTRING], "size": int}
 
-    def __init__(self, partNum=None, etag=None):
+    def __init__(self, partNum=None, etag=None, crc64=None, size=None):
         self.partNum = partNum
         self.etag = etag
+        self.crc64 = crc64
+        self.size = size
 
 
 class AvailableZone(object):
@@ -418,11 +420,11 @@ class CopyObjectHeader(BaseModel):
                    'destSseHeader': SseHeader, 'sourceSseHeader': SseHeader, 'cacheControl': BASESTRING,
                    'contentDisposition': BASESTRING,
                    'contentEncoding': BASESTRING, 'contentLanguage': BASESTRING, 'contentType': BASESTRING,
-                   'expires': BASESTRING,
+                   'expires': BASESTRING, "crc64": [int, LONG, BASESTRING],
                    'storageClass': BASESTRING, 'successActionRedirect': BASESTRING, 'extensionGrants': list}
 
     def __init__(self, acl=None, directive=None, if_match=None, if_none_match=None, if_modified_since=None,
-                 if_unmodified_since=None, location=None, destSseHeader=None, sourceSseHeader=None,
+                 if_unmodified_since=None, location=None, destSseHeader=None, sourceSseHeader=None, crc64=None,
                  cacheControl=None, contentDisposition=None, contentEncoding=None, contentLanguage=None,
                  contentType=None, expires=None, storageClass=None, successActionRedirect=None, extensionGrants=None):
         self.acl = acl
@@ -443,6 +445,7 @@ class CopyObjectHeader(BaseModel):
         self.storageClass = storageClass
         self.successActionRedirect = successActionRedirect
         self.extensionGrants = extensionGrants
+        self.crc64 = crc64
 
 
 class SetObjectMetadataHeader(BaseModel):
@@ -463,7 +466,8 @@ class SetObjectMetadataHeader(BaseModel):
         self.expires = expires
         self.storageClass = storageClass
 
-class RenameFileHeader(BaseModel,object):
+
+class RenameFileHeader(BaseModel, object):
     allowedAttr = {'objectKey': BASESTRING, 'newObjectKey': BASESTRING}
 
     def __init__(self, objectKey=None, newObjectKey=None):
@@ -492,7 +496,7 @@ class CreateBucketHeader(BaseModel):
                    "isFusionAllowUpgrade": bool, "isFusionAllowAlternative": bool}
 
     def __init__(self, aclControl=None, storageClass=None, extensionGrants=None,
-                 availableZone=None, epid=None, isPFS=False, redundancy=None, 
+                 availableZone=None, epid=None, isPFS=False, redundancy=None,
                  isFusionAllowUpgrade=None, isFusionAllowAlternative=None):
         """
         Headers that can be carried during bucket creation
@@ -515,6 +519,7 @@ class CreateBucketHeader(BaseModel):
         self.redundancy = redundancy
         self.isFusionAllowUpgrade = isFusionAllowUpgrade
         self.isFusionAllowAlternative = isFusionAllowAlternative
+
 
 class ExtensionGrant(BaseModel):
     allowedAttr = {'permission': BASESTRING, 'granteeId': BASESTRING}
@@ -707,10 +712,11 @@ class PutObjectHeader(BaseModel):
     allowedAttr = {'md5': BASESTRING, 'acl': BASESTRING, 'location': BASESTRING,
                    'contentType': BASESTRING, 'sseHeader': SseHeader, 'contentLength': [int, LONG, BASESTRING],
                    'storageClass': BASESTRING, 'successActionRedirect': BASESTRING, 'expires': int,
-                   'extensionGrants': list, "sha256": BASESTRING}
+                   'extensionGrants': list, "sha256": BASESTRING, "crc64": [int, LONG, BASESTRING], "isAttachCrc64": bool}
 
     def __init__(self, md5=None, acl=None, location=None, contentType=None, sseHeader=None, contentLength=None,
-                 storageClass=None, successActionRedirect=None, expires=None, extensionGrants=None, sha256=None):
+                 storageClass=None, successActionRedirect=None, expires=None, extensionGrants=None, sha256=None,
+                 crc64=None, isAttachCrc64=False):
         self.md5 = md5
         self.sha256 = sha256
         self.acl = acl
@@ -722,6 +728,8 @@ class PutObjectHeader(BaseModel):
         self.successActionRedirect = successActionRedirect
         self.expires = expires
         self.extensionGrants = extensionGrants
+        self.crc64 = crc64
+        self.isAttachCrc64 = isAttachCrc64
 
 
 AppendObjectHeader = PutObjectHeader
@@ -949,11 +957,12 @@ class CompleteMultipartUploadRequest(BaseModel):
 class CompleteMultipartUploadResponse(BaseModel):
     allowedAttr = {'location': BASESTRING, 'bucket': BASESTRING, "encoding_type": BASESTRING,
                    'key': BASESTRING, 'etag': BASESTRING, 'versionId': BASESTRING, 'sseKms': BASESTRING,
-                   'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING, 'objectUrl': BASESTRING}
+                   'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING, 'objectUrl': BASESTRING,
+                   'crc64': BASESTRING}
 
     def __init__(self, location=None, bucket=None, key=None, etag=None,
                  versionId=None, sseKms=None, sseKmsKey=None, sseC=None,
-                 sseCKeyMd5=None, objectUrl=None, encoding_type=None):
+                 sseCKeyMd5=None, objectUrl=None, crc64=None, encoding_type=None):
         self.location = location
         self.bucket = bucket
         self.key = key
@@ -965,15 +974,16 @@ class CompleteMultipartUploadResponse(BaseModel):
         self.sseCKeyMd5 = sseCKeyMd5
         self.objectUrl = objectUrl
         self.encoding_type = encoding_type
+        self.crc64 = crc64
 
 
 class CopyObjectResponse(BaseModel):
     allowedAttr = {'lastModified': BASESTRING, 'etag': BASESTRING, 'copySourceVersionId': BASESTRING,
-                   'versionId': BASESTRING,
+                   'versionId': BASESTRING, "crc64": BASESTRING,
                    'sseKms': BASESTRING, 'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING}
 
     def __init__(self, lastModified=None, etag=None, copySourceVersionId=None, versionId=None, sseKms=None,
-                 sseKmsKey=None, sseC=None, sseCKeyMd5=None):
+                 sseKmsKey=None, sseC=None, sseCKeyMd5=None, crc64=None):
         self.lastModified = lastModified
         self.etag = etag
         self.copySourceVersionId = copySourceVersionId
@@ -982,14 +992,16 @@ class CopyObjectResponse(BaseModel):
         self.sseKmsKey = sseKmsKey
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
+        self.crc64 = crc64
 
 
 class CopyPartResponse(BaseModel):
     allowedAttr = {'lastModified': BASESTRING, 'etag': BASESTRING, 'modifiedDate': BASESTRING,
-                   'sseKms': BASESTRING, 'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING}
+                   'sseKms': BASESTRING, 'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING,
+                   "crc64": BASESTRING}
 
     def __init__(self, lastModified=None, etag=None, modifiedDate=None, sseKms=None, sseKmsKey=None, sseC=None,
-                 sseCKeyMd5=None):
+                 sseCKeyMd5=None, crc64=None):
         self.lastModified = lastModified
         self.etag = etag
         self.modifiedDate = modifiedDate
@@ -997,6 +1009,7 @@ class CopyPartResponse(BaseModel):
         self.sseKmsKey = sseKmsKey
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
+        self.crc64 = crc64
 
 
 class DeleteObjectResponse(BaseModel):
@@ -1088,7 +1101,7 @@ class ListPartsResponse(BaseModel):
 
 
 class GetBucketMetadataResponse(BaseModel):
-    allowedAttr = {'storageClass': BASESTRING, 'accessContorlAllowOrigin': BASESTRING, 
+    allowedAttr = {'storageClass': BASESTRING, 'accessContorlAllowOrigin': BASESTRING,
                    'accessContorlAllowHeaders': BASESTRING,
                    'accessContorlAllowMethods': BASESTRING,
                    'accessContorlExposeHeaders': BASESTRING,
@@ -1119,13 +1132,16 @@ class GetBucketQuotaResponse(BaseModel):
 
 
 class GetBucketStorageInfoResponse(BaseModel):
-    allowedAttr = {'size': LONG, 'objectNumber': int, 'standardSize': LONG, 'standardObjectNumber': int, 'warmSize': LONG,
-                   'warmObjectNumber': int, 'coldSize': LONG, 'coldObjectNumber': int, 'deepArchiveSize': LONG, 'deepArchiveObjectNumber': int,
-                   'highPerformanceSize': LONG, 'highPerformanceObjectNumber': int, 'standard_IASize': LONG, 'standard_IAObjectNumber': int, 'glacierObjectNumber': LONG}
+    allowedAttr = {'size': LONG, 'objectNumber': int, 'standardSize': LONG, 'standardObjectNumber': int,
+                   'warmSize': LONG, 'warmObjectNumber': int, 'coldSize': LONG, 'coldObjectNumber': int,
+                   'deepArchiveSize': LONG, 'deepArchiveObjectNumber': int, 'highPerformanceSize': LONG,
+                   'highPerformanceObjectNumber': int, 'standard_IASize': LONG, 'standard_IAObjectNumber': int,
+                   'glacierObjectNumber': LONG}
 
     def __init__(self, size=None, objectNumber=None, standardSize=None, standardObjectNumber=None, warmSize=None,
-                 warmObjectNumber=None, coldSize=None, coldObjectNumber=None, deepArchiveSize=None, deepArchiveObjectNumber=None,
-                 highPerformanceSize=None, highPerformanceObjectNumber=None, standard_IASize=None, standard_IAObjectNumber=None, glacierSize=None, glacierObjectNumber=None):
+                 warmObjectNumber=None, coldSize=None, coldObjectNumber=None, deepArchiveSize=None,
+                 deepArchiveObjectNumber=None, highPerformanceSize=None, highPerformanceObjectNumber=None,
+                 standard_IASize=None, standard_IAObjectNumber=None, glacierSize=None, glacierObjectNumber=None):
         self.size = size
         self.objectNumber = objectNumber
         self.standardSize = standardSize
@@ -1142,6 +1158,7 @@ class GetBucketStorageInfoResponse(BaseModel):
         self.standard_IAObjectNumber = standard_IAObjectNumber
         self.glacierSize = glacierSize
         self.glacierObjectNumber = glacierObjectNumber
+
 
 class GetBucketEncryptionResponse(BaseModel):
     allowedAttr = {'encryption': BASESTRING, 'key': BASESTRING}
@@ -1166,14 +1183,14 @@ class GetObjectMetadataResponse(BaseModel):
                    'lastModified': BASESTRING, 'etag': BASESTRING, 'versionId': BASESTRING,
                    'restore': BASESTRING, 'expiration': BASESTRING, 'sseKms': BASESTRING,
                    'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING, 'isAppendable': bool,
-                   'nextPosition': LONG}
+                   'nextPosition': LONG, "crc64": BASESTRING}
 
     def __init__(self, storageClass=None, accessContorlAllowOrigin=None, accessContorlAllowHeaders=None,
                  accessContorlAllowMethods=None, accessContorlExposeHeaders=None, accessContorlMaxAge=None,
                  contentLength=None,
                  contentType=None, websiteRedirectLocation=None, lastModified=None, etag=None, versionId=None,
                  restore=None, expiration=None, sseKms=None, sseKmsKey=None, sseC=None, sseCKeyMd5=None,
-                 isAppendable=None, nextPosition=None):
+                 isAppendable=None, nextPosition=None, crc64=None):
         self.storageClass = storageClass
         self.accessContorlAllowOrigin = accessContorlAllowOrigin
         self.accessContorlAllowHeaders = accessContorlAllowHeaders
@@ -1195,6 +1212,7 @@ class GetObjectMetadataResponse(BaseModel):
         self.sseCKeyMd5 = sseCKeyMd5
         self.isAppendable = isAppendable
         self.nextPosition = nextPosition
+        self.crc64 = crc64
 
 
 SetObjectMetadataResponse = GetObjectMetadataResponse
@@ -1237,7 +1255,8 @@ class LifecycleResponse(BaseModel):
 
 
 class ListBucketsResponse(BaseModel):
-    allowedAttr = {'buckets': list, 'owner': Owner, 'maxKeys': int, 'marker': BASESTRING, 'isTruncated': bool, 'nextMarker': BASESTRING}
+    allowedAttr = {'buckets': list, 'owner': Owner, 'maxKeys': int, 'marker': BASESTRING, 'isTruncated': bool,
+                   'nextMarker': BASESTRING}
 
     def __init__(self, buckets=None, owner=None, maxKeys=None, marker=None, isTruncated=None, nextMarker=None):
         self.buckets = buckets
@@ -1246,6 +1265,7 @@ class ListBucketsResponse(BaseModel):
         self.marker = marker
         self.isTruncated = isTruncated
         self.nextMarker = nextMarker
+
 
 class ListMultipartUploadsResponse(BaseModel):
     allowedAttr = {'bucket': BASESTRING, 'keyMarker': BASESTRING, 'uploadIdMarker': BASESTRING,
@@ -1315,10 +1335,10 @@ class OptionsResponse(BaseModel):
 class PutContentResponse(BaseModel):
     allowedAttr = {'storageClass': BASESTRING, 'etag': BASESTRING, 'versionId': BASESTRING,
                    'sseKms': BASESTRING, 'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING,
-                   'objectUrl': BASESTRING}
+                   'objectUrl': BASESTRING, "crc64": BASESTRING}
 
     def __init__(self, storageClass=None, etag=None, versionId=None, sseKms=None, sseKmsKey=None,
-                 sseC=None, sseCKeyMd5=None, objectUrl=None):
+                 sseC=None, sseCKeyMd5=None, objectUrl=None, crc64=None):
         self.storageClass = storageClass
         self.etag = etag
         self.versionId = versionId
@@ -1327,15 +1347,16 @@ class PutContentResponse(BaseModel):
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
         self.objectUrl = objectUrl
+        self.crc64 = crc64
 
 
 class AppendObjectResponse(BaseModel):
     allowedAttr = {'storageClass': BASESTRING, 'etag': BASESTRING, 'nextPosition': LONG,
                    'sseKms': BASESTRING, 'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING,
-                   'objectUrl': BASESTRING}
+                   'objectUrl': BASESTRING, "crc64": BASESTRING}
 
     def __init__(self, storageClass=None, etag=None, nextPosition=None, sseKms=None, sseKmsKey=None,
-                 sseC=None, sseCKeyMd5=None, objectUrl=None):
+                 sseC=None, sseCKeyMd5=None, objectUrl=None, crc64=None):
         self.storageClass = storageClass
         self.etag = etag
         self.nextPosition = nextPosition
@@ -1344,18 +1365,20 @@ class AppendObjectResponse(BaseModel):
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
         self.objectUrl = objectUrl
+        self.crc64 = crc64
 
 
 class UploadPartResponse(BaseModel):
     allowedAttr = {'etag': BASESTRING, 'sseKms': BASESTRING, 'sseKmsKey': BASESTRING, 'sseC': BASESTRING,
-                   'sseCKeyMd5': BASESTRING}
+                   'sseCKeyMd5': BASESTRING, "crc64": BASESTRING}
 
-    def __init__(self, etag=None, sseKms=None, sseKmsKey=None, sseC=None, sseCKeyMd5=None):
+    def __init__(self, etag=None, sseKms=None, sseKmsKey=None, sseC=None, sseCKeyMd5=None, crc64=None):
         self.etag = etag
         self.sseKms = sseKms
         self.sseKmsKey = sseKmsKey
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
+        self.crc64 = crc64
 
 
 class GetBucketRequestPaymentResponse(BaseModel):
@@ -1418,14 +1441,14 @@ class ObjectStream(BaseModel):
                    'contentType': BASESTRING, 'expires': BASESTRING, 'websiteRedirectLocation': BASESTRING,
                    'lastModified': BASESTRING, 'etag': BASESTRING, 'versionId': BASESTRING,
                    'restore': BASESTRING, 'expiration': BASESTRING, 'sseKms': BASESTRING,
-                   'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING}
+                   'sseKmsKey': BASESTRING, 'sseC': BASESTRING, 'sseCKeyMd5': BASESTRING, "crc64": BASESTRING}
 
     def __init__(self, response=None, buffer=None, size=None, url=None, deleteMarker=None, storageClass=None,
                  accessContorlAllowOrigin=None, accessContorlAllowHeaders=None, accessContorlAllowMethods=None,
                  accessContorlExposeHeaders=None, accessContorlMaxAge=None, contentLength=None, cacheControl=None,
                  contentDisposition=None, contentEncoding=None, contentLanguage=None, contentType=None, expires=None,
                  websiteRedirectLocation=None, lastModified=None, etag=None, versionId=None, restore=None,
-                 expiration=None, sseKms=None, sseKmsKey=None, sseC=None, sseCKeyMd5=None):
+                 expiration=None, sseKms=None, sseKmsKey=None, sseC=None, sseCKeyMd5=None, crc64=None):
         self.response = response
         self.buffer = buffer
         self.size = size
@@ -1454,6 +1477,7 @@ class ObjectStream(BaseModel):
         self.sseKmsKey = sseKmsKey
         self.sseC = sseC
         self.sseCKeyMd5 = sseCKeyMd5
+        self.crc64 = crc64
 
 
 class ExtensionHeader(BaseModel):

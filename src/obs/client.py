@@ -1692,7 +1692,7 @@ class ObsClient(_BasicClient):
             headers, readable, notifier, entity = self._prepare_file_notifier_and_entity(offset, file_size, headers,
                                                                                          progressCallback, file_path,
                                                                                          readable)
-            headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
+            headers = self.convertor.trans_put_object(metadata=metadata, headers=headers, file_path=file_path)
             self.log_client.log(DEBUG, 'send Path:%s' % file_path)
         else:
             entity = content.get('content')
@@ -1701,7 +1701,7 @@ class ObsClient(_BasicClient):
                                                                                                 autoClose, readable,
                                                                                                 chunkedMode, notifier)
 
-            headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
+            headers = self.convertor.trans_put_object(metadata=metadata, headers=headers, content=content.get('content'))
 
         try:
             if notifier is not None:
@@ -1727,7 +1727,7 @@ class ObsClient(_BasicClient):
             headers = PutObjectHeader()
         if headers.get('contentType') is None:
             headers['contentType'] = const.MIME_TYPES.get(objectKey[objectKey.rfind('.') + 1:].lower())
-        _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
+        _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers, content=content)
 
         readable = False
         chunkedMode = False
@@ -1789,12 +1789,12 @@ class ObsClient(_BasicClient):
                 __file_path = os.path.join(file_path, f)
                 if not const.IS_PYTHON2:
                     if not objectKey:
-                        key = util.safe_trans_to_gb2312('{0}/'.format(os.path.split(file_path)[1]) + f)
+                        key = util.safe_trans_to_gb2312('{0}'.format(os.path.split(file_path)[1]) + f)
                     else:
                         key = '{0}/'.format(objectKey) + util.safe_trans_to_gb2312(f)
                 else:
                     if not objectKey:
-                        key = util.safe_trans_to_gb2312('{0}/'.format(os.path.split(file_path)[1]) + f).decode(
+                        key = util.safe_trans_to_gb2312('{0}'.format(os.path.split(file_path)[1]) + f).decode(
                             'GB2312').encode('UTF-8')
                     else:
                         key = '{0}/'.format(objectKey) + util.safe_trans_to_gb2312(f).decode('GB2312').encode('UTF-8')
@@ -1810,7 +1810,7 @@ class ObsClient(_BasicClient):
 
         headers = self._putFileHandleHeader(headers, size, objectKey, file_path)
 
-        _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers)
+        _headers = self.convertor.trans_put_object(metadata=metadata, headers=headers, file_path=file_path)
         if const.CONTENT_LENGTH_HEADER not in _headers:
             _headers[const.CONTENT_LENGTH_HEADER] = util.to_string(size)
         self.log_client.log(DEBUG, 'send Path:%s' % file_path)
@@ -1857,13 +1857,16 @@ class ObsClient(_BasicClient):
         partSize = partSize if partSize is not None and 0 < partSize <= (file_size - offset) else file_size - offset
         return partSize
 
-    def _prepare_headers(self, md5, isAttachMd5, file_path, partSize, offset, sseHeader, headers):
+    def _prepare_headers(self, md5, isAttachMd5, crc64, isAttachCrc64, file_path, partSize, offset, sseHeader, headers):
         if md5:
             headers[const.CONTENT_MD5_HEADER] = md5
         elif isAttachMd5:
             headers[const.CONTENT_MD5_HEADER] = util.base64_encode(
                 util.md5_file_encode_by_size_offset(file_path, partSize, offset, self.chunk_size))
-
+        if crc64:
+            self.convertor._put_key_value(headers, self.ha.crc64_header(), crc64)
+        elif isAttachCrc64:
+            self.convertor._put_key_value(headers, self.ha.crc64_header(), util.calculate_file_crc64(file_path, offset=offset, totalCount=partSize))
         if sseHeader is not None:
             self.convertor._set_sse_header(sseHeader, headers, True)
 
@@ -1879,12 +1882,15 @@ class ObsClient(_BasicClient):
 
         return readable, notifier
 
-    def _get_headers(self, md5, sseHeader, headers):
+    def _get_headers(self, md5, crc64, isAttachCrc64, content, sseHeader, headers):
         if md5:
             headers[const.CONTENT_MD5_HEADER] = md5
         if sseHeader is not None:
             self.convertor._set_sse_header(sseHeader, headers, True)
-
+        if crc64:
+            headers[self.ha.crc64_header()] = crc64
+        elif isAttachCrc64:
+            headers[self.ha.crc64_header()] = util.calculate_content_crc64(util.covert_string_to_bytes(content))
         return headers
 
     @staticmethod
@@ -1911,7 +1917,7 @@ class ObsClient(_BasicClient):
     @funcCache
     def uploadPart(self, bucketName, objectKey, partNumber, uploadId, object=None, isFile=False, partSize=None,
                    offset=0, sseHeader=None, isAttachMd5=False, md5=None, content=None, progressCallback=None,
-                   autoClose=True, extensionHeaders=None):
+                   autoClose=True, isAttachCrc64=False, crc64=None, extensionHeaders=None):
         self._assert_not_null(partNumber, 'partNumber is empty')
         self._assert_not_null(uploadId, 'uploadId is empty')
 
@@ -1926,7 +1932,7 @@ class ObsClient(_BasicClient):
             checked_file_part_info = self._check_file_part_info(content, offset, partSize)
 
             headers = {const.CONTENT_LENGTH_HEADER: util.to_string(checked_file_part_info["partSize"])}
-            headers = self._prepare_headers(md5, isAttachMd5, checked_file_part_info["file_path"],
+            headers = self._prepare_headers(md5, isAttachMd5, crc64, isAttachCrc64, checked_file_part_info["file_path"],
                                             checked_file_part_info["partSize"], checked_file_part_info["offset"],
                                             sseHeader, headers)
 
@@ -1938,7 +1944,7 @@ class ObsClient(_BasicClient):
             headers = {}
             if content is not None and hasattr(content, 'read') and callable(content.read):
                 readable = True
-                headers = self._get_headers(md5, sseHeader, headers)
+                headers = self._get_headers(md5, crc64, isAttachCrc64, content, sseHeader, headers)
 
                 if partSize is None:
                     self.log_client.log(DEBUG, 'missing partSize when uploading a readable stream')
@@ -1956,7 +1962,7 @@ class ObsClient(_BasicClient):
                 entity = content
                 if entity is None:
                     entity = ''
-                headers = self._get_headers(md5, sseHeader, headers)
+                headers = self._get_headers(md5, crc64, isAttachCrc64, content, sseHeader, headers)
 
         try:
             if notifier is not None:
@@ -1982,7 +1988,7 @@ class ObsClient(_BasicClient):
     @funcCache
     def _uploadPartWithNotifier(self, bucketName, objectKey, partNumber, uploadId, content=None, isFile=False,
                                 partSize=None, offset=0, sseHeader=None, isAttachMd5=False, md5=None, notifier=None,
-                                extensionHeaders=None, headers=None):
+                                extensionHeaders=None, headers=None, isAttachCrc64=False, crc64=None):
         self._assert_not_null(partNumber, 'partNumber is empty')
         self._assert_not_null(uploadId, 'uploadId is empty')
 
@@ -1994,7 +2000,7 @@ class ObsClient(_BasicClient):
             checked_file_part_info = self._check_file_part_info(content, offset, partSize)
 
             headers[const.CONTENT_LENGTH_HEADER] = util.to_string(checked_file_part_info["partSize"])
-            headers = self._prepare_headers(md5, isAttachMd5, checked_file_part_info["file_path"],
+            headers = self._prepare_headers(md5, isAttachMd5, crc64, isAttachCrc64, checked_file_part_info["file_path"],
                                             checked_file_part_info["partSize"], checked_file_part_info["offset"],
                                             sseHeader, headers)
 
@@ -2005,7 +2011,7 @@ class ObsClient(_BasicClient):
         else:
             if content is not None and hasattr(content, 'read') and callable(content.read):
                 readable = True
-                headers = self._get_headers(md5, sseHeader, headers)
+                headers = self._get_headers(md5, crc64, isAttachCrc64, content, sseHeader, headers)
 
                 if partSize is None:
                     chunkedMode = True
@@ -2018,7 +2024,7 @@ class ObsClient(_BasicClient):
                 entity = content
                 if entity is None:
                     entity = ''
-                headers = self._get_headers(md5, sseHeader, headers)
+                headers = self._get_headers(md5, crc64, isAttachCrc64, content, sseHeader, headers)
 
         ret = self._make_put_request(bucketName, objectKey, pathArgs={'partNumber': partNumber, 'uploadId': uploadId},
                                      headers=headers, entity=entity, chunkedMode=chunkedMode, methodName='uploadPart',
@@ -2132,16 +2138,16 @@ class ObsClient(_BasicClient):
 
     @funcCache
     def completeMultipartUpload(self, bucketName, objectKey, uploadId, completeMultipartUploadRequest,
-                                extensionHeaders=None, encoding_type=None):
+                                isAttachCrc64=False, extensionHeaders=None, encoding_type=None):
         self._assert_not_null(uploadId, 'uploadId is empty')
         self._assert_not_null(completeMultipartUploadRequest, 'completeMultipartUploadRequest is empty')
         pathArgs = {'uploadId': uploadId}
         if encoding_type is not None:
             pathArgs["encoding-type"] = encoding_type
+        entity, headers = self.convertor.trans_complete_multipart_upload_request(completeMultipartUploadRequest, isAttachCrc64)
         ret = self._make_post_request(bucketName, objectKey,
-                                      pathArgs=pathArgs,
-                                      entity=self.convertor.trans_complete_multipart_upload_request(
-                                          completeMultipartUploadRequest), methodName='completeMultipartUpload',
+                                      pathArgs=pathArgs, headers=headers,
+                                      entity=entity, methodName='completeMultipartUpload',
                                       extensionHeaders=extensionHeaders)
         self._generate_object_url(ret, bucketName, objectKey)
         return ret

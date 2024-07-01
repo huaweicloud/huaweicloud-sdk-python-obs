@@ -110,6 +110,9 @@ class Adapter(object):
     def content_sha256_header(self):
         return self._get_header_prefix() + 'content-sha256'
 
+    def crc64_header(self):
+        return self._get_header_prefix() + 'checksum-crc64ecma'
+
     def default_storage_class_header(self):
         return self._get_header_prefix() + 'storage-class' if self.is_obs else 'x-default-storage-class'
 
@@ -680,16 +683,21 @@ class Convertor(object):
 
         return ET.tostring(root, 'UTF-8')
 
-    @staticmethod
-    def trans_complete_multipart_upload_request(completeMultipartUploadRequest):
+    def trans_complete_multipart_upload_request(self, completeMultipartUploadRequest, isAttachCrc64):
         root = ET.Element('CompleteMultipartUpload')
+        headers = {}
+
         parts = [] if completeMultipartUploadRequest.get('parts') is None else (
             sorted(completeMultipartUploadRequest['parts'], key=lambda d: d.partNum))
+        if isAttachCrc64:
+            object_crc = util.calc_obj_crc_from_parts(parts)
+            self._put_key_value(headers, self.ha.crc64_header(), object_crc)
+
         for obj in parts:
             partEle = ET.SubElement(root, 'Part')
             ET.SubElement(partEle, 'PartNumber').text = util.to_string(obj.get('partNum'))
             ET.SubElement(partEle, 'ETag').text = util.to_string(obj.get('etag'))
-        return ET.tostring(root, 'UTF-8')
+        return (ET.tostring(root, 'UTF-8'), headers)
 
     def trans_restore_object(self, **kwargs):
         pathArgs = {'restore': None}
@@ -801,6 +809,8 @@ class Convertor(object):
 
     def trans_put_object(self, **kwargs):
         _headers = {}
+        file_path = kwargs.get('file_path')
+        content = kwargs.get('content')
         metadata = kwargs.get('metadata')
         headers = kwargs.get('headers')
         if metadata is not None:
@@ -819,7 +829,14 @@ class Convertor(object):
                                 self.ha.adapt_storage_class(headers.get('storageClass')))
             self._put_key_value(_headers, const.CONTENT_LENGTH_HEADER, headers.get('contentLength'))
             self._put_key_value(_headers, self.ha.expires_header(), headers.get('expires'))
-
+            if headers.get('crc64') is not None:
+                self._put_key_value(_headers, self.ha.crc64_header(), headers.get('crc64'))
+            elif headers.get('isAttachCrc64'):
+                if file_path:
+                    crc64 = util.calculate_file_crc64(file_path)
+                else:
+                    crc64 = util.calculate_content_crc64(util.covert_string_to_bytes(content))
+                self._put_key_value(_headers, self.ha.crc64_header(), crc64)
             if self.is_obs:
                 self._put_key_value(_headers, self.ha.success_action_redirect_header(),
                                     headers.get('successActionRedirect'))
@@ -917,7 +934,7 @@ class Convertor(object):
             self._put_key_value(_headers, self.ha.acl_header(), self.ha.adapt_acl_control(headers.get('acl')))
             self._put_key_value(_headers, self.ha.storage_class_header(),
                                 self.ha.adapt_storage_class(headers.get('storageClass')))
-
+            self._put_key_value(_headers, self.ha.crc64_header(), headers.get('crc64'))
             self._put_key_value(_headers, self.ha.metadata_directive_header(), headers.get('directive'))
             self._put_key_value(_headers, self.ha.copy_source_if_match_header(), headers.get('if_match'))
             self._put_key_value(_headers, self.ha.copy_source_if_none_match_header(), headers.get('if_none_match'))
@@ -1711,6 +1728,7 @@ class Convertor(object):
         completeMultipartUploadResponse.sseKms = headers.get(self.ha.sse_kms_header())
         completeMultipartUploadResponse.sseKmsKey = headers.get(self.ha.sse_kms_key_header())
         completeMultipartUploadResponse.sseC = headers.get(self.ha.sse_c_header())
+        completeMultipartUploadResponse.crc64 = headers.get(self.ha.crc64_header())
         completeMultipartUploadResponse.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
 
         return completeMultipartUploadResponse
@@ -1841,6 +1859,7 @@ class Convertor(object):
         option.sseC = headers.get(self.ha.sse_c_header())
         option.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
         option.etag = headers.get(const.ETAG_HEADER.lower())
+        option.crc64 = headers.get(self.ha.crc64_header())
         return option
 
     def parseAppendObject(self, headers):
@@ -1852,6 +1871,7 @@ class Convertor(object):
         option.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
         option.etag = headers.get(const.ETAG_HEADER.lower())
         option.nextPosition = util.to_long(headers.get(self.ha.next_position_header()))
+        option.crc64 = headers.get(self.ha.crc64_header())
         return option
 
     def parseInitiateMultipartUpload(self, xml, headers=None):
@@ -1902,6 +1922,8 @@ class Convertor(object):
         option.contentLength = util.to_long(headers.get(const.CONTENT_LENGTH_HEADER.lower()))
         option.contentType = headers.get(const.CONTENT_TYPE_HEADER.lower())
         option.lastModified = headers.get(const.LAST_MODIFIED_HEADER.lower())
+        option.crc64 = headers.get(self.ha.crc64_header())
+
 
     def parseGetObjectMetadata(self, headers):
         option = GetObjectMetadataResponse()
@@ -1940,6 +1962,7 @@ class Convertor(object):
         uploadPartResponse.sseKmsKey = headers.get(self.ha.sse_kms_key_header())
         uploadPartResponse.sseC = headers.get(self.ha.sse_c_header())
         uploadPartResponse.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
+        uploadPartResponse.crc64 = headers.get(self.ha.crc64_header())
         return uploadPartResponse
 
     def parseCopyPart(self, xml, headers=None):
@@ -1952,6 +1975,7 @@ class Convertor(object):
         copyPartResponse.sseKmsKey = headers.get(self.ha.sse_kms_key_header())
         copyPartResponse.sseC = headers.get(self.ha.sse_c_header())
         copyPartResponse.sseCKeyMd5 = headers.get(self.ha.sse_c_key_md5_header().lower())
+        copyPartResponse.crc64 = headers.get(self.ha.crc64_header())
         return copyPartResponse
 
     def parseGetBucketReplication(self, xml, headers=None):
