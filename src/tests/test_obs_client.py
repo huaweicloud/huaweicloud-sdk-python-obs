@@ -585,7 +585,7 @@ class TestOBSClient(object):
         part1 = CompletePart(partNum=1, etag=put_result.body.etag, crc64=put_result.body.crc64, size=1024 * 1024)
         completeMultipartUploadRequest = CompleteMultipartUploadRequest(parts=[part1])
         complete_result = crc64Client.completeMultipartUpload(test_config["bucketName"], object_name, uploadId,
-                                                            completeMultipartUploadRequest, isAttachCrc64=True)
+                                                              completeMultipartUploadRequest, isAttachCrc64=True)
         assert int(complete_result.body.crc64) == crc64
         get_result = crc64Client.getObject(test_config["bucketName"], object_name)
         assert int(get_result.body.crc64) == crc64
@@ -643,6 +643,19 @@ class TestOBSClient(object):
         get_result = crc64Client.getObject(test_config["bucketName"], object_name, headers=get_headers)
         assert int(get_result.body.crc64) == crc64
 
+        obsClient.deleteObject(test_config["bucketName"], object_name)
+
+    def test_uploadFile_with_crc64(self):
+        client_type, crc64Client, obsClient = self.get_client()
+        object_name = "test_crc64_object"
+        conftest.gen_random_file(object_name, 15 * 1024)
+        crc64 = util.calculate_file_crc64(test_config["path_prefix"] + object_name)
+        put_result = obsClient.uploadFile(test_config["bucketName"], object_name,
+                                          test_config["path_prefix"] + object_name, 5 * 1024 * 1024, 2, True,
+                                          isAttachCrc64=True)
+        assert put_result.status == 200
+        get_result = crc64Client.getObject(test_config["bucketName"], object_name)
+        assert int(get_result.body.crc64) == crc64
         obsClient.deleteObject(test_config["bucketName"], object_name)
 
 

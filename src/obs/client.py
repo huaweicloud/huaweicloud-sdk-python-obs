@@ -2488,7 +2488,7 @@ class ObsClient(_BasicClient):
     def uploadFile(self, bucketName, objectKey, uploadFile, partSize=9 * 1024 * 1024,
                    taskNum=1, enableCheckpoint=False, checkpointFile=None,
                    checkSum=False, metadata=None, progressCallback=None, headers=None,
-                   extensionHeaders=None, encoding_type=None):
+                   extensionHeaders=None, encoding_type=None, isAttachCrc64=False):
         self.log_client.log(INFO, 'enter resume upload file...')
         self._assert_not_null(bucketName, 'bucketName is empty')
         self._assert_not_null(objectKey, 'objectKey is empty')
@@ -2496,7 +2496,7 @@ class ObsClient(_BasicClient):
 
         return _resume_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile,
                               checkSum, metadata, progressCallback, self, headers,
-                              extensionHeaders=extensionHeaders, encoding_type=encoding_type)
+                              extensionHeaders=extensionHeaders, encoding_type=encoding_type, isAttachCrc64=isAttachCrc64)
 
     @funcCache
     def _downloadFileWithNotifier(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1,

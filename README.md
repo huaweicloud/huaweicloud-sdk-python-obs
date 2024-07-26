@@ -1,3 +1,10 @@
+Version 3.24.6.1
+   
+New Features:
+
+1. ObsClient.uploadFile Supported check data integrity by crc64.
+
+------------------------------------------------------------------------------------------------- 
 Version 3.24.6
    
 New Features:

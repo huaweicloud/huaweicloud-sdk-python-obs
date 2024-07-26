@@ -34,11 +34,13 @@ else:
 
 
 def _resume_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile, checkSum,
-                   metadata, progressCallback, obsClient, headers, extensionHeaders=None, encoding_type=None):
+                   metadata, progressCallback, obsClient, headers, extensionHeaders=None, encoding_type=None,
+                   isAttachCrc64=False):
     upload_operation = uploadOperation(util.to_string(bucketName), util.to_string(objectKey),
                                        util.to_string(uploadFile), partSize, taskNum, enableCheckPoint,
                                        util.to_string(checkPointFile), checkSum, metadata, progressCallback, obsClient,
-                                       headers, extensionHeaders=extensionHeaders, encoding_type=encoding_type)
+                                       headers, extensionHeaders=extensionHeaders, encoding_type=encoding_type,
+                                       isAttachCrc64=isAttachCrc64)
     return upload_operation._upload()
 
 
@@ -126,7 +128,8 @@ class Operation(object):
 
 class uploadOperation(Operation):
     def __init__(self, bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
-                 checkSum, metadata, progressCallback, obsClient, headers, extensionHeaders=None, encoding_type=None):
+                 checkSum, metadata, progressCallback, obsClient, headers, extensionHeaders=None, encoding_type=None,
+                 isAttachCrc64=False):
         if enableCheckPoint and not checkPointFile:
             checkPointFile = uploadFile + '.upload_record'
         super(uploadOperation, self).__init__(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint,
@@ -136,6 +139,7 @@ class uploadOperation(Operation):
         self.headers = headers
         self.extensionHeaders = extensionHeaders
         self.encoding_type = encoding_type
+        self.isAttachCrc64 = isAttachCrc64
 
         try:
             self.size = os.path.getsize(self.fileName)
@@ -229,13 +233,18 @@ class uploadOperation(Operation):
                         raise Exception('some parts are failed when upload. Please try again')
 
             part_Etags = []
-            for part in self._record['partEtags']:
-                part_Etags.append(CompletePart(partNum=part['partNum'], etag=part['etag']))
-                self.obsClient.log_client.log(INFO, 'Completing to upload multi_parts')
+            if self.isAttachCrc64:
+                for part in self._record['partEtags']:
+                    part_Etags.append(CompletePart(partNum=part['partNum'], etag=part['etag'], crc64=part['crc64'], size=part['size']))
+            else:
+                for part in self._record['partEtags']:
+                    part_Etags.append(CompletePart(partNum=part['partNum'], etag=part['etag']))
+            self.obsClient.log_client.log(INFO, 'Completing to upload multi_parts')
             resp = self.obsClient.completeMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'],
                                                           CompleteMultipartUploadRequest(part_Etags),
                                                           extensionHeaders=self.extensionHeaders,
-                                                          encoding_type=self.encoding_type)
+                                                          encoding_type=self.encoding_type,
+                                                          isAttachCrc64=self.isAttachCrc64)
             self._upload_handle_response(resp)
             return resp
         finally:
@@ -389,7 +398,7 @@ class uploadOperation(Operation):
                 resp = self.get_upload_part_resp(part)
                 if resp.status < 300:
                     self._record['uploadParts'][part['partNumber'] - 1]['isCompleted'] = True
-                    self._record['partEtags'].append(CompletePart(util.to_int(part['partNumber']), resp.body.etag))
+                    self._record['partEtags'].append(CompletePart(util.to_int(part['partNumber']), resp.body.etag, resp.body.crc64, util.to_int(part['length'])))
                     if self.enableCheckPoint:
                         with self._lock:
                             self._write_record(self._record)
@@ -410,7 +419,7 @@ class uploadOperation(Operation):
                                                       isFile=True, partSize=part['length'],
                                                       offset=part['offset'], notifier=self.notifier,
                                                       extensionHeaders=self.extensionHeaders,
-                                                      sseHeader=self.headers.sseHeader)
+                                                      sseHeader=self.headers.sseHeader, isAttachCrc64=self.isAttachCrc64)
 
 
 class downloadOperation(Operation):
