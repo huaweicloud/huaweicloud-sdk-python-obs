@@ -24,7 +24,8 @@ from obs import ObsClient, const
 
 AK = '*** Provide your Access Key ***'
 SK = '*** Provide your Secret Key ***'
-server = 'https://your-endpoint'
+# 此处不能携带协议开头，因为后面要使用 bucket 与 endpoint 进行拼接
+server = 'your-endpoint'
 bucketName = 'my-obs-bucket-demo'
 objectKey = 'my-obs-object-key-demo'
 IS_PYTHON2 = sys.version_info.major == 2 or sys.version < '3'
