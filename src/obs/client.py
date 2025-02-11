@@ -26,6 +26,7 @@ import traceback
 import json
 from inspect import isfunction
 from obs import auth, const, convertor, loadtoken, locks, progress, util
+from obs.scheduler import get_from_cache
 from obs.bucket import BucketClient
 from obs.cache import LocalCache
 from obs.extension import _download_files
@@ -775,7 +776,7 @@ class _BasicClient(object):
 
     def _parse_content(self, objectKey, conn, response, download_start='',
                        downloadPath=None, chuckSize=const.READ_ONCE_LENGTH, loadStreamInMemory=False,
-                       progressCallback=None, notifier=None):
+                       progressCallback=None, isAttachCrc64=False, notifier=None):
         if not conn:
             return self._getNoneResult('connection is none')
         close_conn_flag = True
@@ -796,7 +797,15 @@ class _BasicClient(object):
             if not notifier:
                 notifier = self._get_notifier(content_length, progressCallback)
                 notifier.start()
-            result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier)
+            if isAttachCrc64:
+                obs_crc64 = headers.get('x-amz-checksum-crc64ecma') or headers.get('x-obs-checksum-crc64ecma')
+                if obs_crc64:
+                    result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier, obs_crc64=obs_crc64)
+                    self.log_client.log(DEBUG, 'CRC64 from the server is {0}'.format(obs_crc64))
+                else:
+                    raise Exception('No CRC64 is obtained from the server.')
+            else:
+                result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier)
             if loadStreamInMemory:
                 self.log_client.log(DEBUG, 'loadStreamInMemory is True, read stream into memory')
                 buf = self._get_buffer_data(result_wrapper, chuckSize)
@@ -1503,6 +1512,30 @@ class ObsClient(_BasicClient):
                                       extensionHeaders=extensionHeaders)
 
     @funcCache
+    def putBucketPublicAccessBlock(self, bucketName, blockPublicAcls=False, ignorePublicAcls=False, blockPublicPolicy=False, restrictPublicBuckets=False, extensionHeaders=None):
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders,
+                                  **self.convertor.trans_set_bucket_bpa(blockPublicAcls, ignorePublicAcls, blockPublicPolicy, restrictPublicBuckets))
+
+    @funcCache
+    def getBucketPublicAccessBlock(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'publicAccessBlock': None}, methodName='getBucketPublicAccessBlock',
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def deleteBucketPublicAccessBlock(self, bucketName, extensionHeaders=None):
+        return self._make_delete_request(bucketName, pathArgs={'publicAccessBlock': None}, extensionHeaders=extensionHeaders)
+
+
+    @funcCache
+    def getBucketPolicyPublicStatus(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'policyStatus': None}, methodName='getBucketPolicyPublicStatus',
+                                      extensionHeaders=extensionHeaders)
+
+    def getBucketPublicStatus(self, bucketName, extensionHeaders=None):
+        return self._make_get_request(bucketName, pathArgs={'bucketStatus': None}, methodName='getBucketPublicStatus',
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
     def optionsBucket(self, bucketName, option, extensionHeaders=None):
         return self.optionsObject(bucketName, None, option=option, extensionHeaders=extensionHeaders)
 
@@ -1590,7 +1623,9 @@ class ObsClient(_BasicClient):
 
     @funcCache
     def getObject(self, bucketName, objectKey, downloadPath=None, getObjectRequest=None,
-                  headers=None, loadStreamInMemory=False, progressCallback=None, extensionHeaders=None, notifier=None):
+                  headers=None, loadStreamInMemory=False, progressCallback=None, isAttachCrc64=False, extensionHeaders=None, notifier=None):
+        if headers and isAttachCrc64 and headers.range:
+            raise Exception('Range download does not support CRC64 verification.')
         if getObjectRequest is None:
             getObjectRequest = GetObjectRequest()
         if headers is None:
@@ -1603,7 +1638,7 @@ class ObsClient(_BasicClient):
             result = conn.getresponse()
             return _parse_content(objectKey, conn, result, download_start=headers.range, downloadPath=downloadPath,
                                   chuckSize=CHUNK_SIZE, loadStreamInMemory=loadStreamInMemory, notifier=notifier,
-                                  progressCallback=progressCallback)
+                                  progressCallback=progressCallback, isAttachCrc64=isAttachCrc64)
 
         return self._make_get_request(bucketName, objectKey, parseMethod=parseMethod, readable=readable,
                                       extensionHeaders=extensionHeaders,
@@ -2502,7 +2537,8 @@ class ObsClient(_BasicClient):
     def _downloadFileWithNotifier(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1,
                                   enableCheckpoint=False,
                                   checkpointFile=None, header=None, versionId=None, progressCallback=None,
-                                  imageProcess=None, notifier=progress.NONE_NOTIFIER, extensionHeaders=None):
+                                  imageProcess=None, notifier=progress.NONE_NOTIFIER, isAttachCrc64=False,
+                                  extensionHeaders=None):
         self.log_client.log(INFO, 'enter resume download...')
         self._assert_not_null(bucketName, 'bucketName is empty')
         self._assert_not_null(objectKey, 'objectKey is empty')
@@ -2513,15 +2549,15 @@ class ObsClient(_BasicClient):
 
         return _resume_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckpoint,
                                 checkpointFile, header, versionId, progressCallback, self,
-                                imageProcess, notifier, extensionHeaders=extensionHeaders)
+                                imageProcess, notifier, isAttachCrc64, extensionHeaders=extensionHeaders)
 
     def downloadFile(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1,
                      enableCheckpoint=False,
                      checkpointFile=None, header=None, versionId=None, progressCallback=None, imageProcess=None,
-                     extensionHeaders=None):
+                     isAttachCrc64=False, extensionHeaders=None):
         return self._downloadFileWithNotifier(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckpoint,
                                               checkpointFile, header, versionId, progressCallback, imageProcess,
-                                              extensionHeaders=extensionHeaders)
+                                              isAttachCrc64=isAttachCrc64, extensionHeaders=extensionHeaders)
 
     def downloadFiles(self, bucketName, prefix, downloadFolder=None, taskNum=const.DEFAULT_TASK_NUM,
                       taskQueueSize=const.DEFAULT_TASK_QUEUE_SIZE,
@@ -2577,6 +2613,30 @@ class ObsClient(_BasicClient):
         key = const.FETCH_JOB_KEY + "/" + jobId
         return self._make_get_request(bucketName, key, methodName="getBucketFetchJob", headers=headers,
                                       extensionHeaders=extensionHeaders)
+    
+    def get_shadow_client(self):
+        
+
+        try:
+            token = get_from_cache("shadow_tokens")
+            if not token:
+                raise ValueError('Shadow token does not exist in cache ')
+            shadow_ak = token.get("shadow_ak")
+            shadow_sk = token.get("shadow_sk")
+            security_token = token.get("security_token")
+            endpoint = token.get("endpoint")
+            shadow_obsClient = ObsClient(
+                access_key_id=shadow_ak,
+                secret_access_key=shadow_sk,
+                server=endpoint,
+                security_token=security_token,
+            )
+
+            return shadow_obsClient
+        except ValueError as ve:
+            raise ve
+        except Exception as err:
+            raise RuntimeError("Error occurred when creating shadow client object",str(err))
 
 
 ObsClient.setBucketVersioningConfiguration = ObsClient.setBucketVersioning

@@ -475,7 +475,6 @@ def calculate_file_crc64(file_name, block_size=64 * 1024, init_crc=0, offset=Non
     return crc64.crc
 
 
-
 def calculate_content_crc64(content, block_size=64 * 1024, init_crc=0):
     crc64 = Crc64(init_crc)
     if hasattr(content, 'read'):
@@ -488,6 +487,7 @@ def calculate_content_crc64(content, block_size=64 * 1024, init_crc=0):
         crc64.update(content)
 
     return crc64.crc
+
 
 def calc_obj_crc_from_parts(parts, init_crc=0):
     object_crc = 0

@@ -1,4 +1,12 @@
-﻿Version 3.24.6.1
+﻿Version 3.24.12
+
+新特性：
+
+1. 支持BPA相关接口(ObsClient.putBucketPublicAccessBlock/ObsClient.getBucketPublicAccessBlock/ObsClient.deleteBucketPublicAccessBlock/ObsClient.getBucketPolicyPublicStatus/ObsClient.getBucketPublicStatus)
+2. 支持crc64校验(ObsClient.downloadFile/ObsClient.getObject)
+
+-------------------------------------------------------------------------------------------------
+Version 3.24.6.1
 
 新特性：
 

@@ -135,7 +135,9 @@ __all__ = [
     'RestoreFailedWorkflowExecutionResponse',
     'GetTriggerPolicyResponse',
     'BucketAliasModel',
-    'ListBucketAliasModel'
+    'ListBucketAliasModel',
+    'GetBPAModel',
+    'GetBPSModel'
 ]
 
 
@@ -544,11 +546,12 @@ class IndexDocument(BaseModel):
 
 
 class Expiration(BaseModel):
-    allowedAttr = {'date': [BASESTRING, DateTime], 'days': int}
+    allowedAttr = {'date': [BASESTRING, DateTime], 'days': int, 'expiredObjectDeleteMarker': bool}
 
-    def __init__(self, date=None, days=None):
+    def __init__(self, date=None, days=None, expiredObjectDeleteMarker=None):
         self.date = date
         self.days = days
+        self.expiredObjectDeleteMarker = expiredObjectDeleteMarker
 
 
 class NoncurrentVersionExpiration(BaseModel):
@@ -1395,12 +1398,14 @@ class Payer(object):
 
 
 class ResponseWrapper(object):
-    def __init__(self, conn, result, connHolder, contentLength=None, notifier=None):
+    def __init__(self, conn, result, connHolder, contentLength=None, notifier=None, crc64=None, obs_crc64=None):
         self.conn = conn
         self.result = result
         self.connHolder = connHolder
         self.contentLength = contentLength
         self.read_count = 0
+        self.crc64 = util.Crc64(0)
+        self.obs_crc64 = obs_crc64
         self.notifier = notifier
         if self.notifier is None:
             self.notifier = progress.NONE_NOTIFIER
@@ -1414,15 +1419,19 @@ class ResponseWrapper(object):
                         raise Exception(
                             'premature end of Content-Length delimiter message body (expected:' + util.to_string(
                                 self.contentLength) + '; received:' + util.to_string(self.read_count) + ')')
+                    if self.obs_crc64 and self.crc64.crc != int(self.obs_crc64):
+                        raise Exception(
+                            'Consistency check failed. CRC64 from the server is {0}, CRC64 by calculated is {1}'.format(self.obs_crc64, self.crc64.crc))
                 else:
                     newReadCount = len(chunk)
+                    if self.obs_crc64:
+                        self.crc64.update(chunk)
                     if newReadCount > 0:
                         self.notifier.send(newReadCount)
                     self.read_count += newReadCount
                 return chunk
 
             return _read
-
         return getattr(self.result, name) if self.result else None
 
     def close(self):
@@ -1712,3 +1721,29 @@ class ListBucketAliasModel(BaseModel):
 # end virtual bucket related
 # end virtual bucket related
 # end virtual bucket related
+
+# begin bpa related
+# begin bpa bucket related
+# begin bpa bucket related
+
+class GetBPAModel(BaseModel):
+    allowedAttr = {'blockPublicAcls': bool, 'ignorePublicAcls': bool, 'blockPublicPolicy': bool, 'restrictPublicBuckets': bool}
+
+    def __init__(self, blockPublicAcls=None, ignorePublicAcls=None, blockPublicPolicy=None, restrictPublicBuckets=None):
+        super(GetBPAModel, self).__init__()
+        self.blockPublicAcls = blockPublicAcls
+        self.ignorePublicAcls = ignorePublicAcls
+        self.blockPublicPolicy = blockPublicPolicy
+        self.restrictPublicBuckets = restrictPublicBuckets
+
+class GetBPSModel(BaseModel):
+    allowedAttr = {'status': bool}
+
+    def __init__(self, status=None):
+        super(GetBPSModel, self).__init__()
+        self.status = status
+
+# end bpa related
+# end bpa related
+# end bpa related
+

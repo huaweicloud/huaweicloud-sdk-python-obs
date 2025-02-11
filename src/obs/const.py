@@ -154,6 +154,9 @@ ALLOWED_RESOURCE_PARAMTER_NAMES = (
     'replication',
     'metadata',
     'encryption',
+    'publicaccessblock',
+    'bucketstatus',
+    'policystatus',
 
     # File System API
     'append',

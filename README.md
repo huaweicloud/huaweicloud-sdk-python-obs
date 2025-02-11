@@ -1,3 +1,11 @@
+Version 3.24.12
+   
+New Features:
+
+1. Added APIs related to BPA, including ObsClient.putBucketPublicAccessBlock,ObsClient.getBucketPublicAccessBlock,ObsClient.deleteBucketPublicAccessBlock,ObsClient.getBucketPolicyPublicStatus,ObsClient.getBucketPublicStatus.
+2. ObsClient.downloadFile and ObsClient.getObject Supported check data integrity by crc64.
+
+------------------------------------------------------------------------------------------------- 
 Version 3.24.6.1
    
 New Features:

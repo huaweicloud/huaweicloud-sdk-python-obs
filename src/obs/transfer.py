@@ -17,6 +17,7 @@ import json
 import math
 import operator
 import os
+import time
 import stat
 import sys
 import threading
@@ -46,12 +47,12 @@ def _resume_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableC
 
 def _resume_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
                      header, versionId, progressCallback, obsClient, imageProcess=None,
-                     notifier=progress.NONE_NOTIFIER, extensionHeaders=None):
+                     notifier=progress.NONE_NOTIFIER, isAttachCrc64=False, extensionHeaders=None):
     down_operation = downloadOperation(util.to_string(bucketName), util.to_string(objectKey),
                                        util.to_string(downloadFile), partSize, taskNum, enableCheckPoint,
                                        util.to_string(checkPointFile),
                                        header, versionId, progressCallback, obsClient, imageProcess, notifier,
-                                       extensionHeaders=extensionHeaders)
+                                       isAttachCrc64, extensionHeaders=extensionHeaders)
 
     return _resume_download_with_operation(down_operation)
 
@@ -425,7 +426,7 @@ class uploadOperation(Operation):
 class downloadOperation(Operation):
     def __init__(self, bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
                  header, versionId, progressCallback, obsClient, imageProcess=None, notifier=progress.NONE_NOTIFIER,
-                 extensionHeaders=None):
+                 isAttachCrc64=False, extensionHeaders=None):
         if enableCheckPoint and not checkPointFile:
             checkPointFile = downloadFile + '.download_record'
         super(downloadOperation, self).__init__(bucketName, objectKey, downloadFile, partSize, taskNum,
@@ -435,6 +436,7 @@ class downloadOperation(Operation):
         self.versionId = versionId
         self.imageProcess = imageProcess
         self.extensionHeaders = extensionHeaders
+        self.isAttachCrc64 = isAttachCrc64
         self._record = {'bucketName': self.bucketName, 'objectKey': self.objectKey, 'versionId': self.versionId,
                         'downloadFile': self.fileName, 'imageProcess': self.imageProcess}
 
@@ -449,6 +451,9 @@ class downloadOperation(Operation):
                                                          requestHeaders=self.header.requestHeaders)
         if metadata_resp.status < 300:
             self.lastModified = metadata_resp.body.lastModified
+            self.crc64 = metadata_resp.body.crc64
+            if self.isAttachCrc64 and not self.crc64:
+                raise Exception('No CRC64 is obtained from the server.')
             self.size = metadata_resp.body.contentLength \
                 if metadata_resp.body.contentLength is not None and metadata_resp.body.contentLength >= 0 else 0
         else:
@@ -520,6 +525,20 @@ class downloadOperation(Operation):
                     if not p['isCompleted']:
                         raise Exception('some parts are failed when download. Please try again')
 
+            if self.isAttachCrc64:
+                self.obsClient.log_client.log(
+                    INFO,
+                    'Start to calculate file {0} crc64'.format(self.fileName))
+                start = time.time()
+                crc64 = util.calculate_file_crc64(self._tmp_file)
+                self.obsClient.log_client.log(
+                    DEBUG,
+                    'CRC64 from the server is {0}, CRC64 by calculated is {1}, cost {2}'.format(self.crc64, crc64, time.time()-start))
+                if int(self.crc64) != crc64:
+                    self._delete_tmp_file()
+                    raise Exception(
+                        'Consistency check failed. CRC64 from the server is {0}, CRC64 by calculated is {1}'.format(
+                            self.crc64, object_crc))
             try:
                 os.rename(self._tmp_file, self.fileName)
                 if self.enableCheckPoint:
@@ -536,6 +555,8 @@ class downloadOperation(Operation):
                     INFO,
                     'Rename failed. The reason maybe:[the {0} exists, not a file path, not permission]. Please check.')
                 raise e
+        except Exception as e:
+            raise e
         finally:
             if inner_notifier:
                 self.notifier.end()

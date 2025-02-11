@@ -27,7 +27,7 @@ from obs.model import SseCHeader, SseKmsHeader, Owner, Bucket, ListBucketsRespon
     WebsiteConfiguration, IndexDocument, ErrorDocument, RoutingRule, Notification, TopicConfiguration, Initiator, \
     ListMultipartUploadsResponse, Part, ACL, Logging, PutContentResponse, AppendObjectResponse, \
     InitiateMultipartUploadResponse, CopyObjectResponse, GetObjectMetadataResponse, SetObjectMetadataResponse, \
-    UploadPartResponse, CopyPartResponse, Replication, GetBucketRequestPaymentResponse
+    UploadPartResponse, CopyPartResponse, Replication, GetBucketRequestPaymentResponse, GetBPAModel, GetBPSModel
 from obs.model import FetchPolicy, SetBucketFetchJobResponse, GetBucketFetchJobResponse, FetchJobResponse, \
     ListWorkflowTemplateResponse
 from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowResponse, \
@@ -51,10 +51,10 @@ class Adapter(object):
     V2_ALLOWED_ACL_CONTROL = ['private', 'public-read', 'public-read-write', 'authenticated-read', 'bucket-owner-read',
                               'bucket-owner-full-control', 'log-delivery-write']
 
-    OBS_ALLOWED_STORAGE_CLASS = ['STANDARD', 'WARM', 'COLD']
-    V2_ALLOWED_STORAGE_CLASS = ['STANDARD', 'STANDARD_IA', 'GLACIER']
+    OBS_ALLOWED_STORAGE_CLASS = ['STANDARD', 'WARM', 'COLD', 'DEEP_ARCHIVE', 'INTELLIGENT_TIERING']
+    V2_ALLOWED_STORAGE_CLASS = ['STANDARD', 'STANDARD_IA', 'GLACIER', 'DEEP_ARCHIVE', 'INTELLIGENT_TIERING']
 
-    OBS_ALLOWED_GROUP = ['Everyone','AuthenticatedUsers','LogDelivery']
+    OBS_ALLOWED_GROUP = ['Everyone', 'AuthenticatedUsers', 'LogDelivery']
     V2_ALLOWED_GROUP = ['http://acs.amazonaws.com/groups/global/AllUsers',
                         'http://acs.amazonaws.com/groups/global/AuthenticatedUsers',
                         'http://acs.amazonaws.com/groups/s3/LogDelivery']
@@ -330,8 +330,10 @@ class Convertor(object):
             self._put_key_value(headers, self.ha.az_redundancy_header(), header.get('availableZone'))
             self._put_key_value(headers, self.ha.epid_header(), header.get('epid'))
             self._put_key_value(headers, self.ha.bucket_redundancy_header(), header.get('redundancy'))
-            self._put_key_value(headers, self.ha.fusion_allow_upgrade_header(), util.to_string(header.get('isFusionAllowUpgrade')).lower())
-            self._put_key_value(headers, self.ha.fusion_allow_alternative_header(), util.to_string(header.get('isFusionAllowAlternative')).lower())
+            self._put_key_value(headers, self.ha.fusion_allow_upgrade_header(),
+                                util.to_string(header.get('isFusionAllowUpgrade')).lower())
+            self._put_key_value(headers, self.ha.fusion_allow_alternative_header(),
+                                util.to_string(header.get('isFusionAllowAlternative')).lower())
             if header.get('isPFS'):
                 self._put_key_value(headers, self.ha.pfs_header(), "Enabled")
             extensionGrants = header.get('extensionGrants')
@@ -481,6 +483,20 @@ class Convertor(object):
                     ET.SubElement(corsRuleEle, 'ExposeHeader').text = util.to_string(v)
         return ET.tostring(root, 'UTF-8')
 
+    def trans_set_bucket_bpa(self, blockPublicAcls, ignorePublicAcls, blockPublicPolicy, restrictPublicBuckets):
+        entity = self.trans_bpa_rules(blockPublicAcls, ignorePublicAcls, blockPublicPolicy, restrictPublicBuckets)
+        headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
+        return {'pathArgs': {'publicAccessBlock': None}, 'headers': headers, 'entity': entity}
+
+    @staticmethod
+    def trans_bpa_rules(blockPublicAcls, ignorePublicAcls, blockPublicPolicy, restrictPublicBuckets):
+        root = ET.Element('PublicAccessBlockConfiguration')
+        ET.SubElement(root, 'BlockPublicAcls').text = util.to_string(blockPublicAcls)
+        ET.SubElement(root, 'IgnorePublicAcls').text = util.to_string(ignorePublicAcls)
+        ET.SubElement(root, 'BlockPublicPolicy').text = util.to_string(blockPublicPolicy)
+        ET.SubElement(root, 'RestrictPublicBuckets').text = util.to_string(restrictPublicBuckets)
+        return ET.tostring(root, 'UTF-8')
+
     def trans_delete_objects(self, **kwargs):
         entity = self.trans_delete_objects_request(kwargs.get('deleteObjectsRequest'))
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
@@ -561,7 +577,8 @@ class Convertor(object):
                     ET.SubElement(noncurrentVersionExpirationEle, 'NoncurrentDays').text = util.to_string(
                         item['noncurrentVersionExpiration']['noncurrentDays'])
 
-                if item.get('abortIncompleteMultipartUpload') is not None and item['abortIncompleteMultipartUpload'].get(
+                if item.get('abortIncompleteMultipartUpload') is not None and item[
+                    'abortIncompleteMultipartUpload'].get(
                         'daysAfterInitiation') is not None:
                     abortIncompleteMultipartUploadEle = ET.SubElement(ruleEle, 'AbortIncompleteMultipartUpload')
                     ET.SubElement(abortIncompleteMultipartUploadEle, 'DaysAfterInitiation').text = util.to_string(
@@ -578,7 +595,8 @@ class Convertor(object):
                 self._transTransition(ruleEle, _transition)
 
         if item.get('expiration') is not None and (
-                item['expiration'].get('date') is not None or item['expiration'].get('days') is not None):
+                item['expiration'].get('date') is not None or item['expiration'].get('days') is not None or item[
+            'expiration'].get('expiredObjectDeleteMarker') is not None):
             expirationEle = ET.SubElement(ruleEle, 'Expiration')
             if item['expiration'].get('days') is not None:
                 ET.SubElement(expirationEle, 'Days').text = util.to_string(item['expiration']['days'])
@@ -587,6 +605,9 @@ class Convertor(object):
                                                                               DateTime) else item['expiration'][
                     'date']
                 ET.SubElement(expirationEle, 'Date').text = util.to_string(date)
+            elif item['expiration'].get('expiredObjectDeleteMarker') is not None:
+                ET.SubElement(expirationEle, 'ExpiredObjectDeleteMarker').text = 'true' if item['expiration'].get(
+                    'expiredObjectDeleteMarker') else 'false'
         return ruleEle
 
     def trans_website(self, website):
@@ -1310,13 +1331,20 @@ class Convertor(object):
         glacierObjectNumber = self._find_item(root, 'GlacierObjectNumber')
 
         return GetBucketStorageInfoResponse(size=util.to_long(size), objectNumber=util.to_int(objectNumber),
-                                            standardSize=util.to_long(standardSize), standardObjectNumber=util.to_int(standardObjectNumber),
-                                            warmSize=util.to_long(warmSize), warmObjectNumber=util.to_int(warmObjectNumber),
-                                            coldSize=util.to_long(coldSize), coldObjectNumber=util.to_int(coldObjectNumber),
-                                            deepArchiveSize=util.to_long(deepArchiveSize), deepArchiveObjectNumber=util.to_int(deepArchiveObjectNumber),
-                                            highPerformanceSize=util.to_long(highPerformanceSize), highPerformanceObjectNumber=util.to_int(highPerformanceObjectNumber),
-                                            standard_IASize=util.to_long(standard_IASize), standard_IAObjectNumber=util.to_int(standard_IAObjectNumber),
-                                            glacierSize=util.to_long(glacierSize), glacierObjectNumber=util.to_int(glacierObjectNumber))
+                                            standardSize=util.to_long(standardSize),
+                                            standardObjectNumber=util.to_int(standardObjectNumber),
+                                            warmSize=util.to_long(warmSize),
+                                            warmObjectNumber=util.to_int(warmObjectNumber),
+                                            coldSize=util.to_long(coldSize),
+                                            coldObjectNumber=util.to_int(coldObjectNumber),
+                                            deepArchiveSize=util.to_long(deepArchiveSize),
+                                            deepArchiveObjectNumber=util.to_int(deepArchiveObjectNumber),
+                                            highPerformanceSize=util.to_long(highPerformanceSize),
+                                            highPerformanceObjectNumber=util.to_int(highPerformanceObjectNumber),
+                                            standard_IASize=util.to_long(standard_IASize),
+                                            standard_IAObjectNumber=util.to_int(standard_IAObjectNumber),
+                                            glacierSize=util.to_long(glacierSize),
+                                            glacierObjectNumber=util.to_int(glacierObjectNumber))
 
     @staticmethod
     def parseGetBucketPolicy(json_str, headers=None):
@@ -1523,7 +1551,9 @@ class Convertor(object):
                 date = DateTime.UTCToLocalMid(d.text) if d is not None else None
                 day = expired.find('Days')
                 days = util.to_int(day.text) if day is not None else None
-                expiration = Expiration(date=date, days=days)
+                eodm = expired.find('ExpiredObjectDeleteMarker')
+                expiredObjectDeleteMarker = util.to_bool(eodm.text) if eodm is not None else None
+                expiration = Expiration(date=date, days=days, expiredObjectDeleteMarker=expiredObjectDeleteMarker)
 
             nocurrent_expire = rule.find('NoncurrentVersionExpiration')
             noncurrentVersionExpiration = NoncurrentVersionExpiration(noncurrentDays=util.to_int(
@@ -1924,7 +1954,6 @@ class Convertor(object):
         option.lastModified = headers.get(const.LAST_MODIFIED_HEADER.lower())
         option.crc64 = headers.get(self.ha.crc64_header())
 
-
     def parseGetObjectMetadata(self, headers):
         option = GetObjectMetadataResponse()
         self._parseGetObjectCommonHeader(headers, option)
@@ -1941,10 +1970,23 @@ class Convertor(object):
             option.nextPosition = util.to_long(headers.get(self.ha.next_position_header()))
         return option
 
+    def parseGetBucketPublicAccessBlock(self, xml, headers=None):
+        root = ET.fromstring(xml)
+        return GetBPAModel(util.to_bool(self._find_item(root, 'BlockPublicAcls')), util.to_bool(self._find_item(root, 'IgnorePublicAcls')),
+                             util.to_bool(self._find_item(root, 'BlockPublicPolicy')), util.to_bool(self._find_item(root, 'RestrictPublicBuckets')))
+
+    def parseGetBucketPolicyPublicStatus(self, xml, headers=None):
+        root = ET.fromstring(xml)
+        return GetBPSModel(util.to_bool(self._find_item(root, 'IsPublic')))
+
+    def parseGetBucketPublicStatus(self, xml, headers=None):
+        root = ET.fromstring(xml)
+        return GetBPSModel(util.to_bool(self._find_item(root, 'IsPublic')))
+
     def parseGetAccessLabel(self, jsons, headers=None):
         result = json.loads(jsons)
         return result
-    
+
     def parseGetObject(self, headers, option):
         self._parseGetObjectCommonHeader(headers, option)
         option.deleteMarker = headers.get(self.ha.delete_marker_header())
