@@ -145,7 +145,7 @@ class CryptoObsClient(ObsClient):
 
     def _parse_content(self, objectKey, conn, readable, result_wrapper=None, download_start=None,
                        downloadPath=None, chuckSize=const.READ_ONCE_LENGTH, loadStreamInMemory=False,
-                       progressCallback=None, notifier=None):
+                       progressCallback=None, isAttachCrc64=False, notifier=None):
         if readable.status >= 300:
             return super(CryptoObsClient, self)._parse_content(objectKey, conn, readable,
                                                                download_start=download_start, downloadPath=downloadPath,

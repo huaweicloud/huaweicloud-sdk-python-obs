@@ -1,3 +1,10 @@
+Version 3.25.3
+   
+New Features:
+
+1. Added APIs related to CustomDomain, including ObsClient.getBucketCustomDomain,ObsClient.setBucketCustomDomain,ObsClient.deleteBucketCustomDomain.
+
+------------------------------------------------------------------------------------------------- 
 Version 3.24.12
    
 New Features:

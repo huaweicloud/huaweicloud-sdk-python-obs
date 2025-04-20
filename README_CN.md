@@ -1,4 +1,11 @@
-﻿Version 3.24.12
+﻿Version 3.25.3
+
+新特性：
+
+1. 支持自定义域名相关接口(ObsClient.getBucketCustomDomain/ObsClient.setBucketCustomDomain/ObsClient.deleteBucketCustomDomain)
+
+-------------------------------------------------------------------------------------------------
+Version 3.24.12
 
 新特性：
 

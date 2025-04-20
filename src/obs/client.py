@@ -28,6 +28,7 @@ from inspect import isfunction
 from obs import auth, const, convertor, loadtoken, locks, progress, util
 from obs.scheduler import get_from_cache
 from obs.bucket import BucketClient
+from obs.http import Request, Session, Connection, IterableToContentStreamDataAdapter, IterableToStreamDataAdapter
 from obs.cache import LocalCache
 from obs.extension import _download_files
 from obs.ilog import DEBUG, ERROR, INFO, LogClient, NoneLogClient, WARNING
@@ -203,7 +204,8 @@ class _BasicClient(object):
                  long_conn_mode=False, proxy_host=None, proxy_port=None,
                  proxy_username=None, proxy_password=None, security_token=None,
                  custom_ciphers=None, use_http2=False, is_signature_negotiation=True, is_cname=False,
-                 max_redirect_count=10, security_providers=None, security_provider_policy=None, client_mode='obs'):
+                 max_redirect_count=10, security_providers=None, security_provider_policy=None, client_mode='obs',
+                 use_http_conns=False, pool_size=const.CONNECTION_POOL_SIZE, trust_env=False):
         self.securityProvider = _SecurityProvider(access_key_id, secret_access_key, security_token)
         server = server if server is not None else ''
         server = util.to_string(util.safe_encode(server))
@@ -255,9 +257,9 @@ class _BasicClient(object):
                 self._init_ssl_context(custom_ciphers)
 
         self.long_conn_mode = long_conn_mode
-
+        self.use_http_conns = use_http_conns
         self.connHolder = None
-        if self.long_conn_mode:
+        if self.long_conn_mode and not self.use_http_conns:
             self._init_connHolder()
 
         self.proxy_host = proxy_host
@@ -275,6 +277,12 @@ class _BasicClient(object):
             self.ha = convertor.Adapter(self.signature)
             self.convertor = convertor.Convertor(self.signature, self.ha)
         self.json_response_method_name = 'GetJsonResponse'
+        self.session = None
+        if use_http_conns:
+            self.init_session(pool_size, trust_env)
+
+    def init_session(self, pool_size, trust_env):
+        self.session = Session(self.context, pool_size, trust_env)
 
     @staticmethod
     def _parse_server_hostname(server):
@@ -551,7 +559,8 @@ class _BasicClient(object):
 
     @staticmethod
     def _parse_entity(entity, headers):
-        if entity is not None and not callable(entity):
+        if entity is not None and not callable(entity) and not isinstance(entity, IterableToStreamDataAdapter) and \
+                not isinstance(entity, IterableToContentStreamDataAdapter):
             entity = util.safe_encode(entity)
             if not isinstance(entity, str) and not isinstance(entity, bytes):
                 entity = util.to_string(entity)
@@ -638,11 +647,17 @@ class _BasicClient(object):
             new_headers[k] = v if (isinstance(v, list)) else util.encode_item(v, ' ;/?:@&=+$,\'*')
         return new_headers
 
-    def _get_server_connection(self, server, port=None, scheme=None, redirect=False, proxy_host=None, proxy_port=None):
+    def _get_server_connection(self, server, port=None, scheme=None, redirect=False, proxy_host=None, proxy_port=None,
+                               proxy_username=None, proxy_password=None):
 
         is_secure = self.is_secure if scheme is None else True if scheme == 'https' else False
-
-        if self.connHolder is not None and not self.connHolder['connSet'].empty() and not redirect:
+        if self.use_http_conns:
+            return Connection(request=Request(server, port=port, scheme="https" if is_secure else "http",
+                                              proxy_host=proxy_host, proxy_port=proxy_port, proxy_user=proxy_username,
+                                              proxy_password=proxy_password, redirect=redirect, timeout=self.timeout,
+                                              verify=is_secure, cert=self.ssl_verify), session=self.session,
+                              log_client=self.log_client)
+        elif self.connHolder is not None and not self.connHolder['connSet'].empty() and not redirect:
             try:
                 return self.connHolder['connSet'].get_nowait()
             except Exception:
@@ -692,6 +707,9 @@ class _BasicClient(object):
         header[const.USER_AGENT_HEADER] = 'obs-sdk-python/' + const.OBS_SDK_VERSION
 
         if method == const.HTTP_METHOD_OPTIONS and not self.use_http2:
+            if isinstance(conn, Connection):
+                conn.request(method, path, headers=header)
+                return conn
             conn.putrequest(method, path, skip_host=1)
             for k, v in header.items():
                 if isinstance(v, list):
@@ -703,6 +721,9 @@ class _BasicClient(object):
         else:
             if chunkedMode:
                 header[const.TRANSFER_ENCODING_HEADER] = const.TRANSFER_ENCODING_VALUE
+            if isinstance(conn, Connection):
+                conn.request(method, path, body=entity, headers=header)
+                return conn
 
             if self.use_http2:
                 conn.request(method, path, body=entity, headers=header)
@@ -719,7 +740,7 @@ class _BasicClient(object):
     def _parse_request_connection(self, server, port, scheme, connection_key, redirect, header):
         if self.proxy_host is not None and self.proxy_port is not None:
             conn = self._get_server_connection(server, port, scheme, redirect, util.to_string(self.proxy_host),
-                                               util.to_int(self.proxy_port))
+                                               util.to_int(self.proxy_port), self.proxy_username, self.proxy_password)
             _header = {}
             if self.proxy_username is not None and self.proxy_password is not None:
                 _header[const.PROXY_AUTHORIZATION_HEADER] = 'Basic ' \
@@ -1672,7 +1693,8 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback, totalCount)
             else:
                 notifier = progress.NONE_NOTIFIER
-            entity = util.get_entity_for_send_with_total_count(file_path, totalCount, offset, self.chunk_size, notifier)
+            entity = util.get_entity_for_send_with_total_count(file_path, totalCount, offset, self.chunk_size, notifier,
+                                                               use_http_conns=self.use_http_conns)
         else:
             totalCount = headers['contentLength']
             if totalCount > 0 and progressCallback is not None:
@@ -1680,7 +1702,8 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback, totalCount)
             else:
                 notifier = progress.NONE_NOTIFIER
-            entity = util.get_entity_for_send_with_total_count(file_path, totalCount, None, self.chunk_size, notifier)
+            entity = util.get_entity_for_send_with_total_count(file_path, totalCount, None, self.chunk_size, notifier,
+                                                               use_http_conns=self.use_http_conns)
 
         return headers, readable, notifier, entity
 
@@ -1694,14 +1717,15 @@ class ObsClient(_BasicClient):
                 chunkedMode = True
                 notifier = progress.ProgressNotifier(progressCallback,
                                                      -1) if progressCallback is not None else progress.NONE_NOTIFIER
-                entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose)
+                entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose,
+                                                  use_http_conns=self.use_http_conns)
             else:
                 totalCount = util.to_long(headers.get('contentLength'))
                 notifier = progress.ProgressNotifier(progressCallback,
                                                      totalCount) if totalCount > 0 and progressCallback is not None \
                     else progress.NONE_NOTIFIER
                 entity = util.get_entity_for_send_with_total_count(read_able=entity, totalCount=totalCount, chunk_size=self.chunk_size, notifier=notifier,
-                                                                   auto_close=autoClose)
+                                                                   auto_close=autoClose, use_http_conns=self.use_http_conns)
 
         return entity, readable, chunkedMode, notifier
 
@@ -1778,7 +1802,7 @@ class ObsClient(_BasicClient):
                     chunkedMode = True
                     notifier = progress.ProgressNotifier(progressCallback,
                                                          -1) if progressCallback is not None else progress.NONE_NOTIFIER
-                    entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose)
+                    entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose, use_http_conns=self.use_http_conns)
                 else:
                     totalCount = util.to_long(headers.get('contentLength'))
                     notifier = progress.ProgressNotifier(progressCallback,
@@ -1786,7 +1810,7 @@ class ObsClient(_BasicClient):
                                                                         is not None else progress.NONE_NOTIFIER
                     entity = util.get_entity_for_send_with_total_count(read_able=entity, totalCount=totalCount,
                                                                        chunk_size=self.chunk_size, notifier=notifier,
-                                                                       auto_close=autoClose)
+                                                                       auto_close=autoClose, use_http_conns=self.use_http_conns)
 
                 notifier.start()
             ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity,
@@ -1859,7 +1883,8 @@ class ObsClient(_BasicClient):
             notifier = progress.NONE_NOTIFIER
             readable = False
 
-        entity = util.get_entity_for_send_with_total_count(file_path, totalCount, None, self.chunk_size, notifier)
+        entity = util.get_entity_for_send_with_total_count(file_path, totalCount, None, self.chunk_size, notifier,
+                                                           use_http_conns=self.use_http_conns)
         try:
             notifier.start()
             ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity,
@@ -1974,7 +1999,7 @@ class ObsClient(_BasicClient):
             readable, notifier = self._prepare_upload_part_notifier(checked_file_part_info["partSize"],
                                                                     progressCallback, readable)
             entity = util.get_entity_for_send_with_total_count(checked_file_part_info["file_path"], checked_file_part_info["partSize"], checked_file_part_info["offset"],
-                                                               self.chunk_size, notifier)
+                                                               self.chunk_size, notifier, use_http_conns=self.use_http_conns)
         else:
             headers = {}
             if content is not None and hasattr(content, 'read') and callable(content.read):
@@ -1985,14 +2010,15 @@ class ObsClient(_BasicClient):
                     self.log_client.log(DEBUG, 'missing partSize when uploading a readable stream')
                     chunkedMode = True
                     notifier = self._get_notifier_without_size(progressCallback)
-                    entity = util.get_readable_entity(content, self.chunk_size, notifier, autoClose)
+                    entity = util.get_readable_entity(content, self.chunk_size, notifier, autoClose,
+                                                      use_http_conns=self.use_http_conns)
                 else:
                     headers[const.CONTENT_LENGTH_HEADER] = util.to_string(partSize)
                     totalCount = util.to_long(partSize)
                     notifier = self._get_notifier_with_size(progressCallback, totalCount)
                     entity = util.get_entity_for_send_with_total_count(read_able=content, totalCount=totalCount,
                                                                        chunk_size=self.chunk_size, notifier=notifier,
-                                                                       auto_close=autoClose)
+                                                                       auto_close=autoClose, use_http_conns=self.use_http_conns)
             else:
                 entity = content
                 if entity is None:
@@ -2042,7 +2068,7 @@ class ObsClient(_BasicClient):
             if notifier is not None and not isinstance(notifier, progress.NoneNotifier):
                 readable = True
             entity = util.get_entity_for_send_with_total_count(checked_file_part_info["file_path"], partSize, checked_file_part_info["offset"],
-                                                               self.chunk_size, notifier)
+                                                               self.chunk_size, notifier, use_http_conns=self.use_http_conns)
         else:
             if content is not None and hasattr(content, 'read') and callable(content.read):
                 readable = True
@@ -2050,11 +2076,12 @@ class ObsClient(_BasicClient):
 
                 if partSize is None:
                     chunkedMode = True
-                    entity = util.get_readable_entity(content, self.chunk_size, notifier)
+                    entity = util.get_readable_entity(content, self.chunk_size, notifier, use_http_conns=self.use_http_conns)
                 else:
                     headers[const.CONTENT_LENGTH_HEADER] = util.to_string(partSize)
                     entity = util.get_entity_for_send_with_total_count(read_able=content, totalCount=util.to_long(partSize),
-                                                                       chunk_size=self.chunk_size, notifier=notifier)
+                                                                       chunk_size=self.chunk_size, notifier=notifier,
+                                                                       use_http_conns=self.use_http_conns)
             else:
                 entity = content
                 if entity is None:
@@ -2611,8 +2638,40 @@ class ObsClient(_BasicClient):
         self._assert_not_null(jobId, "jobId is empty")
         headers = {self.ha.oef_marker_header(): "yes"}
         key = const.FETCH_JOB_KEY + "/" + jobId
-        return self._make_get_request(bucketName, key, methodName="getBucketFetchJob", headers=headers,
+        return self._make_get_request(bucketName, key, methodName="getBucketFetchJob", headers=headers,extensionHeaders=extensionHeaders)
+    
+    @funcCache
+    def getBucketCustomDomain(self, bucketName, certificateId=None, extensionHeaders=None):
+        pathArgs = {"customdomain": None}
+        if certificateId:
+            if len(certificateId) != const.CERTIFICATE_ID_LEN:
+                raise Exception("The certificate ID of the certificate on the CCM must have a length of 16.")
+            pathArgs = {"certificateId": certificateId}
+        return self._make_get_request(bucketName, pathArgs=pathArgs, methodName="getBucketCustomDomain",
                                       extensionHeaders=extensionHeaders)
+    @funcCache
+    def setBucketCustomDomain(self, bucketName, domainName, certificateInfo=None, extensionHeaders=None):
+        self._assert_not_null(domainName, "Domain Name is empty")
+        if certificateInfo:
+            util.check_field(certificateInfo.get("name"), "Certificate Name", const.MIN_CERTIFICATE_NAME_LEN,
+                             const.MAX_CERTIFICATE_NAME_LEN)
+            if certificateInfo.get("certificateId"):
+                util.validate_length(certificateInfo.get("certificateId"), "CertificateId", const.CERTIFICATE_ID_LEN,
+                                     const.CERTIFICATE_ID_LEN)
+            util.check_field(certificateInfo.get("certificate"), "Certificate", check_exists=True)
+            util.check_field(certificateInfo.get("privateKey"), "PrivateKey", check_exists=True)
+        convertor_result = self.convertor.trans_custom_domain_cert(certificate=certificateInfo, domainName=domainName)
+        if "error" in convertor_result:
+            error_message = convertor_result["error"]
+            size = convertor_result["size"]
+            raise Exception("set bucket custom domain failed, reason: %s, size: %s" % (error_message, size))
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **convertor_result)
+           
+    @funcCache
+    def deleteBucketCustomDomain(self, bucketName, domainName=None, extensionHeaders=None):
+        self._assert_not_null(domainName, "Domain Name is empty")
+        return self._make_delete_request(bucketName, pathArgs={"customdomain": domainName},
+                                         extensionHeaders=extensionHeaders)
     
     def get_shadow_client(self):
         
@@ -2649,3 +2708,4 @@ ObsClient.setBucketWebsiteConfiguration = ObsClient.setBucketWebsite
 ObsClient.deleteBucketWebsiteConfiguration = ObsClient.deleteBucketWebsite
 ObsClient.setBucketLoggingConfiguration = ObsClient.setBucketLogging
 ObsClient.getBucketLoggingConfiguration = ObsClient.getBucketLogging
+ObsClient.setBucketCustomDomainConfiguration = ObsClient.setBucketCustomDomain

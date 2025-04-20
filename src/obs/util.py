@@ -16,14 +16,29 @@ import base64
 import hashlib
 import json
 import re
+import warnings
 
 from obs import const, progress, crc64mod
-
+from obs.http import IterableToContentStreamDataAdapter, IterableToStreamDataAdapter, Connection
 if const.IS_PYTHON2:
     import urllib
 else:
     import urllib.parse as urllib
 from obs.ilog import INFO, ERROR
+import crcmod
+
+warnings.filterwarnings("ignore", message="[InsecureRequestWarning]", module="urllib")
+
+def validate_length(value, field_name, min_len, max_len):
+    if not min_len <= len(value) <= max_len:
+        raise Exception("{} length must be between {} and {} characters. (value len: {})".format(field_name, min_len,
+                                                                                                 max_len, len(value)))
+
+def check_field(value, field_name, min_len=None, max_len=None, check_exists=False):
+    if not value:
+        raise Exception("{} does not exist.".format(field_name))
+    if not check_exists and min_len is not None and max_len is not None:
+        validate_length(value, field_name, min_len, max_len)
 
 
 def to_bool(item):
@@ -171,10 +186,13 @@ def conn_delegate(conn):
     return delegate(conn)
 
 
-def get_readable_entity(readable, chunk_size=const.READ_ONCE_LENGTH, notifier=None, auto_close=True):
+def get_readable_entity(readable, chunk_size=const.READ_ONCE_LENGTH, notifier=None, auto_close=True,
+                        use_http_conns=False):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
-
+    if use_http_conns:
+        return IterableToStreamDataAdapter(readable=readable, chunk_size=chunk_size, notifier=notifier,
+                                           auto_close=auto_close)
     def entity(conn):
         try:
             while True:
@@ -198,18 +216,24 @@ def get_readable_entity(readable, chunk_size=const.READ_ONCE_LENGTH, notifier=No
 
 
 def get_readable_entity_by_total_count(readable, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None,
-                                       auto_close=True):
-    return get_entity_for_send_with_total_count(totalCount=totalCount, chunk_size=chunk_size, notifier=notifier, auto_close=auto_close, read_able=readable)
+                                       auto_close=True, use_http_conns=False):
+    return get_entity_for_send_with_total_count(totalCount=totalCount, chunk_size=chunk_size, notifier=notifier,
+                                                auto_close=auto_close, read_able=readable, use_http_conns=use_http_conns)
 
 
-def get_file_entity_by_total_count(file_path, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None):
-    return get_entity_for_send_with_total_count(file_path, totalCount, None, chunk_size, notifier)
+def get_file_entity_by_total_count(file_path, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None,
+                                   use_http_conns=False):
+    return get_entity_for_send_with_total_count(file_path, totalCount, None, chunk_size, notifier,
+                                                use_http_conns=use_http_conns)
 
 
 def get_entity_for_send_with_total_count(file_path=None, totalCount=None, offset=None, chunk_size=const.READ_ONCE_LENGTH,
-                                         notifier=None, auto_close=True, read_able=None):
+                                         notifier=None, auto_close=True, read_able=None, use_http_conns=False):
     if notifier is None:
         notifier = progress.NONE_NOTIFIER
+    if use_http_conns:
+        return IterableToContentStreamDataAdapter(readable=read_able, total_count=totalCount, chunk_size=chunk_size,
+                                                  notifier=notifier, auto_close=auto_close, file_path=file_path, offset=offset)
     def entity(conn):
         readCount = 0
         if file_path:
@@ -240,8 +264,9 @@ def get_entity_for_send_with_total_count(file_path=None, totalCount=None, offset
     return entity
 
 
-def get_file_entity_by_offset_partsize(file_path, offset, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None):
-    return get_entity_for_send_with_total_count(file_path, totalCount, offset, chunk_size, notifier)
+def get_file_entity_by_offset_partsize(file_path, offset, totalCount, chunk_size=const.READ_ONCE_LENGTH, notifier=None,
+                                       use_http_conns=False):
+    return get_entity_for_send_with_total_count(file_path, totalCount, offset, chunk_size, notifier, use_http_conns=use_http_conns)
 
 
 def is_ipaddress(item):
@@ -380,6 +405,8 @@ def do_close(result, conn, connHolder, log_client=None):
         close_conn(conn, log_client)
     elif hasattr(conn, '_clear') and conn._clear:
         close_conn(conn, log_client)
+    elif isinstance(conn, Connection):  # 清理result
+        close_conn(result, log_client)
     else:
         if connHolder is not None:
             try:
@@ -437,7 +464,7 @@ class Crc64(object):
     _XOROUT = 0XFFFFFFFFFFFFFFFF
 
     def __init__(self, init_crc=0):
-        self.crc64 = crc64mod.Crc(self._POLY, initCrc=init_crc, rev=True, xorOut=self._XOROUT)
+        self.crc64 = crcmod.Crc(self._POLY, initCrc=init_crc, rev=True, xorOut=self._XOROUT)
 
         self.crc64_combineFun = crc64mod.mkCombineFun(self._POLY, initCrc=init_crc, rev=True, xorOut=self._XOROUT)
 

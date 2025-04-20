@@ -137,7 +137,10 @@ __all__ = [
     'BucketAliasModel',
     'ListBucketAliasModel',
     'GetBPAModel',
-    'GetBPSModel'
+    'GetBPSModel',
+    'CustomDomainConfiguration',
+    'BucketCustomDomain',
+    'ListBucketCustomDomainsResponse'
 ]
 
 
@@ -338,6 +341,15 @@ class Content(BaseModel):
 
     def __str__(self):
         return self.key
+
+class BucketCustomDomain(BaseModel):
+    allowedAttr = {"domain_name": BASESTRING,"create_time": BASESTRING,"certificate_id": BASESTRING,}
+
+    def __init__(self, domain_name=None, create_time=None, certificate_id=None):
+        self.domain_name = domain_name
+        self.create_time = create_time
+        self.certificate_id = certificate_id
+        super(BucketCustomDomain, self).__init__()
 
 
 class DateTime(BaseModel):
@@ -881,6 +893,25 @@ class Upload(BaseModel):
         self.storageClass = storageClass
         self.initiated = initiated
 
+
+class ListBucketCustomDomainsResponse(BaseModel):
+    allowedAttr = {"domains": list}
+    def __init__(self, domains=None):
+        self.domains = domains
+        super(ListBucketCustomDomainsResponse, self).__init__()
+
+
+class CustomDomainConfiguration(BaseModel):
+    allowedAttr = {"name": BASESTRING, "certificateId": BASESTRING, "certificate": BASESTRING,
+                   "certificateChain": BASESTRING, "privateKey": BASESTRING}
+
+    def __init__(self, name=None, certificateId=None, certificate=None, certificateChain=None, privateKey=None):
+        self.name = name
+        self.certificateId = certificateId
+        self.certificate = certificate
+        self.certificateChain = certificateChain
+        self.privateKey = privateKey
+        super(CustomDomainConfiguration, self).__init__()
 
 class Versions(BaseModel):
     allowedAttr = {'prefix': BASESTRING, 'key_marker': BASESTRING, 'max_keys': [int, BASESTRING],

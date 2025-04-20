@@ -82,7 +82,10 @@ class BucketClient(object):
         'getBucketFetchPolicy',
         'deleteBucketFetchPolicy',
         'setBucketFetchJob',
-        'getBucketFetchJob'
+        'getBucketFetchJob',
+        'setBucketCustomDomain',
+        'deleteBucketCustomDomain',
+        'getBucketCustomDomain',
     ]
 
     def __init__(self, obsClient, bucketName):

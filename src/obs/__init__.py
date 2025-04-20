@@ -22,7 +22,7 @@ from obs.model import NoncurrentVersionExpiration, GetObjectHeader, HeadPermissi
 from obs.model import TopicConfiguration, FunctionGraphConfiguration, FilterRule, Replication, ReplicationRule
 from obs.model import Options, PutObjectHeader, AppendObjectHeader, AppendObjectContent, RedirectAllRequestTo
 from obs.model import Redirect, RoutingRule, Tag, TagInfo, Transition, NoncurrentVersionTransition, Rule, Versions, AbortIncompleteMultipartUpload
-from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUploadRequest, DeleteObjectsRequest
+from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUploadRequest, DeleteObjectsRequest,CustomDomainConfiguration
 from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileHeader, Payer
 from obs.model import ExtensionHeader, FetchStatus, BucketAliasModel, ListBucketAliasModel
 from obs.workflow import WorkflowClient
@@ -96,5 +96,6 @@ __all__ = [
     'CTRCipherGenerator',
     'CtrRSACipherGenerator',
     'BucketAliasModel',
-    'ListBucketAliasModel'
+    'ListBucketAliasModel',
+    'CustomDomainConfiguration'
 ]

@@ -29,7 +29,7 @@ from obs.model import SseCHeader, SseKmsHeader, Owner, Bucket, ListBucketsRespon
     InitiateMultipartUploadResponse, CopyObjectResponse, GetObjectMetadataResponse, SetObjectMetadataResponse, \
     UploadPartResponse, CopyPartResponse, Replication, GetBucketRequestPaymentResponse, GetBPAModel, GetBPSModel
 from obs.model import FetchPolicy, SetBucketFetchJobResponse, GetBucketFetchJobResponse, FetchJobResponse, \
-    ListWorkflowTemplateResponse
+    ListWorkflowTemplateResponse,BucketCustomDomain,ListBucketCustomDomainsResponse
 from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowResponse, \
     AsyncAPIStartWorkflowResponse, ListWorkflowExecutionResponse, GetWorkflowExecutionResponse, \
     RestoreFailedWorkflowExecutionResponse, GetTriggerPolicyResponse, CreateWorkflowTemplateResponse, \
@@ -629,6 +629,26 @@ class Convertor(object):
                 ET.SubElement(errorDocEle, 'Key').text = util.to_string(website['errorDocument']['key'])
             root = self._trans_website_routingRules(root, website)
         return ET.tostring(root, 'UTF-8')
+
+    def trans_custom_domain_cert(self, certificate, domainName):
+        pathArgs = {"customdomain": domainName}
+        if certificate:
+            root = ET.Element("CustomDomainConfiguration")
+            ET.SubElement(root, "Name").text = util.to_string(certificate.get("name"))
+            if certificate.get("certificateId", None):
+                ET.SubElement(root, "CertificateId").text = util.to_string(certificate.get("certificateId", None))
+            ET.SubElement(root, "Certificate").text = util.to_string(certificate.get("certificate"))
+            if certificate.get("certificateChain", None):
+                ET.SubElement(root, "CertificateChain").text = util.to_string(certificate.get("certificateChain", None))
+            ET.SubElement(root, "PrivateKey").text = util.to_string(certificate.get("privateKey"))
+            entity = ET.tostring(root, "UTF-8")
+            if len(entity) > const.MAX_CERT_XML_BODY_SIZE:
+                error_message = "XML body size exceeds {} KB limit".format(const.MAX_CERT_XML_BODY_SIZE / 1024)
+                return {"error": error_message, "pathArgs": pathArgs, "entity": entity, "size": len(entity)}
+
+            headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
+            return {"pathArgs": pathArgs, "headers": headers, "entity": entity}
+        return {"pathArgs": pathArgs}
 
     @staticmethod
     def _trans_website_routingRules(root, website):
@@ -1305,6 +1325,21 @@ class Convertor(object):
         option.epid = headers.get(self.ha.epid_header())
         option.redundancy = headers.get(self.ha.bucket_redundancy_header())
         return option
+    
+    def parseGetBucketCustomDomain(self, xml, headers=None):
+        root = ET.fromstring(xml)
+        domains = root.findall("Domains")
+        entries = []
+
+        for domain in domains:
+            domain_name = self._find_item(domain, "DomainName")
+            d = self._find_item(domain, "CreateTime")
+            certificate_id = self._find_item(domain, "CertificateId")
+            create_time = DateTime.UTCToLocal(d)
+            curr_bucket = BucketCustomDomain(domain_name=domain_name,create_time=create_time,certificate_id=certificate_id)
+            entries.append(curr_bucket)
+
+        return ListBucketCustomDomainsResponse(domains=entries)
 
     def parseGetBucketLocation(self, xml, headers=None):
         root = ET.fromstring(xml)
