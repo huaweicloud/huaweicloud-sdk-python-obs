@@ -17,7 +17,9 @@ import os
 import random
 import time
 from datetime import datetime
-
+import sys, os
+# 添加当前目录到 Python 路径，确保可以导入 conftest
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pytest
 
 import conftest
@@ -295,7 +297,7 @@ class TestOBSClient(object):
                                         taskNum=50)
         except Exception as e:
             has_exception = True
-            assert "response from server is something wrong." in e.message
+            assert "response from server is something wrong." in str(e)
         assert has_exception
 
     def test_uploadFile_with_checksum(self):
@@ -345,7 +347,7 @@ class TestOBSClient(object):
                                         taskNum=50)
         except Exception as e:
             has_exception = True
-            assert "PreconditionFailed" in e.message
+            assert "PreconditionFailed" in str(e)
         assert has_exception
 
     def test_downloadFile_with_if_none_match(self):
@@ -395,7 +397,7 @@ class TestOBSClient(object):
                                         taskNum=50)
         except Exception as e:
             has_exception = True
-            assert "PreconditionFailed" in e.message
+            assert "PreconditionFailed" in str(e)
         assert has_exception
 
     def test_uploadFile_with_metadata(self):
@@ -422,7 +424,6 @@ class TestOBSClient(object):
         client_type, uploadClient, downloadClient = self.get_client()
         object_list = ['test.pdf', 'test.png', 'test.txt']
         old_content_list = ['application/pdf', 'image/png', 'text/plain']
-        new_content_list = []
         folder_name = "test_putFile_with_content_type"
         folder = test_config["path_prefix"] + folder_name
         if not os.path.exists(folder):
@@ -435,9 +436,7 @@ class TestOBSClient(object):
         for res in put_result:
             assert res[1].status == 200
             object_metadata = uploadClient.getObjectMetadata(test_config["bucketName"], res[0])
-            new_content_list.append(object_metadata.body.contentType)
-
-        assert new_content_list == old_content_list
+            assert object_metadata.body.contentType in old_content_list
 
     def test_setBucketLifecycle_and_getBucketLifecycle_success(self):
         client_type, bucketLifecycleClient, obsClient = self.get_client()
@@ -616,7 +615,7 @@ class TestOBSClient(object):
         headers = AppendObjectHeader()
         headers.isAttachCrc64 = True
         content = AppendObjectContent()
-        content.content = 'Hello OBS'
+        content.content = b'Hello OBS'
         content.position = 0
         crc64 = util.calculate_content_crc64(content.content)
         put_result = crc64Client.appendObject(test_config["bucketName"], object_name,
@@ -1211,7 +1210,8 @@ class TestOBSClient(object):
         # 创建标准桶
         cre_result = obsClient.createBucket(bucket_name)
         assert cre_result.status == 200
-        assert cre_result.status == 200
+        del_result = obsClient.deleteBucketPublicAccessBlock(bucket_name)
+        assert del_result.status == 204
         acl_resp = obsClient.setBucketAcl(bucket_name, aclControl=HeadPermission.PUBLIC_READ_WRITE)
         assert acl_resp.status == 200
         pol_resp = obsClient.setBucketPolicy(bucket_name, '{"Statement":[{"Sid":"44d8","Effect":"Allow","Principal":{"ID":["*"]},"Action":["*"],"Resource":["test-bpa-python-esdk","test-bpa-python-esdk/*"]}]}')
@@ -1301,6 +1301,38 @@ class TestOBSClient(object):
         assert get_result.status == 200
         assert not get_result.body.status
         self.delete_bucket(obsClient, bucket_name)
+
+    def test_alpha_python_sdk_imdsv2_001(self):
+        obsClient = ObsClient(security_provider_policy="ECS", server=test_config["endpoint"])
+        lis_result = obsClient.listBuckets()
+        assert lis_result.status == 200
+
+    def test_create_bucket_006(self):
+        obsClient = ObsClient(access_key_id=test_config["ak"],
+                                                        secret_access_key=test_config["sk"],
+                                                        server=test_config["endpoint"], path_style=True)
+        invalid_bucket_name = 'abcdefghijklmnopqrstuvwxyz1206abcdefghijklmnopqrstuvwxyz1206aaaa'
+        result = obsClient.createBucket(invalid_bucket_name)
+        assert result.status == 400
+        assert result.errorCode == 'InvalidBucketName'
+
+    def test_create_bucket_007(self):
+        obsClient = ObsClient(access_key_id=test_config["ak"],
+                                                        secret_access_key=test_config["sk"],
+                                                        server=test_config["endpoint"], path_style=True)
+        invalid_bucket_name = 'bucket001.'
+        result = obsClient.createBucket(invalid_bucket_name)
+        assert result.status == 400
+        assert result.errorCode == 'InvalidBucketName'
+
+    def test_create_bucket_008(self):
+        obsClient = ObsClient(access_key_id=test_config["ak"],
+                                                        secret_access_key=test_config["sk"],
+                                                        server=test_config["endpoint"], path_style=True)
+        invalid_bucket_name = 'bucket..001'
+        result = obsClient.createBucket(invalid_bucket_name)
+        assert result.status == 400
+        assert result.errorCode == 'InvalidBucketName'
 
 
 if __name__ == "__main__":

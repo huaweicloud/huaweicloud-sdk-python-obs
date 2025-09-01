@@ -1,3 +1,13 @@
+Version 3.25.8
+
+New features:
+
+When new ObsClient with ECS agency, the more secure IMDSv2 interface will be prioritized for interacting with ECS services.
+
+Fix problem:
+
+1. Fix the issue where the ObsClient.downloadFile interface cannot retry after enabling crc64, if the verification fails.
+-------------------------------------------------------------------------------------------------
 Version 3.25.3
    
 New Features:

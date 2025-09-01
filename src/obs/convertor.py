@@ -641,6 +641,14 @@ class Convertor(object):
             if certificate.get("certificateChain", None):
                 ET.SubElement(root, "CertificateChain").text = util.to_string(certificate.get("certificateChain", None))
             ET.SubElement(root, "PrivateKey").text = util.to_string(certificate.get("privateKey"))
+            if certificate.get("certificateType", None):
+                ET.SubElement(root, "CertificateType").text = util.to_string(certificate.get("certificateType", None))
+            if certificate.get("encCertificate", None):
+                ET.SubElement(root, "ENCCertificate").text = util.to_string(certificate.get("encCertificate", None))
+            if certificate.get("encPrivateKey", None):
+                ET.SubElement(root, "ENCPrivateKey").text = util.to_string(certificate.get("encPrivateKey", None))
+            if util.to_string(certificate.get("deleteCertificate", None)):
+                ET.SubElement(root, "DeleteCertificate").text = util.to_string(certificate.get("deleteCertificate", None))
             entity = ET.tostring(root, "UTF-8")
             if len(entity) > const.MAX_CERT_XML_BODY_SIZE:
                 error_message = "XML body size exceeds {} KB limit".format(const.MAX_CERT_XML_BODY_SIZE / 1024)
@@ -1336,7 +1344,12 @@ class Convertor(object):
             d = self._find_item(domain, "CreateTime")
             certificate_id = self._find_item(domain, "CertificateId")
             create_time = DateTime.UTCToLocal(d)
-            curr_bucket = BucketCustomDomain(domain_name=domain_name,create_time=create_time,certificate_id=certificate_id)
+            name = self._find_item(domain, "Name")
+            certificate_type = self._find_item(domain, "CertificateType")
+            e = self._find_item(domain, "ExpiredTime")
+            expired_time = DateTime.UTCToLocal(e)
+            curr_bucket = BucketCustomDomain(domainName=domain_name, createTime=create_time, certificateId=certificate_id,
+                                             name=name, certificateType=certificate_type, expiredTime=expired_time)
             entries.append(curr_bucket)
 
         return ListBucketCustomDomainsResponse(domains=entries)

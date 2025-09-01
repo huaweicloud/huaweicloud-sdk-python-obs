@@ -58,7 +58,7 @@ class TestCTRCryptoClient(TestCryptoOBSClient):
             downloadClient.getObject(test_config["bucketName"], object_key)
         except Exception as e:
             has_exception = True
-            assert e.message == "Crypto_iv is different between local and server"
+            assert str(e) == "Crypto_iv is different between local and server"
         assert has_exception
         uploadClient.deleteObject(test_config["bucketName"], object_key)
 

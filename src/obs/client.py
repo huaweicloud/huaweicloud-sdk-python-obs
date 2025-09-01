@@ -199,9 +199,9 @@ class ConvertWrapper(object):
 
 class _BasicClient(object):
     def __init__(self, access_key_id='', secret_access_key='', is_secure=True, server=None,
-                 signature='obs', region='region', path_style=False, ssl_verify=False,
+                 signature='obs', region='region', path_style=False, ssl_verify=False, is_use_gmssl=False,
                  port=None, max_retry_count=3, timeout=60, chunk_size=const.READ_ONCE_LENGTH,
-                 long_conn_mode=False, proxy_host=None, proxy_port=None,
+                 long_conn_mode=False, proxy_host=None, proxy_port=None, client_verify=None,
                  proxy_username=None, proxy_password=None, security_token=None,
                  custom_ciphers=None, use_http2=False, is_signature_negotiation=True, is_cname=False,
                  max_redirect_count=10, security_providers=None, security_provider_policy=None, client_mode='obs',
@@ -239,7 +239,8 @@ class _BasicClient(object):
         self.is_signature_negotiation = is_signature_negotiation
         self.is_cname = is_cname
         self.max_redirect_count = max_redirect_count
-
+        self.is_use_gmssl = is_use_gmssl
+        self.client_verify = client_verify
         if client_mode == 'obs':
             if self.path_style or self.is_cname:
                 self.is_signature_negotiation = False
@@ -364,30 +365,45 @@ class _BasicClient(object):
         self.connHolder = {'connSet': Queue(), 'lock': threading.Lock()}
 
     def _init_ssl_context(self, custom_ciphers):
-        try:
-            import ssl
-            if hasattr(ssl, 'SSLContext'):
+        import ssl
+        if hasattr(ssl, 'SSLContext'):
+            if self.is_use_gmssl:
+                if not hasattr(ssl, 'PROTOCOL_GMTLS'):
+                    raise Exception('ssl not support PROTOCOL_GMTLS.')
+                context = ssl.SSLContext(ssl.PROTOCOL_GMTLS)
+                context.set_ciphers('ECC-SM4-SM3:ECDHE-SM4-SM3')
+            else:
                 context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-                context.options |= ssl.OP_NO_SSLv2
-                context.options |= ssl.OP_NO_SSLv3
-                if custom_ciphers is not None:
-                    custom_ciphers = util.to_string(custom_ciphers).strip()
-                    if custom_ciphers != '' and hasattr(context, 'set_ciphers') and callable(context.set_ciphers):
-                        context.set_ciphers(custom_ciphers)
-                if self.ssl_verify:
-                    import _ssl
-                    cafile = util.to_string(self.ssl_verify)
-                    context.options |= getattr(_ssl, "OP_NO_COMPRESSION", 0)
-                    context.verify_mode = ssl.CERT_REQUIRED
-                    if os.path.isfile(cafile):
-                        context.load_verify_locations(cafile)
-                else:
-                    context.verify_mode = ssl.CERT_NONE
-                if hasattr(context, 'check_hostname'):
-                    context.check_hostname = False
-                self.context = context
-        except Exception:
-            print(traceback.format_exc())
+            context.options |= ssl.OP_NO_SSLv2
+            context.options |= ssl.OP_NO_SSLv3
+            if custom_ciphers is not None:
+                custom_ciphers = util.to_string(custom_ciphers).strip()
+                if custom_ciphers != '' and hasattr(context, 'set_ciphers') and callable(context.set_ciphers):
+                    context.set_ciphers(custom_ciphers)
+            if self.ssl_verify:
+                import _ssl
+                cafile = util.to_string(self.ssl_verify)
+                context.options |= getattr(_ssl, "OP_NO_COMPRESSION", 0)
+                context.verify_mode = ssl.CERT_REQUIRED
+                if os.path.isfile(cafile):
+                    context.load_verify_locations(cafile)
+            else:
+                context.verify_mode = ssl.CERT_NONE
+            is_client_sign_verify = self.client_verify and self.client_verify.clientCert and \
+                                    self.client_verify.clientKey
+            is_client_enc_verify = self.client_verify and self.client_verify.clientEncCert and \
+                                   self.client_verify.clientEncKey
+            if is_client_sign_verify:
+                context.load_cert_chain(certfile=util.to_string(self.client_verify.clientCert),
+                                        keyfile=util.to_string(self.client_verify.clientKey),
+                                        password=util.to_string(self.client_verify.clientKeyPassword))
+                if is_client_enc_verify:
+                    context.load_cert_chain(certfile=util.to_string(self.client_verify.clientEncCert),
+                                            keyfile=util.to_string(self.client_verify.clientEncKey),
+                                            password=util.to_string(self.client_verify.clientEncKeyPassword))
+            if hasattr(context, 'check_hostname'):
+                context.check_hostname = False
+            self.context = context
 
     def close(self):
         if self.connHolder is not None:
@@ -502,7 +518,7 @@ class _BasicClient(object):
                 if flag >= self.max_retry_count or readable:
                     return self._make_error_result(e, ret)
                 flag += 1
-                time.sleep(math.pow(2, flag) * 0.05)
+                time.sleep(math.pow(2, flag) * 0.1)
                 self.log_client.log(WARNING, 'request again, time:%d' % int(flag))
                 continue
 
@@ -824,7 +840,9 @@ class _BasicClient(object):
                     result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier, obs_crc64=obs_crc64)
                     self.log_client.log(DEBUG, 'CRC64 from the server is {0}'.format(obs_crc64))
                 else:
-                    raise Exception('No CRC64 is obtained from the server.')
+                    result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier)
+                    self.log_client.log(WARNING, 'object {0} not get CRC64 from the server.'.format(objectKey))
+
             else:
                 result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier)
             if loadStreamInMemory:
@@ -1248,9 +1266,7 @@ class ObsClient(_BasicClient):
         if matchAnyKey:
             policy.append('["starts-with", "$key", ""],')
 
-        policy.append(']}')
-
-        originPolicy = ''.join(policy)
+        originPolicy = ''.join(policy).rstrip(',') + ']}'
 
         policy = util.base64_encode(originPolicy)
 

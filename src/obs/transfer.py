@@ -24,7 +24,7 @@ import threading
 import traceback
 
 from obs import const, progress, util
-from obs.ilog import DEBUG, ERROR, INFO
+from obs.ilog import DEBUG, ERROR, INFO, WARNING
 from obs.model import BaseModel, CompleteMultipartUploadRequest, CompletePart, GetObjectHeader, GetObjectRequest, \
     UploadFileHeader
 
@@ -453,7 +453,8 @@ class downloadOperation(Operation):
             self.lastModified = metadata_resp.body.lastModified
             self.crc64 = metadata_resp.body.crc64
             if self.isAttachCrc64 and not self.crc64:
-                raise Exception('No CRC64 is obtained from the server.')
+                self.obsClient.log_client.log(WARNING,
+                                              'object {0} not get CRC64 from the server.'.format(self.objectKey))
             self.size = metadata_resp.body.contentLength \
                 if metadata_resp.body.contentLength is not None and metadata_resp.body.contentLength >= 0 else 0
         else:
@@ -525,7 +526,7 @@ class downloadOperation(Operation):
                     if not p['isCompleted']:
                         raise Exception('some parts are failed when download. Please try again')
 
-            if self.isAttachCrc64:
+            if self.isAttachCrc64 and self.crc64:
                 self.obsClient.log_client.log(
                     INFO,
                     'Start to calculate file {0} crc64'.format(self.fileName))
@@ -535,10 +536,11 @@ class downloadOperation(Operation):
                     DEBUG,
                     'CRC64 from the server is {0}, CRC64 by calculated is {1}, cost {2}'.format(self.crc64, crc64, time.time()-start))
                 if int(self.crc64) != crc64:
+                    self._delete_record()
                     self._delete_tmp_file()
                     raise Exception(
                         'Consistency check failed. CRC64 from the server is {0}, CRC64 by calculated is {1}'.format(
-                            self.crc64, object_crc))
+                            int(self.crc64), crc64))
             try:
                 os.rename(self._tmp_file, self.fileName)
                 if self.enableCheckPoint:

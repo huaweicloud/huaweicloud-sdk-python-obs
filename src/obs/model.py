@@ -140,7 +140,8 @@ __all__ = [
     'GetBPSModel',
     'CustomDomainConfiguration',
     'BucketCustomDomain',
-    'ListBucketCustomDomainsResponse'
+    'ListBucketCustomDomainsResponse',
+    'ClientVerify'
 ]
 
 
@@ -342,13 +343,19 @@ class Content(BaseModel):
     def __str__(self):
         return self.key
 
-class BucketCustomDomain(BaseModel):
-    allowedAttr = {"domain_name": BASESTRING,"create_time": BASESTRING,"certificate_id": BASESTRING,}
 
-    def __init__(self, domain_name=None, create_time=None, certificate_id=None):
-        self.domain_name = domain_name
-        self.create_time = create_time
-        self.certificate_id = certificate_id
+class BucketCustomDomain(BaseModel):
+    allowedAttr = {"domainName": BASESTRING, "createTime": BASESTRING, "certificateId": BASESTRING,
+                   "name": BASESTRING, "certificateType": BASESTRING, "expiredTime": BASESTRING}
+
+    def __init__(self, domainName=None, createTime=None, certificateId=None, name=None, certificateType=None,
+                 expiredTime=None):
+        self.name = name
+        self.domainName = domainName
+        self.createTime = createTime
+        self.certificateId = certificateId
+        self.certificateType = certificateType
+        self.expiredTime = expiredTime
         super(BucketCustomDomain, self).__init__()
 
 
@@ -903,15 +910,22 @@ class ListBucketCustomDomainsResponse(BaseModel):
 
 class CustomDomainConfiguration(BaseModel):
     allowedAttr = {"name": BASESTRING, "certificateId": BASESTRING, "certificate": BASESTRING,
-                   "certificateChain": BASESTRING, "privateKey": BASESTRING}
+                   "certificateChain": BASESTRING, "privateKey": BASESTRING, "certificateType": BASESTRING,
+                   "encCertificate": BASESTRING, "encPrivateKey": BASESTRING, "deleteCertificate": bool}
 
-    def __init__(self, name=None, certificateId=None, certificate=None, certificateChain=None, privateKey=None):
+    def __init__(self, name=None, certificateId=None, certificate=None, certificateChain=None, privateKey=None,
+                 certificateType=None, encCertificate=None, encPrivateKey=None, deleteCertificate=None):
         self.name = name
         self.certificateId = certificateId
         self.certificate = certificate
         self.certificateChain = certificateChain
         self.privateKey = privateKey
+        self.certificateType = certificateType
+        self.encCertificate = encCertificate
+        self.encPrivateKey = encPrivateKey
+        self.deleteCertificate = deleteCertificate
         super(CustomDomainConfiguration, self).__init__()
+
 
 class Versions(BaseModel):
     allowedAttr = {'prefix': BASESTRING, 'key_marker': BASESTRING, 'max_keys': [int, BASESTRING],
@@ -1749,6 +1763,7 @@ class ListBucketAliasModel(BaseModel):
         self.owner = owner
         self.bucketAlias = bucketAlias
 
+
 # end virtual bucket related
 # end virtual bucket related
 # end virtual bucket related
@@ -1767,6 +1782,7 @@ class GetBPAModel(BaseModel):
         self.blockPublicPolicy = blockPublicPolicy
         self.restrictPublicBuckets = restrictPublicBuckets
 
+
 class GetBPSModel(BaseModel):
     allowedAttr = {'status': bool}
 
@@ -1778,3 +1794,16 @@ class GetBPSModel(BaseModel):
 # end bpa related
 # end bpa related
 
+class ClientVerify(BaseModel):
+    allowedAttr = {'clientCert': BASESTRING, 'clientKey': BASESTRING, 'clientKeyPassword': BASESTRING,
+                   'clientEncCert': BASESTRING, 'clientEncKey': BASESTRING, 'clientEncKeyPassword': BASESTRING}
+
+    def __init__(self, clientCert=None, clientKey=None, clientKeyPassword=None, clientEncCert=None, clientEncKey=None,
+                 clientEncKeyPassword=None):
+        super(ClientVerify, self).__init__()
+        self.clientCert = clientCert
+        self.clientKey = clientKey
+        self.clientKeyPassword = clientKeyPassword
+        self.clientEncCert = clientEncCert
+        self.clientEncKey = clientEncKey
+        self.clientEncKeyPassword = clientEncKeyPassword

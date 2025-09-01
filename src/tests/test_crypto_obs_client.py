@@ -95,7 +95,7 @@ class TestCryptoOBSClient(TestOBSClient):
             uploadClient.appendObject(test_config["bucketName"], "test_append_object")
         except Exception as e:
             has_exception = True
-            assert e.message == 'AppendObject is not supported in CryptoObsClient'
+            assert str(e) == 'AppendObject is not supported in CryptoObsClient'
         assert has_exception
 
     def test_copyPart(self):
@@ -106,7 +106,7 @@ class TestCryptoOBSClient(TestOBSClient):
                                   "test_copyPart_ID", "test_copyPart_source")
         except Exception as e:
             has_exception = True
-            assert e.message == 'CopyPart is not supported in CryptoObsClient'
+            assert str(e) == 'CopyPart is not supported in CryptoObsClient'
         assert has_exception
 
     def test_initiateMultipartUpload(self):
@@ -116,7 +116,7 @@ class TestCryptoOBSClient(TestOBSClient):
             uploadClient.initiateMultipartUpload(test_config["bucketName"], "test_initiateMultipartUpload")
         except Exception as e:
             has_exception = True
-            assert e.message == 'InitiateMultipartUpload is not supported in CryptoObsClient'
+            assert str(e) == 'InitiateMultipartUpload is not supported in CryptoObsClient'
         assert has_exception
 
     def test_uploadPart(self):
@@ -126,7 +126,7 @@ class TestCryptoOBSClient(TestOBSClient):
             uploadClient.uploadPart(test_config["bucketName"], "test_uploadPart", 1, "test_uploadPart")
         except Exception as e:
             has_exception = True
-            assert e.message == 'UploadPart is not supported in CryptoObsClient'
+            assert str(e) == 'UploadPart is not supported in CryptoObsClient'
         assert has_exception
 
     def test_getObject_with_no_metadata(self):
@@ -144,7 +144,7 @@ class TestCryptoOBSClient(TestOBSClient):
             downloadClient.getObject(test_config["bucketName"], object_key)
         except Exception as e:
             has_exception = True
-            assert e.message == "Crypto mod is not in object's metadata"
+            assert str(e) == "Crypto mod is not in object's metadata"
         assert has_exception
         uploadClient.deleteObject(test_config["bucketName"], object_key)
 
@@ -163,7 +163,7 @@ class TestCryptoOBSClient(TestOBSClient):
             downloadClient.getObject(test_config["bucketName"], object_key)
         except Exception as e:
             has_exception = True
-            assert e.message == "Object's crypto mod is not equals cipher-generator's, " \
+            assert str(e) == "Object's crypto mod is not equals cipher-generator's, " \
                                 "please change a different cipher-generator"
         assert has_exception
         uploadClient.deleteObject(test_config["bucketName"], object_key)
@@ -174,7 +174,7 @@ class TestCryptoOBSClient(TestOBSClient):
             super(TestCryptoOBSClient, self).test_initiateMultipartUpload_and_uploadPart_and_copyPart()
         except Exception as e:
             has_exception = True
-            assert e.message == 'InitiateMultipartUpload is not supported in CryptoObsClient'
+            assert str(e) == 'InitiateMultipartUpload is not supported in CryptoObsClient'
         assert has_exception
 
 
@@ -185,7 +185,7 @@ class TestCryptoOBSClientWithSha256(TestCryptoOBSClient):
             super(TestCryptoOBSClientWithSha256, self).test_putContent_with_file_stream(gen_test_file)
         except Exception as e:
             has_exception = True
-            assert e.message == "Could not calculate sha256 for a stream object"
+            assert str(e) == "Could not calculate sha256 for a stream object"
         assert has_exception
 
     def test_putContent_with_network_stream(self, gen_test_file):
@@ -194,7 +194,7 @@ class TestCryptoOBSClientWithSha256(TestCryptoOBSClient):
             super(TestCryptoOBSClientWithSha256, self).test_putContent_with_network_stream(gen_test_file)
         except Exception as e:
             has_exception = True
-            assert e.message == "Could not calculate sha256 for a stream object"
+            assert str(e) == "Could not calculate sha256 for a stream object"
         assert has_exception
 
     def test_putContent_has_sha256(self):
@@ -262,7 +262,7 @@ class TestCryptoOBSClientWithSha256(TestCryptoOBSClient):
             super(TestCryptoOBSClientWithSha256, self).test_initiateEncryptedMultipartUpload_and_uploadEncryptedPart()
         except Exception as e:
             has_exception = True
-            assert e.message == 'Could not calculate sha256 for initiateMultipartUpload'
+            assert str(e) == 'Could not calculate sha256 for initiateMultipartUpload'
         assert has_exception
 
 
