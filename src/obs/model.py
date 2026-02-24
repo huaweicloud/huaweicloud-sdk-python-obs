@@ -141,7 +141,11 @@ __all__ = [
     'CustomDomainConfiguration',
     'BucketCustomDomain',
     'ListBucketCustomDomainsResponse',
-    'ClientVerify'
+    'ClientVerify',
+    'TagInfoModel',
+    'SetObjectTaggingResponse',
+    'GetObjectTaggingResponse',
+    'DeleteObjectTaggingResponse'
 ]
 
 
@@ -820,6 +824,31 @@ class Tag(BaseModel):
     def __init__(self, key=None, value=None):
         self.key = key
         self.value = value
+
+    def __eq__(self, other):
+        if not isinstance(other, Tag):
+            return False
+        return self.key == other.key and self.value == other.value
+
+    def to_dict(self):
+        """
+        Convert Tag to dictionary
+
+        :return: dict with 'key' and 'value'
+        """
+        return {'key': self.key, 'value': self.value}
+
+    @classmethod
+    def from_dict(cls, dict_data):
+        """
+        Create Tag from dictionary
+
+        :param dict_data: Dictionary with 'key' and 'value' keys
+        :return: Tag object
+        """
+        if dict_data is None:
+            return None
+        return cls(key=dict_data.get('key'), value=dict_data.get('value'))
 
 
 class TagInfo(BaseModel):
@@ -1807,3 +1836,36 @@ class ClientVerify(BaseModel):
         self.clientEncCert = clientEncCert
         self.clientEncKey = clientEncKey
         self.clientEncKeyPassword = clientEncKeyPassword
+
+
+# Object tagging related classes
+class TagInfoModel(BaseModel):
+    """Object tagging information model"""
+    allowedAttr = {'tags': list}
+
+    def __init__(self, tags=None):
+        super(TagInfoModel, self).__init__()
+        self.tags = tags if tags is not None else []
+
+
+class SetObjectTaggingResponse(GetResult):
+    """Response for setObjectTagging operation"""
+    def __init__(self, body=None, headers=None):
+        super(SetObjectTaggingResponse, self).__init__(body=body, header=headers)
+
+
+class GetObjectTaggingResponse(GetResult):
+    """Response for getObjectTagging operation"""
+    def __init__(self, body=None, headers=None):
+        super(GetObjectTaggingResponse, self).__init__(body=body, header=headers)
+        # Parse body to extract tags if body is TagInfoModel
+        if isinstance(body, TagInfoModel):
+            self.tagInfo = body
+        else:
+            self.tagInfo = None
+
+
+class DeleteObjectTaggingResponse(GetResult):
+    """Response for deleteObjectTagging operation"""
+    def __init__(self, body=None, headers=None):
+        super(DeleteObjectTaggingResponse, self).__init__(body=body, header=headers)

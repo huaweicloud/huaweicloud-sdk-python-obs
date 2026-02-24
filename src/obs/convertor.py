@@ -37,7 +37,8 @@ from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowR
 from obs.model import DateTime, ListObjectsResponse, Content, CorsRule, ObjectVersionHead, ObjectVersion, \
     ObjectDeleteMarker, DeleteObjectResult, NoncurrentVersionExpiration, NoncurrentVersionTransition, Rule, Condition, \
     Redirect, FilterRule, FunctionGraphConfiguration, Upload, CompleteMultipartUploadResponse, ListPartsResponse, \
-    Grant, ReplicationRule, Transition, Grantee, BucketAliasModel, ListBucketAliasModel, AbortIncompleteMultipartUpload
+    Grant, ReplicationRule, Transition, Grantee, BucketAliasModel, ListBucketAliasModel, AbortIncompleteMultipartUpload, \
+    TagInfoModel, SetObjectTaggingResponse, GetObjectTaggingResponse, DeleteObjectTaggingResponse
 
 if const.IS_PYTHON2:
     from urllib import unquote_plus, quote_plus
@@ -454,6 +455,84 @@ class Convertor(object):
                     ET.SubElement(tagEle, 'Key').text = util.safe_decode(tag['key'])
                     ET.SubElement(tagEle, 'Value').text = util.safe_decode(tag['value'])
         return ET.tostring(root, 'UTF-8')
+
+    def trans_set_object_tagging(self, **kwargs):
+        """
+        Convert object tagging to XML format
+
+        :param kwargs: Should contain 'tags' parameter (list, dict, or list of Tag objects) and optional 'versionId'
+        :return: Dictionary with pathArgs, headers, and entity
+        """
+        tags = kwargs.get('tags')
+        versionId = kwargs.get('versionId')
+        entity = self._trans_object_tags_to_xml(tags)
+
+        pathArgs = {const.TAGGING_PARAM: None}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+
+        return {
+            'pathArgs': pathArgs,
+            'headers': {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))},
+            'entity': entity
+        }
+
+    def _trans_object_tags_to_xml(self, tags):
+        """
+        Convert tags to XML format for object tagging
+
+        :param tags: Tags as list, dict, or list of Tag objects
+        :return: XML string
+        """
+        root = ET.Element('Tagging')
+        tagSetEle = ET.SubElement(root, 'TagSet')
+
+        # Normalize tags to list
+        tag_list = self._normalize_tags(tags)
+
+        if tag_list:
+            for tag in tag_list:
+                if tag.get('key') is not None:
+                    tagEle = ET.SubElement(tagSetEle, 'Tag')
+                    key_elem = ET.SubElement(tagEle, 'Key')
+                    key_elem.text = util.to_string(tag['key'])
+
+                    # Value can be empty string - use util.safe_decode which handles empty strings
+                    value_elem = ET.SubElement(tagEle, 'Value')
+                    value = tag.get('value')
+                    if value is not None:
+                        value_elem.text = util.safe_decode(value)
+                    else:
+                        value_elem.text = util.safe_decode('')
+
+        return ET.tostring(root, 'UTF-8')
+
+    def _normalize_tags(self, tags):
+        """
+        Normalize tags to a list of dictionaries
+
+        :param tags: Tags in various formats (list, dict, list of Tag objects)
+        :return: List of dictionaries with 'key' and 'value'
+        """
+        if tags is None:
+            return []
+
+        # If it's a dict, convert to list
+        if isinstance(tags, dict):
+            return [{'key': k, 'value': v} for k, v in tags.items()]
+
+        # If it's a list, normalize each item
+        if isinstance(tags, list):
+            normalized = []
+            for item in tags:
+                if isinstance(item, dict):
+                    normalized.append({'key': item.get('key'), 'value': item.get('value')})
+                else:
+                    # Assume it's a Tag object with key and value attributes
+                    normalized.append({'key': getattr(item, 'key', None), 'value': getattr(item, 'value', None)})
+            return normalized
+
+        return []
 
     def trans_set_bucket_cors(self, **kwargs):
         entity = self.trans_cors_rules(kwargs.get('corsRuleList'))
@@ -1431,6 +1510,53 @@ class Convertor(object):
                 value = tag.find('Value')
                 value = util.safe_encode(value.text) if value is not None else None
                 result.addTag(key, value)
+        return result
+
+    def parseGetObjectTagging(self, xml, headers=None):
+        """
+        Parse object tagging XML response
+
+        :param xml: XML string response
+        :param headers: Response headers (optional)
+        :return: TagInfoModel object
+        """
+        from obs.model import Tag
+        result = TagInfoModel()
+        root = ET.fromstring(xml)
+        tags = root.findall('TagSet/Tag')
+        if tags:
+            for tag in tags:
+                key_elem = tag.find('Key')
+                key = util.safe_encode(key_elem.text) if key_elem is not None and key_elem.text is not None else None
+                value_elem = tag.find('Value')
+                # Handle self-closing tags (text is None) - treat as empty string
+                value_text = value_elem.text if value_elem is not None else None
+                if value_text is None:
+                    value_text = ''
+                value = util.safe_encode(value_text)
+                if key is not None:
+                    result.tags.append(Tag(key=key, value=value))
+        return result
+
+    def parseSetObjectTagging(self, xml, headers=None):
+        """
+        Parse setObjectTagging response (HTTP 200 with empty or minimal body)
+
+        :param xml: XML response (may be empty)
+        :param headers: Response headers (optional)
+        :return: SetObjectTaggingResponse
+        """
+        return SetObjectTaggingResponse(body=xml, headers=headers)
+
+    def parseDeleteObjectTagging(self, xml, headers=None):
+        """
+        Parse deleteObjectTagging response (HTTP 204 with no body)
+
+        :param xml: XML response (typically empty for 204)
+        :param headers: Response headers (optional)
+        :return: DeleteObjectTaggingResponse
+        """
+        return DeleteObjectTaggingResponse(body=xml, headers=headers)
         return result
 
     def parseGetBucketCors(self, xml, headers=None):

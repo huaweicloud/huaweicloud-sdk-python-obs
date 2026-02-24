@@ -2152,6 +2152,82 @@ class ObsClient(_BasicClient):
                                       extensionHeaders=extensionHeaders)
 
     @funcCache
+    def setObjectTagging(self, bucketName, objectKey, tags, versionId=None, extensionHeaders=None):
+        """
+        Set object tagging
+
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param tags: Tags as list, dict, or list of Tag objects
+            - List format: [{'key': 'k1', 'value': 'v1'}, {'key': 'k2', 'value': 'v2'}]
+            - Dict format: {'k1': 'v1', 'k2': 'v2'}
+            - Tag objects: [Tag('k1', 'v1'), Tag('k2', 'v2')]
+        :param versionId: Object version ID (optional)
+        :param extensionHeaders: Extension headers (optional)
+        :return: SetObjectTaggingResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+        self._assert_not_null(tags, 'tags is empty')
+
+        objectKey = util.safe_encode(objectKey)
+        if objectKey is None:
+            objectKey = ''
+
+        return self._make_put_request(bucketName, objectKey, extensionHeaders=extensionHeaders,
+                                      **self.convertor.trans_set_object_tagging(tags=tags, versionId=versionId))
+
+    @funcCache
+    def getObjectTagging(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
+        """
+        Get object tagging
+
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param versionId: Object version ID (optional)
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetObjectTaggingResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+
+        objectKey = util.safe_encode(objectKey)
+        if objectKey is None:
+            objectKey = ''
+
+        pathArgs = {const.TAGGING_PARAM: None}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+
+        return self._make_get_request(bucketName, objectKey, pathArgs=pathArgs, methodName='getObjectTagging',
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def deleteObjectTagging(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
+        """
+        Delete object tagging
+
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param versionId: Object version ID (optional)
+        :param extensionHeaders: Extension headers (optional)
+        :return: DeleteObjectTaggingResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+
+        objectKey = util.safe_encode(objectKey)
+        if objectKey is None:
+            objectKey = ''
+
+        pathArgs = {const.TAGGING_PARAM: None}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+
+        return self._make_delete_request(bucketName, objectKey, pathArgs=pathArgs, methodName='deleteObjectTagging',
+                                         extensionHeaders=extensionHeaders)
+
+    @funcCache
     def deleteObject(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
         path_args = {}
         if versionId:

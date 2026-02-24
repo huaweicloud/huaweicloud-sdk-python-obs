@@ -25,6 +25,7 @@ from obs.model import Redirect, RoutingRule, Tag, TagInfo, Transition, Noncurren
 from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUploadRequest, DeleteObjectsRequest,CustomDomainConfiguration
 from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileHeader, Payer, ClientVerify
 from obs.model import ExtensionHeader, FetchStatus, BucketAliasModel, ListBucketAliasModel
+from obs.model import TagInfoModel, SetObjectTaggingResponse, GetObjectTaggingResponse, DeleteObjectTaggingResponse
 from obs.workflow import WorkflowClient
 from obs.crypto_client import CryptoObsClient
 from obs.obs_cipher_suite import CTRCipherGenerator
@@ -98,5 +99,9 @@ __all__ = [
     'BucketAliasModel',
     'ListBucketAliasModel',
     'CustomDomainConfiguration',
-    'ClientVerify'
+    'ClientVerify',
+    'TagInfoModel',
+    'SetObjectTaggingResponse',
+    'GetObjectTaggingResponse',
+    'DeleteObjectTaggingResponse'
 ]
