@@ -148,7 +148,19 @@ __all__ = [
     'DeleteObjectTaggingResponse',
     'PutObjectSymlinkHeader',
     'PutObjectSymlinkResponse',
-    'GetObjectSymlinkResponse'
+    'GetObjectSymlinkResponse',
+    'InventoryConfiguration',
+    'InventoryFormat',
+    'InventoryFrequency',
+    'InventoryIncludedObjectVersions',
+    'InventoryOptionalFields',
+    'InventoryFilter',
+    'InventoryDestination',
+    'InventoryBucketDestination',
+    'PutBucketInventoryResponse',
+    'GetBucketInventoryResponse',
+    'DeleteBucketInventoryResponse',
+    'ListBucketInventoryResponse'
 ]
 
 
@@ -1941,3 +1953,166 @@ class GetObjectSymlinkResponse(GetResult):
                     self.storageClass = util.safe_encode(value)
                 elif key.lower() == 'x-obs-version-id':
                     self.versionId = util.safe_encode(value)
+
+
+# Bucket Inventory related classes
+class InventoryFormat:
+    """Inventory format enumeration"""
+    CSV = 'CSV'
+
+
+class InventoryFrequency:
+    """Inventory frequency enumeration"""
+    Daily = 'Daily'
+    Weekly = 'Weekly'
+
+
+class InventoryIncludedObjectVersions:
+    """Inventory included object versions enumeration"""
+    All = 'All'
+    Current = 'Current'
+
+
+class InventoryOptionalFields:
+    """Inventory optional fields enumeration"""
+    Size = 'Size'
+    LastModifiedDate = 'LastModifiedDate'
+    ETag = 'ETag'
+    StorageClass = 'StorageClass'
+    IsMultipartUploaded = 'IsMultipartUploaded'
+    ReplicationStatus = 'ReplicationStatus'
+    EncryptionStatus = 'EncryptionStatus'
+    ObjectAcl = 'ObjectAcl'
+    ObjectOwner = 'ObjectOwner'
+    VersionId = 'VersionId'
+
+
+class InventoryBucketDestination(BaseModel):
+    """Inventory bucket destination configuration"""
+    allowedAttr = {'bucket': BASESTRING, 'accountId': BASESTRING, 'prefix': BASESTRING,
+                   'format': BASESTRING, 'encryption': dict}
+
+    def __init__(self, bucket=None, accountId=None, prefix=None, format=None, encryption=None):
+        """
+        Init InventoryBucketDestination
+
+        :param bucket: Destination bucket name
+        :param accountId: Account ID of the destination bucket owner
+        :param prefix: Prefix for inventory reports
+        :param format: Format of inventory reports (CSV)
+        :param encryption: Encryption configuration for inventory reports
+        """
+        self.bucket = bucket
+        self.accountId = accountId
+        self.prefix = prefix
+        self.format = format
+        self.encryption = encryption
+
+
+class InventoryDestination(BaseModel):
+    """Inventory destination configuration"""
+    allowedAttr = {'bucket': BASESTRING, 'accountId': BASESTRING, 'prefix': BASESTRING,
+                   'format': BASESTRING, 'encryption': dict, 'bucketDestination': InventoryBucketDestination}
+
+    def __init__(self, bucket=None, accountId=None, prefix=None, format=None, encryption=None, bucketDestination=None):
+        """
+        Init InventoryDestination
+
+        :param bucket: Destination bucket name
+        :param accountId: Account ID of the destination bucket owner
+        :param prefix: Prefix for inventory reports
+        :param format: Format of inventory reports (InventoryFormat.CSV)
+        :param encryption: Encryption configuration for inventory reports
+        :param bucketDestination: Full bucket destination configuration
+        """
+        self.bucket = bucket
+        self.accountId = accountId
+        self.prefix = prefix
+        self.format = format
+        self.encryption = encryption
+        self.bucketDestination = bucketDestination
+
+
+class InventoryFilter(BaseModel):
+    """Inventory filter configuration"""
+    allowedAttr = {'prefix': BASESTRING}
+
+    def __init__(self, prefix=None):
+        """
+        Init InventoryFilter
+
+        :param prefix: Prefix filter for inventory objects
+        """
+        self.prefix = prefix
+
+
+class InventoryConfiguration(BaseModel):
+    """Bucket inventory configuration"""
+    allowedAttr = {'inventoryId': BASESTRING, 'isEnabled': bool, 'objectVersion': BASESTRING,
+                   'filter': InventoryFilter, 'frequency': BASESTRING, 'destination': InventoryDestination,
+                   'optionalFields': list, 'lastModified': BASESTRING}
+
+    def __init__(self, inventoryId=None, isEnabled=None, objectVersion=None, filter=None,
+                 frequency=None, destination=None, optionalFields=None, lastModified=None):
+        """
+        Init InventoryConfiguration
+
+        :param inventoryId: Unique identifier for this inventory configuration
+        :param isEnabled: Whether this inventory is enabled
+        :param objectVersion: Object versions to include (All or Current)
+        :param filter: Filter for objects to include in inventory
+        :param frequency: Frequency of inventory generation (Daily or Weekly)
+        :param destination: Destination for inventory reports
+        :param optionalFields: Optional fields to include in inventory
+        :param lastModified: Last modified timestamp
+        """
+        self.inventoryId = inventoryId
+        self.isEnabled = isEnabled
+        self.objectVersion = objectVersion
+        self.filter = filter
+        self.frequency = frequency
+        self.destination = destination
+        self.optionalFields = optionalFields
+        self.lastModified = lastModified
+
+
+class PutBucketInventoryResponse(GetResult):
+    """Response for putBucketInventory operation"""
+    def __init__(self, body=None, headers=None):
+        super(PutBucketInventoryResponse, self).__init__(body=body, header=headers)
+
+
+class GetBucketInventoryResponse(GetResult):
+    """Response for getBucketInventory operation"""
+    allowedAttr = {'status': int, 'reason': BASESTRING, 'errorCode': BASESTRING, 'errorMessage': BASESTRING,
+                   'body': object, 'requestId': BASESTRING, 'hostId': BASESTRING, 'resource': BASESTRING,
+                   'header': list, 'indicator': BASESTRING,
+                   'configuration': InventoryConfiguration}
+
+    def __init__(self, body=None, headers=None, status=200, reason=None):
+        super(GetBucketInventoryResponse, self).__init__(body=body, header=headers, status=status, reason=reason)
+        self.configuration = None
+        # Parse body to extract configuration if body is InventoryConfiguration
+        if isinstance(body, InventoryConfiguration):
+            self.configuration = body
+
+
+class DeleteBucketInventoryResponse(GetResult):
+    """Response for deleteBucketInventory operation"""
+    def __init__(self, body=None, headers=None):
+        super(DeleteBucketInventoryResponse, self).__init__(body=body, header=headers)
+
+
+class ListBucketInventoryResponse(GetResult):
+    """Response for listBucketInventory operation"""
+    allowedAttr = {'status': int, 'reason': BASESTRING, 'errorCode': BASESTRING, 'errorMessage': BASESTRING,
+                   'body': object, 'requestId': BASESTRING, 'hostId': BASESTRING, 'resource': BASESTRING,
+                   'header': list, 'indicator': BASESTRING,
+                   'configurations': list, 'isTruncated': bool, 'nextInventoryId': BASESTRING}
+
+    def __init__(self, body=None, headers=None, status=200, reason=None,
+                 configurations=None, isTruncated=False, nextInventoryId=None):
+        super(ListBucketInventoryResponse, self).__init__(body=body, header=headers, status=status, reason=reason)
+        self.configurations = configurations if configurations is not None else []
+        self.isTruncated = isTruncated
+        self.nextInventoryId = nextInventoryId

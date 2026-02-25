@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd src/tests && python3 -m pytest ut/ -v)"
+    ]
+  },
+  "docs": {
+    "testCommands": {
+      "unitTests": "cd src/tests && python3 -m pytest ut/ -v",
+      "integrationTests": "cd src/tests && python3 -m pytest test_object_tagging.py -v",
+      "allTests": "cd src/tests && python3 -m pytest -v"
+    },
+    "notes": {
+      "testLocation": "测试文件位于 src/tests/ 目录",
+      "unitTestsPath": "src/tests/ut/",
+      "integrationTestsPath": "src/tests/test_object_tagging.py",
+      "configRequired": "运行集成测试前需要从 src/tests/ 目录执行（因为需要 test_config.json）"
+    }
+  }
+}

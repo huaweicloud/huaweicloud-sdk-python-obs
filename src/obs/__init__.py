@@ -27,6 +27,10 @@ from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileH
 from obs.model import ExtensionHeader, FetchStatus, BucketAliasModel, ListBucketAliasModel
 from obs.model import TagInfoModel, SetObjectTaggingResponse, GetObjectTaggingResponse, DeleteObjectTaggingResponse
 from obs.model import PutObjectSymlinkHeader, PutObjectSymlinkResponse, GetObjectSymlinkResponse
+from obs.model import (InventoryConfiguration, InventoryFormat, InventoryFrequency, InventoryIncludedObjectVersions,
+                       InventoryOptionalFields, InventoryFilter, InventoryDestination, InventoryBucketDestination,
+                       PutBucketInventoryResponse, GetBucketInventoryResponse, DeleteBucketInventoryResponse,
+                       ListBucketInventoryResponse)
 from obs.workflow import WorkflowClient
 from obs.crypto_client import CryptoObsClient
 from obs.obs_cipher_suite import CTRCipherGenerator
@@ -107,5 +111,17 @@ __all__ = [
     'DeleteObjectTaggingResponse',
     'PutObjectSymlinkHeader',
     'PutObjectSymlinkResponse',
-    'GetObjectSymlinkResponse'
+    'GetObjectSymlinkResponse',
+    'InventoryConfiguration',
+    'InventoryFormat',
+    'InventoryFrequency',
+    'InventoryIncludedObjectVersions',
+    'InventoryOptionalFields',
+    'InventoryFilter',
+    'InventoryDestination',
+    'InventoryBucketDestination',
+    'PutBucketInventoryResponse',
+    'GetBucketInventoryResponse',
+    'DeleteBucketInventoryResponse',
+    'ListBucketInventoryResponse'
 ]

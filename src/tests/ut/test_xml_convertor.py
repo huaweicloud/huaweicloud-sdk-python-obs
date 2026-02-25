@@ -202,3 +202,191 @@ class TestSymlinkConvertor(object):
         assert response.symlinkTarget == 'target/object.jpg'
         assert response.contentType == 'application/octet-stream'
         assert response.etag == '"abc123"'
+
+
+class TestBucketInventoryConvertor(object):
+    """桶清单转换器单元测试"""
+
+    def setup_method(self):
+        """设置测试环境"""
+        class HA:
+            pass
+        ha = HA()
+        self.adapter = Convertor('obs', ha)
+
+    def test_trans_put_bucket_inventory_basic(self):
+        """测试基本的put bucket inventory转换"""
+        from obs import InventoryConfiguration, InventoryDestination, InventoryFormat, InventoryFrequency, InventoryIncludedObjectVersions
+
+        destination = InventoryDestination(
+            bucket='target-bucket',
+            format=InventoryFormat.CSV,
+            prefix='inventory/'
+        )
+        config = InventoryConfiguration(
+            inventoryId='test-inventory',
+            isEnabled=True,
+            objectVersion=InventoryIncludedObjectVersions.All,
+            frequency=InventoryFrequency.Daily,
+            destination=destination
+        )
+
+        xml = self.adapter.trans_put_bucket_inventory(config)
+        root = ET.fromstring(xml)
+        assert root.tag == 'InventoryConfiguration'
+        assert root.find('Id').text == 'test-inventory'
+        assert root.find('IsEnabled').text == 'true'
+
+    def test_trans_put_bucket_inventory_with_filter(self):
+        """测试带filter的put bucket inventory转换"""
+        from obs import InventoryConfiguration, InventoryDestination, InventoryFilter, InventoryFormat, InventoryFrequency, InventoryIncludedObjectVersions
+
+        filter_rule = InventoryFilter(prefix='test-prefix/')
+        destination = InventoryDestination(
+            bucket='target-bucket',
+            format=InventoryFormat.CSV
+        )
+        config = InventoryConfiguration(
+            inventoryId='test-inventory',
+            isEnabled=True,
+            objectVersion=InventoryIncludedObjectVersions.Current,
+            frequency=InventoryFrequency.Weekly,
+            filter=filter_rule,
+            destination=destination
+        )
+
+        xml = self.adapter.trans_put_bucket_inventory(config)
+        root = ET.fromstring(xml)
+        filter_ele = root.find('Filter')
+        assert filter_ele is not None
+        assert filter_ele.find('Prefix').text == 'test-prefix/'
+
+    def test_trans_put_bucket_inventory_with_optional_fields(self):
+        """测试带optionalFields的put bucket inventory转换"""
+        from obs import (InventoryConfiguration, InventoryDestination, InventoryFormat, InventoryFrequency,
+                       InventoryIncludedObjectVersions, InventoryOptionalFields)
+
+        destination = InventoryDestination(
+            bucket='target-bucket',
+            format=InventoryFormat.CSV
+        )
+        config = InventoryConfiguration(
+            inventoryId='test-inventory',
+            isEnabled=True,
+            objectVersion=InventoryIncludedObjectVersions.All,
+            frequency=InventoryFrequency.Daily,
+            optionalFields=[
+                InventoryOptionalFields.Size,
+                InventoryOptionalFields.LastModifiedDate
+            ],
+            destination=destination
+        )
+
+        xml = self.adapter.trans_put_bucket_inventory(config)
+        root = ET.fromstring(xml)
+        optional_fields_ele = root.find('OptionalFields')
+        assert optional_fields_ele is not None
+        fields = optional_fields_ele.findall('Field')
+        assert len(fields) == 2
+
+    def test_trans_put_bucket_inventory_with_dict(self):
+        """测试使用字典格式的put bucket inventory转换"""
+        config_dict = {
+            'inventoryId': 'dict-inventory',
+            'isEnabled': False,
+            'objectVersion': 'Current',
+            'frequency': 'Weekly',
+            'destination': {
+                'bucket': 'dest-bucket',
+                'format': 'CSV',
+                'prefix': 'reports/',
+                'accountId': '123456789'
+            }
+        }
+
+        xml = self.adapter.trans_put_bucket_inventory(config_dict)
+        root = ET.fromstring(xml)
+        assert root.find('Id').text == 'dict-inventory'
+        assert root.find('IsEnabled').text == 'false'
+
+    def test_parse_get_bucket_inventory(self):
+        """测试解析get bucket inventory响应"""
+        xml = '''<?xml version="1.0" encoding="UTF-8"?>
+        <InventoryConfiguration>
+            <Id>test-inventory</Id>
+            <IsEnabled>true</IsEnabled>
+            <IncludedObjectVersions>All</IncludedObjectVersions>
+            <Filter>
+                <Prefix>test/</Prefix>
+            </Filter>
+            <Schedule>Daily</Schedule>
+            <Destination>
+                <S3BucketDestination>
+                    <Bucket>target-bucket</Bucket>
+                    <AccountId>123456789</AccountId>
+                    <Prefix>inventory/</Prefix>
+                    <Format>CSV</Format>
+                </S3BucketDestination>
+            </Destination>
+            <OptionalFields>
+                <Field>Size</Field>
+                <Field>LastModifiedDate</Field>
+            </OptionalFields>
+        </InventoryConfiguration>'''
+
+        response = self.adapter.parse_get_bucket_inventory(xml)
+        from obs import GetBucketInventoryResponse
+        assert isinstance(response, GetBucketInventoryResponse)
+        assert response.configuration.inventoryId == 'test-inventory'
+        assert response.configuration.isEnabled is True
+        assert response.configuration.filter is not None
+        assert response.configuration.filter.prefix == 'test/'
+
+    def test_parse_list_bucket_inventory(self):
+        """测试解析list bucket inventory响应"""
+        xml = '''<?xml version="1.0" encoding="UTF-8"?>
+        <ListInventoryConfigurationsResult>
+            <InventoryConfiguration>
+                <Id>inventory-1</Id>
+                <IsEnabled>true</IsEnabled>
+                <IncludedObjectVersions>All</IncludedObjectVersions>
+                <Schedule>Daily</Schedule>
+                <Destination>
+                    <S3BucketDestination>
+                        <Bucket>bucket-1</Bucket>
+                        <Format>CSV</Format>
+                    </S3BucketDestination>
+                </Destination>
+            </InventoryConfiguration>
+            <InventoryConfiguration>
+                <Id>inventory-2</Id>
+                <IsEnabled>false</IsEnabled>
+                <IncludedObjectVersions>Current</IncludedObjectVersions>
+                <Schedule>Weekly</Schedule>
+                <Destination>
+                    <S3BucketDestination>
+                        <Bucket>bucket-2</Bucket>
+                        <Format>CSV</Format>
+                    </S3BucketDestination>
+                </Destination>
+            </InventoryConfiguration>
+        </ListInventoryConfigurationsResult>'''
+
+        response = self.adapter.parse_list_bucket_inventory(xml)
+        from obs import ListBucketInventoryResponse
+        assert isinstance(response, ListBucketInventoryResponse)
+        assert len(response.configurations) == 2
+        assert response.configurations[0].inventoryId == 'inventory-1'
+        assert response.configurations[1].inventoryId == 'inventory-2'
+
+    def test_parse_put_bucket_inventory(self):
+        """测试解析put bucket inventory响应"""
+        response = self.adapter.parse_put_bucket_inventory('', headers=[])
+        from obs import PutBucketInventoryResponse
+        assert isinstance(response, PutBucketInventoryResponse)
+
+    def test_parse_delete_bucket_inventory(self):
+        """测试解析delete bucket inventory响应"""
+        response = self.adapter.parse_delete_bucket_inventory('', headers=[])
+        from obs import DeleteBucketInventoryResponse
+        assert isinstance(response, DeleteBucketInventoryResponse)

@@ -1562,6 +1562,93 @@ class ObsClient(_BasicClient):
     def deleteBucketPublicAccessBlock(self, bucketName, extensionHeaders=None):
         return self._make_delete_request(bucketName, pathArgs={'publicAccessBlock': None}, extensionHeaders=extensionHeaders)
 
+    # Bucket inventory related methods
+    @funcCache
+    def putBucketInventory(self, bucketName, inventoryId, inventoryConfiguration, extensionHeaders=None):
+        """
+        Put/Update bucket inventory configuration
+
+        :param bucketName: Bucket name
+        :param inventoryId: Inventory configuration ID
+        :param inventoryConfiguration: InventoryConfiguration object or dict
+        :param extensionHeaders: Extension headers (optional)
+        :return: PutBucketInventoryResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(inventoryId, 'inventoryId is empty')
+        self._assert_not_null(inventoryConfiguration, 'inventoryConfiguration is empty')
+
+        # Ensure inventoryId is set in the configuration
+        if isinstance(inventoryConfiguration, dict):
+            inventoryConfiguration['inventoryId'] = inventoryId
+        elif hasattr(inventoryConfiguration, 'inventoryId'):
+            inventoryConfiguration.inventoryId = inventoryId
+
+        entity = self.convertor.trans_put_bucket_inventory(inventoryConfiguration)
+
+        return self._make_put_request(
+            bucketName,
+            pathArgs={'inventory': None, 'id': inventoryId},
+            entity=entity,
+            extensionHeaders=extensionHeaders
+        )
+
+    @funcCache
+    def getBucketInventory(self, bucketName, inventoryId, extensionHeaders=None):
+        """
+        Get bucket inventory configuration
+
+        :param bucketName: Bucket name
+        :param inventoryId: Inventory configuration ID
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetBucketInventoryResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(inventoryId, 'inventoryId is empty')
+
+        return self._make_get_request(
+            bucketName,
+            pathArgs={'inventory': None, 'id': inventoryId},
+            methodName='getBucketInventory',
+            extensionHeaders=extensionHeaders
+        )
+
+    @funcCache
+    def deleteBucketInventory(self, bucketName, inventoryId, extensionHeaders=None):
+        """
+        Delete bucket inventory configuration
+
+        :param bucketName: Bucket name
+        :param inventoryId: Inventory configuration ID
+        :param extensionHeaders: Extension headers (optional)
+        :return: DeleteBucketInventoryResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(inventoryId, 'inventoryId is empty')
+
+        return self._make_delete_request(
+            bucketName,
+            pathArgs={'inventory': None, 'id': inventoryId},
+            extensionHeaders=extensionHeaders
+        )
+
+    @funcCache
+    def listBucketInventory(self, bucketName, extensionHeaders=None):
+        """
+        List all bucket inventory configurations
+
+        :param bucketName: Bucket name
+        :param extensionHeaders: Extension headers (optional)
+        :return: ListBucketInventoryResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+
+        return self._make_get_request(
+            bucketName,
+            pathArgs={'inventory': None},
+            methodName='listBucketInventory',
+            extensionHeaders=extensionHeaders
+        )
 
     @funcCache
     def getBucketPolicyPublicStatus(self, bucketName, extensionHeaders=None):

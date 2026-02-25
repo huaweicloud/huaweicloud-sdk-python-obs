@@ -39,6 +39,9 @@ from obs.model import DateTime, ListObjectsResponse, Content, CorsRule, ObjectVe
     Redirect, FilterRule, FunctionGraphConfiguration, Upload, CompleteMultipartUploadResponse, ListPartsResponse, \
     Grant, ReplicationRule, Transition, Grantee, BucketAliasModel, ListBucketAliasModel, AbortIncompleteMultipartUpload, \
     TagInfoModel, SetObjectTaggingResponse, GetObjectTaggingResponse, DeleteObjectTaggingResponse
+from obs.model import (InventoryConfiguration, InventoryDestination, InventoryBucketDestination, InventoryFilter,
+                       PutBucketInventoryResponse, GetBucketInventoryResponse, DeleteBucketInventoryResponse,
+                       ListBucketInventoryResponse)
 
 if const.IS_PYTHON2:
     from urllib import unquote_plus, quote_plus
@@ -2527,5 +2530,281 @@ class Convertor(object):
         return listBucketAlias
 
     # end virtual bucket related
+
+    # Bucket inventory related methods
+    def trans_put_bucket_inventory(self, inventoryConfiguration):
+        """
+        Convert putBucketInventory request to XML format
+
+        :param inventoryConfiguration: InventoryConfiguration object or dict
+        :return: XML string for inventory configuration
+        """
+        root = ET.Element('InventoryConfiguration')
+
+        # Handle both dict and InventoryConfiguration object
+        if isinstance(inventoryConfiguration, dict):
+            config = inventoryConfiguration
+        else:
+            config = {
+                'inventoryId': inventoryConfiguration.inventoryId,
+                'isEnabled': inventoryConfiguration.isEnabled,
+                'objectVersion': inventoryConfiguration.objectVersion,
+                'filter': inventoryConfiguration.filter,
+                'frequency': inventoryConfiguration.frequency,
+                'destination': inventoryConfiguration.destination,
+                'optionalFields': inventoryConfiguration.optionalFields
+            }
+
+        # Add InventoryId
+        if config.get('inventoryId') is not None:
+            ET.SubElement(root, 'Id').text = util.safe_decode(config['inventoryId'])
+
+        # Add IsEnabled
+        if config.get('isEnabled') is not None:
+            ET.SubElement(root, 'IsEnabled').text = 'true' if config['isEnabled'] else 'false'
+
+        # Add ObjectVersion
+        if config.get('objectVersion') is not None:
+            ET.SubElement(root, 'IncludedObjectVersions').text = util.to_string(config['objectVersion'])
+
+        # Add Filter (optional)
+        if config.get('filter') is not None:
+            filter_obj = config['filter']
+            if isinstance(filter_obj, dict):
+                prefix = filter_obj.get('prefix')
+            else:
+                prefix = filter_obj.prefix
+            if prefix is not None:
+                filter_ele = ET.SubElement(root, 'Filter')
+                ET.SubElement(filter_ele, 'Prefix').text = util.safe_decode(prefix)
+
+        # Add Frequency
+        if config.get('frequency') is not None:
+            ET.SubElement(root, 'Schedule').text = util.to_string(config['frequency'])
+
+        # Add Destination
+        destination = config.get('destination')
+        if destination is not None:
+            dest_ele = ET.SubElement(root, 'Destination')
+
+            # Handle both dict and InventoryDestination object
+            if isinstance(destination, dict):
+                bucket = destination.get('bucket')
+                account_id = destination.get('accountId')
+                prefix = destination.get('prefix')
+                format_val = destination.get('format')
+                encryption = destination.get('encryption')
+            else:
+                bucket = destination.bucket
+                account_id = destination.accountId
+                prefix = destination.prefix
+                format_val = destination.format
+                encryption = destination.encryption
+
+            # Add BucketDestination
+            bucket_dest_ele = ET.SubElement(dest_ele, 'S3BucketDestination')
+            if bucket is not None:
+                ET.SubElement(bucket_dest_ele, 'Bucket').text = util.safe_decode(bucket)
+            if account_id is not None:
+                ET.SubElement(bucket_dest_ele, 'AccountId').text = util.to_string(account_id)
+            if prefix is not None:
+                ET.SubElement(bucket_dest_ele, 'Prefix').text = util.safe_decode(prefix)
+            if format_val is not None:
+                ET.SubElement(bucket_dest_ele, 'Format').text = util.to_string(format_val)
+
+            # Add Encryption (optional)
+            if encryption is not None:
+                enc_ele = ET.SubElement(bucket_dest_ele, 'Encryption')
+                if isinstance(encryption, dict):
+                    sse_kms = encryption.get('sseKms')
+                    if sse_kms is not None:
+                        sse_ele = ET.SubElement(enc_ele, 'SSE-KMS')
+                        ET.SubElement(sse_ele, 'KeyId').text = util.to_string(sse_kms)
+
+        # Add OptionalFields (optional)
+        optional_fields = config.get('optionalFields')
+        if optional_fields is not None and len(optional_fields) > 0:
+            fields_ele = ET.SubElement(root, 'OptionalFields')
+            for field in optional_fields:
+                ET.SubElement(fields_ele, 'Field').text = util.to_string(field)
+
+        return ET.tostring(root, 'UTF-8')
+
+    def parse_get_bucket_inventory(self, xml, headers=None):
+        """
+        Parse getBucketInventory response
+
+        :param xml: XML response
+        :param headers: Response headers (optional)
+        :return: GetBucketInventoryResponse
+        """
+        from obs.model import InventoryConfiguration, InventoryDestination, InventoryFilter
+        root = ET.fromstring(xml)
+
+        # Parse InventoryId
+        inventory_id = self._find_item(root, 'Id')
+
+        # Parse IsEnabled
+        is_enabled_ele = root.find('IsEnabled')
+        is_enabled = True if is_enabled_ele is not None and is_enabled_ele.text == 'true' else False
+
+        # Parse ObjectVersion
+        object_version = self._find_item(root, 'IncludedObjectVersions')
+
+        # Parse Filter (optional)
+        filter_obj = None
+        filter_ele = root.find('Filter')
+        if filter_ele is not None:
+            prefix = self._find_item(filter_ele, 'Prefix')
+            if prefix is not None:
+                filter_obj = InventoryFilter(prefix=prefix)
+
+        # Parse Frequency
+        frequency = self._find_item(root, 'Schedule')
+
+        # Parse Destination
+        destination = None
+        dest_ele = root.find('Destination')
+        if dest_ele is not None:
+            bucket_dest_ele = dest_ele.find('S3BucketDestination')
+            if bucket_dest_ele is not None:
+                bucket = self._find_item(bucket_dest_ele, 'Bucket')
+                account_id = self._find_item(bucket_dest_ele, 'AccountId')
+                prefix = self._find_item(bucket_dest_ele, 'Prefix')
+                format_val = self._find_item(bucket_dest_ele, 'Format')
+                destination = InventoryDestination(
+                    bucket=bucket,
+                    accountId=account_id,
+                    prefix=prefix,
+                    format=format_val
+                )
+
+        # Parse OptionalFields (optional)
+        optional_fields = []
+        optional_fields_ele = root.find('OptionalFields')
+        if optional_fields_ele is not None:
+            field_elements = optional_fields_ele.findall('Field')
+            if field_elements is not None:
+                for field_ele in field_elements:
+                    if field_ele.text:
+                        optional_fields.append(util.safe_encode(field_ele.text))
+
+        # Create InventoryConfiguration
+        configuration = InventoryConfiguration(
+            inventoryId=inventory_id,
+            isEnabled=is_enabled,
+            objectVersion=object_version,
+            filter=filter_obj,
+            frequency=frequency,
+            destination=destination,
+            optionalFields=optional_fields if len(optional_fields) > 0 else None
+        )
+
+        return GetBucketInventoryResponse(body=configuration, headers=headers)
+
+    def parse_list_bucket_inventory(self, xml, headers=None):
+        """
+        Parse listBucketInventory response
+
+        :param xml: XML response
+        :param headers: Response headers (optional)
+        :return: ListBucketInventoryResponse
+        """
+        from obs.model import InventoryConfiguration, InventoryDestination, InventoryFilter
+        root = ET.fromstring(xml)
+
+        configurations = []
+
+        # Parse all inventory configurations
+        config_elements = root.findall('InventoryConfiguration')
+        if config_elements is not None:
+            for config_ele in config_elements:
+                # Parse InventoryId
+                inventory_id = self._find_item(config_ele, 'Id')
+
+                # Parse IsEnabled
+                is_enabled_ele = config_ele.find('IsEnabled')
+                is_enabled = True if is_enabled_ele is not None and is_enabled_ele.text == 'true' else False
+
+                # Parse ObjectVersion
+                object_version = self._find_item(config_ele, 'IncludedObjectVersions')
+
+                # Parse Filter (optional)
+                filter_obj = None
+                filter_ele = config_ele.find('Filter')
+                if filter_ele is not None:
+                    prefix = self._find_item(filter_ele, 'Prefix')
+                    if prefix is not None:
+                        filter_obj = InventoryFilter(prefix=prefix)
+
+                # Parse Frequency
+                frequency = self._find_item(config_ele, 'Schedule')
+
+                # Parse Destination
+                destination = None
+                dest_ele = config_ele.find('Destination')
+                if dest_ele is not None:
+                    bucket_dest_ele = dest_ele.find('S3BucketDestination')
+                    if bucket_dest_ele is not None:
+                        bucket = self._find_item(bucket_dest_ele, 'Bucket')
+                        account_id = self._find_item(bucket_dest_ele, 'AccountId')
+                        prefix = self._find_item(bucket_dest_ele, 'Prefix')
+                        format_val = self._find_item(bucket_dest_ele, 'Format')
+                        destination = InventoryDestination(
+                            bucket=bucket,
+                            accountId=account_id,
+                            prefix=prefix,
+                            format=format_val
+                        )
+
+                # Parse OptionalFields (optional)
+                optional_fields = []
+                optional_fields_ele = config_ele.find('OptionalFields')
+                if optional_fields_ele is not None:
+                    field_elements = optional_fields_ele.findall('Field')
+                    if field_elements is not None:
+                        for field_ele in field_elements:
+                            if field_ele.text:
+                                optional_fields.append(util.safe_encode(field_ele.text))
+
+                # Create InventoryConfiguration
+                configuration = InventoryConfiguration(
+                    inventoryId=inventory_id,
+                    isEnabled=is_enabled,
+                    objectVersion=object_version,
+                    filter=filter_obj,
+                    frequency=frequency,
+                    destination=destination,
+                    optionalFields=optional_fields if len(optional_fields) > 0 else None
+                )
+
+                configurations.append(configuration)
+
+        return ListBucketInventoryResponse(
+            configurations=configurations,
+            isTruncated=False,
+            body=None,
+            headers=headers
+        )
+
+    def parse_put_bucket_inventory(self, xml, headers=None):
+        """
+        Parse putBucketInventory response
+
+        :param xml: XML response (typically empty)
+        :param headers: Response headers (optional)
+        :return: PutBucketInventoryResponse
+        """
+        return PutBucketInventoryResponse(body=xml, headers=headers)
+
+    def parse_delete_bucket_inventory(self, xml, headers=None):
+        """
+        Parse deleteBucketInventory response
+
+        :param xml: XML response (typically empty for 204)
+        :param headers: Response headers (optional)
+        :return: DeleteBucketInventoryResponse
+        """
+        return DeleteBucketInventoryResponse(body=xml, headers=headers)
     # end virtual bucket related
     # end virtual bucket related
