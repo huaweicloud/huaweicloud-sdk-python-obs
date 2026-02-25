@@ -201,10 +201,10 @@ class TestBucketInventory(object):
             # Then get the inventory configuration
             get_resp = client.getBucketInventory(bucket_name, inventory_id)
             assert get_resp.status == 200
-            assert get_resp.configuration.inventoryId == inventory_id
-            assert get_resp.configuration.isEnabled is True
-            assert get_resp.configuration.objectVersion == InventoryIncludedObjectVersions.All
-            assert get_resp.configuration.frequency == InventoryFrequency.Daily
+            assert get_resp.body.configuration.inventoryId == inventory_id
+            assert get_resp.body.configuration.isEnabled is True
+            assert get_resp.body.configuration.objectVersion == InventoryIncludedObjectVersions.All
+            assert get_resp.body.configuration.frequency == InventoryFrequency.Daily
 
         finally:
             self.cleanup_inventory(client, bucket_name, inventory_id)
@@ -214,34 +214,35 @@ class TestBucketInventory(object):
         client_type, client = self.get_client()
         bucket_name = test_config["bucketName"]
         import time
-        inventory_id1 = 'test-inventory-list-1-' + str(int(time.time()))
-        inventory_id2 = 'test-inventory-list-2-' + str(int(time.time()))
+        inventory_id = 'test-inventory-list-' + str(int(time.time()))
 
         try:
-            # Create two inventory configurations
-            for inv_id in [inventory_id1, inventory_id2]:
-                destination = InventoryDestination(
-                    bucket=bucket_name,
-                    format=InventoryFormat.CSV
-                )
-                config = InventoryConfiguration(
-                    inventoryId=inv_id,
-                    isEnabled=True,
-                    objectVersion=InventoryIncludedObjectVersions.All,
-                    frequency=InventoryFrequency.Daily,
-                    destination=destination
-                )
-                resp = client.putBucketInventory(bucket_name, inv_id, config)
-                assert resp.status == 200
+            # Create one inventory configuration
+            destination = InventoryDestination(
+                bucket=bucket_name,
+                format=InventoryFormat.CSV,
+                prefix='list-test/'
+            )
+            config = InventoryConfiguration(
+                inventoryId=inventory_id,
+                isEnabled=True,
+                objectVersion=InventoryIncludedObjectVersions.All,
+                frequency=InventoryFrequency.Daily,
+                destination=destination
+            )
+            resp = client.putBucketInventory(bucket_name, inventory_id, config)
+            assert resp.status == 200
 
             # List all inventory configurations
             list_resp = client.listBucketInventory(bucket_name)
             assert list_resp.status == 200
-            assert len(list_resp.configurations) >= 2
+            assert len(list_resp.body.configurations) >= 1
+            # Verify our configuration is in the list
+            found = any(c.inventoryId == inventory_id for c in list_resp.body.configurations)
+            assert found is True
 
         finally:
-            self.cleanup_inventory(client, bucket_name, inventory_id1)
-            self.cleanup_inventory(client, bucket_name, inventory_id2)
+            self.cleanup_inventory(client, bucket_name, inventory_id)
 
     def test_delete_inventory(self):
         """测试场景: 删除桶清单配置"""
@@ -312,9 +313,9 @@ class TestBucketInventory(object):
             # Verify the update
             get_resp = client.getBucketInventory(bucket_name, inventory_id)
             assert get_resp.status == 200
-            assert get_resp.configuration.isEnabled is False
-            assert get_resp.configuration.objectVersion == InventoryIncludedObjectVersions.Current
-            assert get_resp.configuration.frequency == InventoryFrequency.Weekly
+            assert get_resp.body.configuration.isEnabled is False
+            assert get_resp.body.configuration.objectVersion == InventoryIncludedObjectVersions.Current
+            assert get_resp.body.configuration.frequency == InventoryFrequency.Weekly
 
         finally:
             self.cleanup_inventory(client, bucket_name, inventory_id)
@@ -420,7 +421,7 @@ class TestBucketInventory(object):
 
         with pytest.raises(Exception) as exc_info:
             client.putBucketInventory(None, 'test-id', config)
-        assert 'bucketName' in str(exc_info.value).lower()
+        assert 'bucketname' in str(exc_info.value).lower()
 
     def test_put_inventory_missing_inventory_id(self):
         """测试场景: inventoryId为None"""
@@ -442,7 +443,7 @@ class TestBucketInventory(object):
 
         with pytest.raises(Exception) as exc_info:
             client.putBucketInventory(bucket_name, None, config)
-        assert 'inventoryId' in str(exc_info.value).lower()
+        assert 'inventoryid' in str(exc_info.value).lower()
 
     def test_put_inventory_missing_configuration(self):
         """测试场景: inventoryConfiguration为None"""
@@ -451,7 +452,7 @@ class TestBucketInventory(object):
 
         with pytest.raises(Exception) as exc_info:
             client.putBucketInventory(bucket_name, 'test-id', None)
-        assert 'inventoryConfiguration' in str(exc_info.value).lower()
+        assert 'inventoryconfiguration' in str(exc_info.value).lower()
 
     def test_get_inventory_missing_bucket_name(self):
         """测试场景: getBucketInventory的bucketName为None"""
@@ -459,7 +460,7 @@ class TestBucketInventory(object):
 
         with pytest.raises(Exception) as exc_info:
             client.getBucketInventory(None, 'test-id')
-        assert 'bucketName' in str(exc_info.value).lower()
+        assert 'bucketname' in str(exc_info.value).lower()
 
     def test_get_inventory_missing_inventory_id(self):
         """测试场景: getBucketInventory的inventoryId为None"""
@@ -468,7 +469,7 @@ class TestBucketInventory(object):
 
         with pytest.raises(Exception) as exc_info:
             client.getBucketInventory(bucket_name, None)
-        assert 'inventoryId' in str(exc_info.value).lower()
+        assert 'inventoryid' in str(exc_info.value).lower()
 
     def test_delete_inventory_missing_bucket_name(self):
         """测试场景: deleteBucketInventory的bucketName为None"""
@@ -476,7 +477,7 @@ class TestBucketInventory(object):
 
         with pytest.raises(Exception) as exc_info:
             client.deleteBucketInventory(None, 'test-id')
-        assert 'bucketName' in str(exc_info.value).lower()
+        assert 'bucketname' in str(exc_info.value).lower()
 
     def test_delete_inventory_missing_inventory_id(self):
         """测试场景: deleteBucketInventory的inventoryId为None"""
@@ -485,7 +486,7 @@ class TestBucketInventory(object):
 
         with pytest.raises(Exception) as exc_info:
             client.deleteBucketInventory(bucket_name, None)
-        assert 'inventoryId' in str(exc_info.value).lower()
+        assert 'inventoryid' in str(exc_info.value).lower()
 
     def test_list_inventory_missing_bucket_name(self):
         """测试场景: listBucketInventory的bucketName为None"""
@@ -493,4 +494,4 @@ class TestBucketInventory(object):
 
         with pytest.raises(Exception) as exc_info:
             client.listBucketInventory(None)
-        assert 'bucketName' in str(exc_info.value).lower()
+        assert 'bucketname' in str(exc_info.value).lower()

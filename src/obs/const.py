@@ -166,6 +166,7 @@ ALLOWED_RESOURCE_PARAMTER_NAMES = (
     'publicaccessblock',
     'bucketstatus',
     'policystatus',
+    'inventory',
 
     # File System API
     'append',

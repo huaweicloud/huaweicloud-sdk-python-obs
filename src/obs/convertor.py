@@ -2535,10 +2535,12 @@ class Convertor(object):
     def trans_put_bucket_inventory(self, inventoryConfiguration):
         """
         Convert putBucketInventory request to XML format
+        Uses Huawei Cloud OBS XML format (no S3BucketDestination wrapper)
 
         :param inventoryConfiguration: InventoryConfiguration object or dict
-        :return: XML string for inventory configuration
+        :return: Dictionary with pathArgs, headers, and entity
         """
+        # Use lowercase root element for Huawei Cloud OBS compatibility
         root = ET.Element('InventoryConfiguration')
 
         # Handle both dict and InventoryConfiguration object
@@ -2555,19 +2557,15 @@ class Convertor(object):
                 'optionalFields': inventoryConfiguration.optionalFields
             }
 
-        # Add InventoryId
+        # Add InventoryId (required)
         if config.get('inventoryId') is not None:
             ET.SubElement(root, 'Id').text = util.safe_decode(config['inventoryId'])
 
-        # Add IsEnabled
+        # Add IsEnabled (required)
         if config.get('isEnabled') is not None:
             ET.SubElement(root, 'IsEnabled').text = 'true' if config['isEnabled'] else 'false'
 
-        # Add ObjectVersion
-        if config.get('objectVersion') is not None:
-            ET.SubElement(root, 'IncludedObjectVersions').text = util.to_string(config['objectVersion'])
-
-        # Add Filter (optional)
+        # Add Filter (optional) - must come before Destination in Huawei Cloud OBS format
         if config.get('filter') is not None:
             filter_obj = config['filter']
             if isinstance(filter_obj, dict):
@@ -2578,11 +2576,7 @@ class Convertor(object):
                 filter_ele = ET.SubElement(root, 'Filter')
                 ET.SubElement(filter_ele, 'Prefix').text = util.safe_decode(prefix)
 
-        # Add Frequency
-        if config.get('frequency') is not None:
-            ET.SubElement(root, 'Schedule').text = util.to_string(config['frequency'])
-
-        # Add Destination
+        # Add Destination (Huawei Cloud OBS format - no S3BucketDestination wrapper)
         destination = config.get('destination')
         if destination is not None:
             dest_ele = ET.SubElement(root, 'Destination')
@@ -2590,36 +2584,29 @@ class Convertor(object):
             # Handle both dict and InventoryDestination object
             if isinstance(destination, dict):
                 bucket = destination.get('bucket')
-                account_id = destination.get('accountId')
                 prefix = destination.get('prefix')
                 format_val = destination.get('format')
-                encryption = destination.get('encryption')
             else:
                 bucket = destination.bucket
-                account_id = destination.accountId
                 prefix = destination.prefix
                 format_val = destination.format
-                encryption = destination.encryption
 
-            # Add BucketDestination
-            bucket_dest_ele = ET.SubElement(dest_ele, 'S3BucketDestination')
-            if bucket is not None:
-                ET.SubElement(bucket_dest_ele, 'Bucket').text = util.safe_decode(bucket)
-            if account_id is not None:
-                ET.SubElement(bucket_dest_ele, 'AccountId').text = util.to_string(account_id)
-            if prefix is not None:
-                ET.SubElement(bucket_dest_ele, 'Prefix').text = util.safe_decode(prefix)
+            # Huawei Cloud OBS format: Format, Bucket, Prefix directly under Destination
             if format_val is not None:
-                ET.SubElement(bucket_dest_ele, 'Format').text = util.to_string(format_val)
+                ET.SubElement(dest_ele, 'Format').text = util.to_string(format_val)
+            if bucket is not None:
+                ET.SubElement(dest_ele, 'Bucket').text = util.safe_decode(bucket)
+            if prefix is not None:
+                ET.SubElement(dest_ele, 'Prefix').text = util.safe_decode(prefix)
 
-            # Add Encryption (optional)
-            if encryption is not None:
-                enc_ele = ET.SubElement(bucket_dest_ele, 'Encryption')
-                if isinstance(encryption, dict):
-                    sse_kms = encryption.get('sseKms')
-                    if sse_kms is not None:
-                        sse_ele = ET.SubElement(enc_ele, 'SSE-KMS')
-                        ET.SubElement(sse_ele, 'KeyId').text = util.to_string(sse_kms)
+        # Add Schedule with Frequency
+        if config.get('frequency') is not None:
+            schedule_ele = ET.SubElement(root, 'Schedule')
+            ET.SubElement(schedule_ele, 'Frequency').text = util.to_string(config['frequency'])
+
+        # Add IncludedObjectVersions (required) - comes after Schedule in Huawei Cloud OBS format
+        if config.get('objectVersion') is not None:
+            ET.SubElement(root, 'IncludedObjectVersions').text = util.to_string(config['objectVersion'])
 
         # Add OptionalFields (optional)
         optional_fields = config.get('optionalFields')
@@ -2628,9 +2615,16 @@ class Convertor(object):
             for field in optional_fields:
                 ET.SubElement(fields_ele, 'Field').text = util.to_string(field)
 
-        return ET.tostring(root, 'UTF-8')
+        entity = ET.tostring(root, 'UTF-8')
+        inventory_id = config.get('inventoryId')
 
-    def parse_get_bucket_inventory(self, xml, headers=None):
+        return {
+            'pathArgs': {'inventory': None, 'id': inventory_id},
+            'headers': {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))},
+            'entity': entity
+        }
+
+    def parseGetBucketInventory(self, xml, headers=None):
         """
         Parse getBucketInventory response
 
@@ -2659,13 +2653,24 @@ class Convertor(object):
             if prefix is not None:
                 filter_obj = InventoryFilter(prefix=prefix)
 
-        # Parse Frequency
-        frequency = self._find_item(root, 'Schedule')
+        # Parse Frequency from Schedule (AWS S3 standard format with Frequency subelement)
+        frequency = None
+        schedule_ele = root.find('Schedule')
+        if schedule_ele is not None:
+            # Try AWS S3 format first (Frequency subelement)
+            freq_ele = schedule_ele.find('Frequency')
+            if freq_ele is not None and freq_ele.text:
+                frequency = freq_ele.text
+            else:
+                # Try direct text value (alternative format)
+                if schedule_ele.text is not None and schedule_ele.text.strip():
+                    frequency = schedule_ele.text
 
-        # Parse Destination
+        # Parse Destination (AWS S3 standard format with S3BucketDestination wrapper)
         destination = None
         dest_ele = root.find('Destination')
         if dest_ele is not None:
+            # Try AWS S3 format first (S3BucketDestination wrapper)
             bucket_dest_ele = dest_ele.find('S3BucketDestination')
             if bucket_dest_ele is not None:
                 bucket = self._find_item(bucket_dest_ele, 'Bucket')
@@ -2678,6 +2683,19 @@ class Convertor(object):
                     prefix=prefix,
                     format=format_val
                 )
+            else:
+                # Try alternative format (fields directly under Destination)
+                bucket = self._find_item(dest_ele, 'Bucket')
+                account_id = self._find_item(dest_ele, 'AccountId')
+                prefix = self._find_item(dest_ele, 'Prefix')
+                format_val = self._find_item(dest_ele, 'Format')
+                if bucket is not None or format_val is not None:
+                    destination = InventoryDestination(
+                        bucket=bucket,
+                        accountId=account_id,
+                        prefix=prefix,
+                        format=format_val
+                    )
 
         # Parse OptionalFields (optional)
         optional_fields = []
@@ -2702,7 +2720,7 @@ class Convertor(object):
 
         return GetBucketInventoryResponse(body=configuration, headers=headers)
 
-    def parse_list_bucket_inventory(self, xml, headers=None):
+    def parseListBucketInventory(self, xml, headers=None):
         """
         Parse listBucketInventory response
 
@@ -2737,13 +2755,24 @@ class Convertor(object):
                     if prefix is not None:
                         filter_obj = InventoryFilter(prefix=prefix)
 
-                # Parse Frequency
-                frequency = self._find_item(config_ele, 'Schedule')
+                # Parse Frequency from Schedule (AWS S3 standard format with Frequency subelement)
+                frequency = None
+                schedule_ele = config_ele.find('Schedule')
+                if schedule_ele is not None:
+                    # Try AWS S3 format first (Frequency subelement)
+                    freq_ele = schedule_ele.find('Frequency')
+                    if freq_ele is not None and freq_ele.text:
+                        frequency = freq_ele.text
+                    else:
+                        # Try direct text value (alternative format)
+                        if schedule_ele.text is not None and schedule_ele.text.strip():
+                            frequency = schedule_ele.text
 
-                # Parse Destination
+                # Parse Destination (AWS S3 standard format with S3BucketDestination wrapper)
                 destination = None
                 dest_ele = config_ele.find('Destination')
                 if dest_ele is not None:
+                    # Try AWS S3 format first (S3BucketDestination wrapper)
                     bucket_dest_ele = dest_ele.find('S3BucketDestination')
                     if bucket_dest_ele is not None:
                         bucket = self._find_item(bucket_dest_ele, 'Bucket')
@@ -2756,6 +2785,19 @@ class Convertor(object):
                             prefix=prefix,
                             format=format_val
                         )
+                    else:
+                        # Try alternative format (fields directly under Destination)
+                        bucket = self._find_item(dest_ele, 'Bucket')
+                        account_id = self._find_item(dest_ele, 'AccountId')
+                        prefix = self._find_item(dest_ele, 'Prefix')
+                        format_val = self._find_item(dest_ele, 'Format')
+                        if bucket is not None or format_val is not None:
+                            destination = InventoryDestination(
+                                bucket=bucket,
+                                accountId=account_id,
+                                prefix=prefix,
+                                format=format_val
+                            )
 
                 # Parse OptionalFields (optional)
                 optional_fields = []
@@ -2787,7 +2829,7 @@ class Convertor(object):
             headers=headers
         )
 
-    def parse_put_bucket_inventory(self, xml, headers=None):
+    def parsePutBucketInventory(self, xml, headers=None):
         """
         Parse putBucketInventory response
 
@@ -2797,7 +2839,7 @@ class Convertor(object):
         """
         return PutBucketInventoryResponse(body=xml, headers=headers)
 
-    def parse_delete_bucket_inventory(self, xml, headers=None):
+    def parseDeleteBucketInventory(self, xml, headers=None):
         """
         Parse deleteBucketInventory response
 

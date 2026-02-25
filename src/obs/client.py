@@ -1588,9 +1588,8 @@ class ObsClient(_BasicClient):
 
         return self._make_put_request(
             bucketName,
-            pathArgs={'inventory': None, 'id': inventoryId},
-            entity=entity,
-            extensionHeaders=extensionHeaders
+            extensionHeaders=extensionHeaders,
+            **entity
         )
 
     @funcCache
