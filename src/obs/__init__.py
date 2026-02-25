@@ -26,6 +26,7 @@ from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUp
 from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileHeader, Payer, ClientVerify
 from obs.model import ExtensionHeader, FetchStatus, BucketAliasModel, ListBucketAliasModel
 from obs.model import TagInfoModel, SetObjectTaggingResponse, GetObjectTaggingResponse, DeleteObjectTaggingResponse
+from obs.model import PutObjectSymlinkHeader, PutObjectSymlinkResponse, GetObjectSymlinkResponse
 from obs.workflow import WorkflowClient
 from obs.crypto_client import CryptoObsClient
 from obs.obs_cipher_suite import CTRCipherGenerator
@@ -103,5 +104,8 @@ __all__ = [
     'TagInfoModel',
     'SetObjectTaggingResponse',
     'GetObjectTaggingResponse',
-    'DeleteObjectTaggingResponse'
+    'DeleteObjectTaggingResponse',
+    'PutObjectSymlinkHeader',
+    'PutObjectSymlinkResponse',
+    'GetObjectSymlinkResponse'
 ]

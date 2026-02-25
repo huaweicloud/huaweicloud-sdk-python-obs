@@ -2228,6 +2228,69 @@ class ObsClient(_BasicClient):
                                          extensionHeaders=extensionHeaders)
 
     @funcCache
+    def putObjectSymlink(self, bucketName, objectKey, symlinkTarget, metadata=None,
+                        acl=None, contentType=None, extensionHeaders=None):
+        """
+        Create a symlink object that points to another object
+
+        :param bucketName: Bucket name
+        :param objectKey: Symlink object key
+        :param symlinkTarget: Target object key that the symlink points to
+        :param metadata: Custom metadata for the symlink object (optional)
+        :param acl: ACL for the symlink object (optional)
+        :param contentType: Content type for the symlink object (optional)
+        :param extensionHeaders: Extension headers (optional)
+        :return: PutObjectSymlinkResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+        self._assert_not_null(symlinkTarget, 'symlinkTarget is empty')
+
+        objectKey = util.safe_encode(objectKey)
+        if objectKey is None:
+            objectKey = ''
+
+        symlinkTarget = util.safe_encode(symlinkTarget)
+        if symlinkTarget is None:
+            symlinkTarget = ''
+
+        headers = {}
+        if acl is not None:
+            headers['x-obs-acl'] = acl
+        if contentType is not None:
+            headers['Content-Type'] = contentType
+
+        return self._make_put_request(bucketName, objectKey,
+                                     extensionHeaders=extensionHeaders,
+                                     **self.convertor.trans_put_object_symlink(symlinkTarget=symlinkTarget,
+                                                                               metadata=metadata))
+
+    @funcCache
+    def getObjectSymlink(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
+        """
+        Get symlink object metadata and target
+
+        :param bucketName: Bucket name
+        :param objectKey: Symlink object key
+        :param versionId: Object version ID (optional)
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetObjectSymlinkResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+
+        objectKey = util.safe_encode(objectKey)
+        if objectKey is None:
+            objectKey = ''
+
+        pathArgs = {}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+
+        return self._make_head_request(bucketName, objectKey, pathArgs=pathArgs, methodName='getObjectSymlink',
+                                       extensionHeaders=extensionHeaders)
+
+    @funcCache
     def deleteObject(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
         path_args = {}
         if versionId:

@@ -72,6 +72,7 @@ X_IMAGE_PROCESS_PARAM = 'x-image-process'
 OBSALIAS_PARAM = 'obsalias'
 OBSBUCKETALIAS_PARAM = 'obsbucketalias'
 TAGGING_PARAM = 'tagging'
+SYMLINK_TARGET_HEADER = 'x-obs-symlink-target'
 
 HTTP_METHOD_PUT = 'PUT'
 HTTP_METHOD_POST = 'POST'

@@ -145,7 +145,10 @@ __all__ = [
     'TagInfoModel',
     'SetObjectTaggingResponse',
     'GetObjectTaggingResponse',
-    'DeleteObjectTaggingResponse'
+    'DeleteObjectTaggingResponse',
+    'PutObjectSymlinkHeader',
+    'PutObjectSymlinkResponse',
+    'GetObjectSymlinkResponse'
 ]
 
 
@@ -1869,3 +1872,72 @@ class DeleteObjectTaggingResponse(GetResult):
     """Response for deleteObjectTagging operation"""
     def __init__(self, body=None, headers=None):
         super(DeleteObjectTaggingResponse, self).__init__(body=body, header=headers)
+
+
+class PutObjectSymlinkHeader(BaseModel):
+    """Header for creating object symlink"""
+    allowedAttr = {'symlinkTarget': BASESTRING, 'contentType': BASESTRING,
+                   'metadata': dict, 'acl': BASESTRING, 'location': BASESTRING}
+
+    def __init__(self, symlinkTarget=None, contentType=None, metadata=None, acl=None, location=None):
+        """
+        Init PutObjectSymlinkHeader
+
+        :param symlinkTarget: Target object key that the symlink points to
+        :param contentType: Content type
+        :param metadata: Custom metadata
+        :param acl: ACL for the symlink object
+        :param location: Location for the symlink object
+        """
+        self.symlinkTarget = symlinkTarget
+        self.contentType = contentType
+        self.metadata = metadata
+        self.acl = acl
+        self.location = location
+
+
+class PutObjectSymlinkResponse(GetResult):
+    """Response for putObjectSymlink operation"""
+    def __init__(self, body=None, headers=None):
+        super(PutObjectSymlinkResponse, self).__init__(body=body, header=headers)
+
+
+class GetObjectSymlinkResponse(GetResult):
+    """Response for getObjectSymlink operation"""
+    allowedAttr = {'status': int, 'reason': BASESTRING, 'errorCode': BASESTRING, 'errorMessage': BASESTRING,
+                   'body': object, 'requestId': BASESTRING, 'hostId': BASESTRING, 'resource': BASESTRING,
+                   'header': list, 'indicator': BASESTRING,
+                   'symlinkTarget': BASESTRING, 'contentType': BASESTRING,
+                   'lastModified': BASESTRING, 'etag': BASESTRING, 'contentLength': LONG,
+                   'storageClass': BASESTRING, 'versionId': BASESTRING}
+
+    def __init__(self, body=None, headers=None, status=200, reason=None):
+        super(GetObjectSymlinkResponse, self).__init__(body=body, header=headers, status=status, reason=reason)
+        self.symlinkTarget = None
+        self.contentType = None
+        self.lastModified = None
+        self.etag = None
+        self.contentLength = None
+        self.storageClass = None
+        self.versionId = None
+
+        # Parse headers
+        if headers:
+            for key, value in headers:
+                if key.lower() == 'x-obs-symlink-target':
+                    self.symlinkTarget = util.safe_encode(value)
+                elif key.lower() == 'content-type':
+                    self.contentType = util.safe_encode(value)
+                elif key.lower() == 'last-modified':
+                    self.lastModified = util.safe_encode(value)
+                elif key.lower() == 'etag':
+                    self.etag = util.safe_encode(value)
+                elif key.lower() == 'content-length':
+                    try:
+                        self.contentLength = int(value)
+                    except (ValueError, TypeError):
+                        self.contentLength = None
+                elif key.lower() == 'x-obs-storage-class':
+                    self.storageClass = util.safe_encode(value)
+                elif key.lower() == 'x-obs-version-id':
+                    self.versionId = util.safe_encode(value)

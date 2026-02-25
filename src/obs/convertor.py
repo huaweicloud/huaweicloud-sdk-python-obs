@@ -534,6 +534,55 @@ class Convertor(object):
 
         return []
 
+    def trans_put_object_symlink(self, **kwargs):
+        """
+        Convert putObjectSymlink request to HTTP format
+
+        :param kwargs: Should contain 'symlinkTarget' and optional metadata
+        :return: Dictionary with pathArgs and headers
+        """
+        symlinkTarget = kwargs.get('symlinkTarget')
+        metadata = kwargs.get('metadata')
+
+        headers = {}
+        if symlinkTarget:
+            headers[const.SYMLINK_TARGET_HEADER] = util.to_string(symlinkTarget)
+
+        # Handle metadata headers
+        if metadata:
+            for key, value in metadata.items():
+                if key.startswith('x-obs-meta-'):
+                    headers[key] = util.to_string(value)
+                else:
+                    headers[const.OBS_META_HEADER_PREFIX + key] = util.to_string(value)
+
+        return {
+            'pathArgs': {},
+            'headers': headers
+        }
+
+    def parsePutObjectSymlink(self, xml, headers=None):
+        """
+        Parse putObjectSymlink response
+
+        :param xml: XML response (may be empty)
+        :param headers: Response headers (optional)
+        :return: PutObjectSymlinkResponse
+        """
+        from obs.model import PutObjectSymlinkResponse
+        return PutObjectSymlinkResponse(body=xml, headers=headers)
+
+    def parseGetObjectSymlink(self, xml, headers=None):
+        """
+        Parse getObjectSymlink response
+
+        :param xml: XML response (typically empty for HEAD request)
+        :param headers: Response headers containing symlink target and metadata
+        :return: GetObjectSymlinkResponse
+        """
+        from obs.model import GetObjectSymlinkResponse
+        return GetObjectSymlinkResponse(body=xml, headers=headers)
+
     def trans_set_bucket_cors(self, **kwargs):
         entity = self.trans_cors_rules(kwargs.get('corsRuleList'))
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}

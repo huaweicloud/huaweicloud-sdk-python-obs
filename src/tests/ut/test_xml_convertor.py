@@ -139,3 +139,66 @@ class TestXMLConvertor(object):
 
         assert const.VERSION_ID_PARAM in result['pathArgs']
         assert result['pathArgs'][const.VERSION_ID_PARAM] == version_id
+
+
+class TestSymlinkConvertor(object):
+    """Symlink转换器单元测试"""
+
+    def setup_method(self):
+        """设置测试环境"""
+        class HA:
+            pass
+        ha = HA()
+        self.adapter = Convertor('obs', ha)
+
+    def test_trans_put_object_symlink_basic(self):
+        """测试基本的symlink转换"""
+        result = self.adapter.trans_put_object_symlink(symlinkTarget='target/object.jpg')
+
+        assert 'pathArgs' in result
+        assert 'headers' in result
+        assert result['headers']['x-obs-symlink-target'] == 'target/object.jpg'
+
+    def test_trans_put_object_symlink_with_metadata(self):
+        """测试带元数据的symlink转换"""
+        metadata = {'custom-key': 'custom-value', 'another-key': 'another-value'}
+        result = self.adapter.trans_put_object_symlink(
+            symlinkTarget='target/object.jpg',
+            metadata=metadata
+        )
+
+        assert 'x-obs-meta-custom-key' in result['headers']
+        assert result['headers']['x-obs-meta-custom-key'] == 'custom-value'
+
+    def test_trans_put_object_symlink_with_obs_meta_prefix(self):
+        """测试带x-obs-meta-前缀的元数据"""
+        metadata = {'x-obs-meta-user-key': 'user-value'}
+        result = self.adapter.trans_put_object_symlink(
+            symlinkTarget='target/object.jpg',
+            metadata=metadata
+        )
+
+        assert 'x-obs-meta-user-key' in result['headers']
+        assert result['headers']['x-obs-meta-user-key'] == 'user-value'
+
+    def test_parse_put_object_symlink(self):
+        """测试解析putObjectSymlink响应"""
+        response = self.adapter.parsePutObjectSymlink('', headers=[])
+
+        from obs import PutObjectSymlinkResponse
+        assert isinstance(response, PutObjectSymlinkResponse)
+
+    def test_parse_get_object_symlink(self):
+        """测试解析getObjectSymlink响应"""
+        headers = [
+            ('x-obs-symlink-target', 'target/object.jpg'),
+            ('Content-Type', 'application/octet-stream'),
+            ('ETag', '"abc123"')
+        ]
+        response = self.adapter.parseGetObjectSymlink('', headers=headers)
+
+        from obs import GetObjectSymlinkResponse
+        assert isinstance(response, GetObjectSymlinkResponse)
+        assert response.symlinkTarget == 'target/object.jpg'
+        assert response.contentType == 'application/octet-stream'
+        assert response.etag == '"abc123"'
