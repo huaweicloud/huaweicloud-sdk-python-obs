@@ -101,7 +101,7 @@ DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 CONNECTION_POOL_SIZE = 10
 
-OBS_SDK_VERSION = '3.25.8'
+OBS_SDK_VERSION = '3.26.2'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -162,6 +162,7 @@ ALLOWED_RESOURCE_PARAMTER_NAMES = (
     'publicaccessblock',
     'bucketstatus',
     'policystatus',
+    'x-obs-accesslabel',
 
     # File System API
     'append',
@@ -225,7 +226,8 @@ ALLOWED_REQUEST_HTTP_HEADER_METADATA_NAMES = (
     'if-none-match',
     'last-modified',
     'content-range',
-    'x-auth-token'
+    'x-auth-token',
+    'expect'
 )
 
 ALLOWED_RESPONSE_HTTP_HEADER_METADATA_NAMES = (
@@ -340,13 +342,13 @@ MIME_TYPES = {
     'tif': 'image/tiff',
     'tiff': 'image/tiff',
     'torrent': 'application/x-bittorrent',
-    'ttf': 'application/x-font-ttf',
+    'ttf': 'application/font-ttf',
     'txt': 'text/plain',
     'wav': 'audio/x-wav',
     'webm': 'video/webm',
     'wma': 'audio/x-ms-wma',
     'wmv': 'video/x-ms-wmv',
-    'woff': 'application/x-font-woff',
+    'woff': 'application/font-woff',
     'wsdl': 'application/wsdl+xml',
     'xbm': 'image/x-xbitmap',
     'xls': 'application/vnd.ms-excel',
@@ -356,5 +358,6 @@ MIME_TYPES = {
     'xwd': 'image/x-xwindowdump',
     'yaml': 'text/yaml',
     'yml': 'text/yaml',
-    'zip': 'application/zip'
+    'zip': 'application/zip',
+    'wasm': 'application/wasm'
 }

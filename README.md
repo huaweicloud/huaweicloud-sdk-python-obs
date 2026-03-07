@@ -1,3 +1,10 @@
+Version 3.26.2
+
+Fix problem:
+
+1. Fixed the issue where the putContent interface reported errors when uploading empty objects with CRC64 validation enabled.
+2. Update partial MIME mappings and add support for MIME mappings of wasm files
+-------------------------------------------------------------------------------------------------
 Version 3.25.8
 
 New features:

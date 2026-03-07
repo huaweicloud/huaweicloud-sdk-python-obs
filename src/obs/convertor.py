@@ -878,14 +878,19 @@ class Convertor(object):
                                 self.ha.adapt_storage_class(headers.get('storageClass')))
             self._put_key_value(_headers, const.CONTENT_LENGTH_HEADER, headers.get('contentLength'))
             self._put_key_value(_headers, self.ha.expires_header(), headers.get('expires'))
-            if headers.get('crc64') is not None:
-                self._put_key_value(_headers, self.ha.crc64_header(), headers.get('crc64'))
-            elif headers.get('isAttachCrc64'):
-                if file_path:
-                    crc64 = util.calculate_file_crc64(file_path)
-                else:
-                    crc64 = util.calculate_content_crc64(util.covert_string_to_bytes(content))
-                self._put_key_value(_headers, self.ha.crc64_header(), crc64)
+            if headers.get('crc64') is not None or headers.get('isAttachCrc64'):
+                crc64_value = headers.get('crc64')
+
+                # 如果没有提供 crc64 但需要计算
+                if crc64_value is None and headers.get('isAttachCrc64'):
+                    if file_path:
+                        crc64_value = util.calculate_file_crc64(file_path)
+                    elif content:
+                        crc64_value = util.calculate_content_crc64(util.covert_string_to_bytes(content))
+
+                # 如果最终有 crc64 值，则添加到 headers
+                if crc64_value is not None:
+                    self._put_key_value(_headers, self.ha.crc64_header(), crc64_value)
             if self.is_obs:
                 self._put_key_value(_headers, self.ha.success_action_redirect_header(),
                                     headers.get('successActionRedirect'))

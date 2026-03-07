@@ -470,7 +470,7 @@ class TestOBSClient(object):
         assert set_al_result2.status == 400
         set_al_result3 = accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'dir1',
                                                           ["role_label_" + str(i + 1) for i in range(513)])
-        assert set_al_result3.status == 405
+        assert set_al_result3.status == 400
         set_al_result4 = accessLabelClient.setAccessLabel('accesslabel-posix-bucket', 'file1',
                                                           ['role_label_01', 'role_label_02'])
         assert set_al_result4.status == 405
