@@ -160,7 +160,9 @@ __all__ = [
     'PutBucketInventoryResponse',
     'GetBucketInventoryResponse',
     'DeleteBucketInventoryResponse',
-    'ListBucketInventoryResponse'
+    'ListBucketInventoryResponse',
+    'UploadTaskStatus',
+    'UploadTask'
 ]
 
 
@@ -2116,3 +2118,339 @@ class ListBucketInventoryResponse(GetResult):
         self.configurations = configurations if configurations is not None else []
         self.isTruncated = isTruncated
         self.nextInventoryId = nextInventoryId
+
+
+class UploadTaskStatus(object):
+    """
+    Enumeration of upload task status values.
+    Represents the current state of an UploadTask during its lifecycle.
+    """
+    PENDING = 'pending'
+    IN_PROGRESS = 'in_progress'
+    PAUSED = 'paused'
+    COMPLETED = 'completed'
+    CANCELLED = 'cancelled'
+    FAILED = 'failed'
+
+
+class UploadTask(object):
+    """
+    Represents an asynchronous upload task with pause/resume/cancel capabilities.
+    Similar to AWS S3 TransferManager and Alibaba OSS upload management.
+
+    The UploadTask provides control over resumable multipart uploads:
+    - pause(): Pause the upload (requires checkpoint enabled)
+    - cancel(): Cancel the upload and cleanup resources
+    - resume(): Resume a paused upload
+    - wait_for_completion(): Wait for upload to finish
+
+    Usage example:
+        task = obsClient.uploadFileAsync('bucket', 'key', 'file', enableCheckpoint=True)
+        # Pause if needed
+        task.pause()
+        # Resume later
+        task.resume()
+        # Or cancel
+        task.cancel()
+        # Wait for completion
+        response = task.wait_for_completion()
+    """
+
+    def __init__(self, bucket_name, object_key, upload_file, obs_client):
+        """
+        Initialize UploadTask for asynchronous upload with control capabilities.
+
+        :param bucket_name: Bucket name
+        :param object_key: Object key
+        :param upload_file: Local file path to upload
+        :param obs_client: ObsClient instance
+        """
+        self._bucket_name = bucket_name
+        self._object_key = object_key
+        self._upload_file = upload_file
+        self._obs_client = obs_client
+
+        # Upload state
+        self._upload_id = None
+        self._checkpoint_file = None
+        self._status = UploadTaskStatus.PENDING
+        self._enable_checkpoint = False
+
+        # Progress tracking
+        self._transferred_bytes = 0
+        self._total_bytes = 0
+
+        # Results
+        self._response = None
+        self._exception = None
+
+        # Thread management
+        self._thread = None
+        self._completion_callback = None
+
+        # Thread-safe state management
+        self._lock = threading.Lock()
+        self._pause_event = threading.Event()
+        self._cancel_event = threading.Event()
+        self._completion_event = threading.Event()
+
+        # Internal operation reference
+        self._upload_operation = None
+
+    def pause(self):
+        """
+        Pause the upload task.
+        The task can be resumed by calling resume().
+        Requires enable_checkpoint=True to save progress.
+
+        :return: True if pause was successful
+        :raises ValueError: If task cannot be paused (not started, no checkpoint, etc.)
+        """
+        with self._lock:
+            current_status = self._status
+
+        if current_status == UploadTaskStatus.PENDING:
+            raise ValueError('Cannot pause task that has not started')
+
+        if current_status == UploadTaskStatus.COMPLETED:
+            raise ValueError('Cannot pause completed task')
+
+        if current_status == UploadTaskStatus.CANCELLED:
+            raise ValueError('Cannot pause cancelled task')
+
+        if current_status == UploadTaskStatus.PAUSED:
+            return  # Already paused
+
+        if not self._enable_checkpoint:
+            raise ValueError('Checkpoint must be enabled to pause upload')
+
+        self._pause_event.clear()
+
+        with self._lock:
+            self._status = UploadTaskStatus.PAUSED
+
+        self._obs_client.log_client.log('INFO',
+            'Upload task paused: %s/%s' % (self._bucket_name, self._object_key))
+        return True
+
+    def cancel(self):
+        """
+        Cancel the upload task completely.
+        This will abort the multipart upload and clean up checkpoint file.
+        Cannot be resumed after cancellation.
+
+        :return: True if cancellation was successful
+        :raises ValueError: If task cannot be cancelled (already completed, etc.)
+        """
+        with self._lock:
+            current_status = self._status
+
+        if current_status == UploadTaskStatus.PENDING:
+            raise ValueError('Cannot cancel task that has not started')
+
+        if current_status == UploadTaskStatus.COMPLETED:
+            raise ValueError('Cannot cancel completed task')
+
+        if current_status == UploadTaskStatus.CANCELLED:
+            return  # Already cancelled
+
+        self._cancel_event.set()
+
+        # Signal upload operation to abort
+        if self._upload_operation:
+            try:
+                if hasattr(self._upload_operation, '_do_abort'):
+                    self._upload_operation._do_abort('User canceled upload')
+            except Exception as e:
+                self._obs_client.log_client.log('ERROR',
+                    'Error signaling upload abort: %s' % e)
+
+        # Abort multipart upload on server
+        if self._upload_id:
+            try:
+                self._obs_client.abortMultipartUpload(
+                    self._bucket_name,
+                    self._object_key,
+                    self._upload_id
+                )
+                self._obs_client.log_client.log('INFO',
+                    'Aborted multipart upload: %s' % self._upload_id)
+            except Exception as e:
+                self._obs_client.log_client.log('ERROR',
+                    'Error aborting multipart upload: %s' % e)
+
+        # Cleanup checkpoint file
+        if self._checkpoint_file:
+            try:
+                import os
+                if os.path.exists(self._checkpoint_file):
+                    os.remove(self._checkpoint_file)
+                    self._obs_client.log_client.log('INFO',
+                        'Removed checkpoint file: %s' % self._checkpoint_file)
+            except Exception as e:
+                self._obs_client.log_client.log('ERROR',
+                    'Error removing checkpoint file: %s' % e)
+
+        with self._lock:
+            self._status = UploadTaskStatus.CANCELLED
+
+        self._obs_client.log_client.log('INFO',
+            'Upload task cancelled: %s/%s' % (self._bucket_name, self._object_key))
+        return True
+
+    def resume(self):
+        """
+        Resume a paused upload task.
+        Only works if the task was paused and checkpoint is enabled.
+
+        :return: self for method chaining
+        :raises ValueError: If task is not paused
+        """
+        with self._lock:
+            current_status = self._status
+
+        if current_status != UploadTaskStatus.PAUSED:
+            raise ValueError('Can only resume a paused task')
+
+        self._pause_event.set()
+
+        with self._lock:
+            self._status = UploadTaskStatus.IN_PROGRESS
+
+        self._obs_client.log_client.log('INFO',
+            'Upload task resumed: %s/%s' % (self._bucket_name, self._object_key))
+        return self
+
+    def wait_for_completion(self, timeout=None):
+        """
+        Wait for the upload task to complete.
+
+        :param timeout: Maximum time to wait in seconds (None = wait forever)
+        :return: CompleteMultipartUploadResponse if successful
+        :raises TimeoutError: If timeout expires before completion
+        :raises Exception: If upload failed or was cancelled
+        """
+        if not self._completion_event.wait(timeout=timeout):
+            raise TimeoutError('Upload did not complete within the specified timeout')
+
+        with self._lock:
+            if self._status == UploadTaskStatus.COMPLETED:
+                return self._response
+            elif self._status == UploadTaskStatus.FAILED:
+                if self._exception:
+                    raise self._exception
+                raise Exception('Upload failed')
+            elif self._status == UploadTaskStatus.CANCELLED:
+                raise Exception('Upload was cancelled')
+            else:
+                raise Exception('Upload in unexpected state: %s' % self._status)
+
+    def set_completion_callback(self, callback):
+        """
+        Set a callback to be called when the upload completes.
+
+        :param callback: Function that takes UploadTask as parameter
+        """
+        self._completion_callback = callback
+
+    def get_progress_percentage(self):
+        """
+        Get the upload progress as a percentage.
+
+        :return: Progress percentage (0.0 to 100.0)
+        """
+        with self._lock:
+            if self._total_bytes > 0:
+                return (self._transferred_bytes / self._total_bytes) * 100.0
+            return 0.0
+
+    # Properties
+    @property
+    def bucket_name(self):
+        """Get the bucket name."""
+        return self._bucket_name
+
+    @property
+    def object_key(self):
+        """Get the object key."""
+        return self._object_key
+
+    @property
+    def upload_file(self):
+        """Get the upload file path."""
+        return self._upload_file
+
+    @property
+    def upload_id(self):
+        """Get the multipart upload ID."""
+        return self._upload_id
+
+    @property
+    def status(self):
+        """Get the current task status."""
+        with self._lock:
+            return self._status
+
+    @property
+    def transferred_bytes(self):
+        """Get the number of bytes transferred."""
+        with self._lock:
+            return self._transferred_bytes
+
+    @property
+    def total_bytes(self):
+        """Get the total size of the file in bytes."""
+        with self._lock:
+            return self._total_bytes
+
+    @property
+    def response(self):
+        """Get the upload response."""
+        with self._lock:
+            return self._response
+
+    @property
+    def exception(self):
+        """Get the exception that caused the upload to fail."""
+        with self._lock:
+            return self._exception
+
+    @property
+    def is_pending(self):
+        """Check if the upload is pending (not started)."""
+        with self._lock:
+            return self._status == UploadTaskStatus.PENDING
+
+    @property
+    def is_in_progress(self):
+        """Check if the upload is currently in progress."""
+        with self._lock:
+            return self._status == UploadTaskStatus.IN_PROGRESS
+
+    @property
+    def is_paused(self):
+        """Check if the upload is currently paused."""
+        with self._lock:
+            return self._status == UploadTaskStatus.PAUSED
+
+    @property
+    def is_completed(self):
+        """Check if the upload has completed successfully."""
+        with self._lock:
+            return self._status == UploadTaskStatus.COMPLETED
+
+    @property
+    def is_cancelled(self):
+        """Check if the upload has been cancelled."""
+        with self._lock:
+            return self._status == UploadTaskStatus.CANCELLED
+
+    @property
+    def is_failed(self):
+        """Check if the upload has failed."""
+        with self._lock:
+            return self._status == UploadTaskStatus.FAILED
+
+
+# Import threading for UploadTask
+import threading

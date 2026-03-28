@@ -45,6 +45,141 @@ def _resume_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableC
     return upload_operation._upload()
 
 
+def _upload_worker(task, upload_operation):
+    """
+    Worker function that runs the upload in a background thread.
+
+    :param task: UploadTask instance to update with progress and results
+    :param upload_operation: uploadOperation instance to execute
+    """
+    from obs.model import UploadTaskStatus
+
+    with task._lock:
+        task._status = UploadTaskStatus.IN_PROGRESS
+        task._upload_operation = upload_operation
+        if upload_operation._record and 'uploadId' in upload_operation._record:
+            task._upload_id = upload_operation._record['uploadId']
+        task._total_bytes = upload_operation.size
+
+    try:
+        # Execute the upload
+        response = upload_operation._upload()
+
+        # Update task with results
+        if response is not None:
+            # Upload completed successfully
+            with task._lock:
+                task._status = UploadTaskStatus.COMPLETED
+                task._response = response
+                task._transferred_bytes = task._total_bytes
+            task._completion_event.set()
+        else:
+            # Upload was paused
+            with task._lock:
+                task._status = UploadTaskStatus.PAUSED
+                # Update progress from operation record
+                if upload_operation._record and 'partEtags' in upload_operation._record:
+                    transferred = 0
+                    for part in upload_operation._record.get('uploadParts', []):
+                        if part.get('isCompleted'):
+                            transferred += part.get('length', 0)
+                    task._transferred_bytes = transferred
+                if upload_operation._record and 'uploadId' in upload_operation._record:
+                    task._upload_id = upload_operation._record['uploadId']
+
+    except Exception as e:
+        # Upload failed
+        with task._lock:
+            task._status = UploadTaskStatus.FAILED
+            task._exception = e
+        task._completion_event.set()
+        upload_operation.obsClient.log_client.log('ERROR', 'Upload failed: %s' % e)
+
+    finally:
+        # Call completion callback if set
+        if task._completion_callback:
+            try:
+                task._completion_callback(task)
+            except Exception as e:
+                upload_operation.obsClient.log_client.log('ERROR', 'Completion callback error: %s' % e)
+
+
+def _resume_upload_async(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckPoint, checkPointFile, checkSum,
+                         metadata, progressCallback, obsClient, headers, extensionHeaders=None, encoding_type=None,
+                         isAttachCrc64=False):
+    """
+    Create an async upload task that can be paused, resumed, or cancelled.
+
+    :param bucketName: Bucket name
+    :param objectKey: Object key
+    :param uploadFile: Local file path to upload
+    :param partSize: Size of each part in bytes
+    :param taskNum: Number of concurrent upload threads
+    :param enableCheckPoint: Enable checkpoint for resumable upload
+    :param checkPointFile: Path to checkpoint file
+    :param checkSum: Enable checksum verification
+    :param metadata: Object metadata
+    :param progressCallback: Progress callback function
+    :param obsClient: ObsClient instance
+    :param headers: Upload headers
+    :param extensionHeaders: Extension headers
+    :param encoding_type: Encoding type
+    :param isAttachCrc64: Attach CRC64 checksum
+    :return: UploadTask instance
+    """
+    from obs.model import UploadTask, UploadTaskStatus
+
+    # Create the upload task
+    task = UploadTask(
+        bucket_name=util.to_string(bucketName),
+        object_key=util.to_string(objectKey),
+        upload_file=util.to_string(uploadFile),
+        obs_client=obsClient
+    )
+
+    # Set checkpoint info
+    if enableCheckPoint:
+        if not checkPointFile:
+            checkPointFile = uploadFile + '.upload_record'
+        task._checkpoint_file = util.to_string(checkPointFile)
+        task._enable_checkpoint = True
+
+    # Create the upload operation
+    upload_operation = uploadOperation(
+        util.to_string(bucketName),
+        util.to_string(objectKey),
+        util.to_string(uploadFile),
+        partSize,
+        taskNum,
+        enableCheckPoint,
+        util.to_string(checkPointFile) if checkPointFile else None,
+        checkSum,
+        metadata,
+        progressCallback,
+        obsClient,
+        headers,
+        extensionHeaders=extensionHeaders,
+        encoding_type=encoding_type,
+        isAttachCrc64=isAttachCrc64
+    )
+
+    # Link task events with operation events for control
+    task._pause_event = upload_operation._pause_event
+    task._cancel_event = upload_operation._cancel_event
+
+    # Start upload in background thread
+    thread = threading.Thread(
+        target=_upload_worker,
+        args=(task, upload_operation),
+        name='UploadWorker-%s-%s' % (bucketName, objectKey),
+        daemon=True
+    )
+    task._thread = thread
+    thread.start()
+
+    return task
+
+
 def _resume_download(bucketName, objectKey, downloadFile, partSize, taskNum, enableCheckPoint, checkPointFile,
                      header, versionId, progressCallback, obsClient, imageProcess=None,
                      notifier=progress.NONE_NOTIFIER, isAttachCrc64=False, extensionHeaders=None):
@@ -91,6 +226,12 @@ class Operation(object):
         self._record = None
         self._exception = None
 
+        # External control events for pause/cancel support
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # Initially not paused
+        self._cancel_event = threading.Event()
+        self._paused = False
+
     def _is_abort(self):
         with self._abortLock:
             return self._abort
@@ -100,6 +241,46 @@ class Operation(object):
             self._abort = True
             if self._exception is None:
                 self._exception = error
+
+    def _pause(self):
+        """Pause the operation. Can be resumed by calling _resume()."""
+        self._pause_event.clear()
+        self._paused = True
+        self.obsClient.log_client.log(INFO, 'Operation paused')
+
+    def _resume(self):
+        """Resume a paused operation."""
+        self._pause_event.set()
+        self._paused = False
+        self.obsClient.log_client.log(INFO, 'Operation resumed')
+
+    def _cancel(self):
+        """Cancel the operation."""
+        self._cancel_event.set()
+        self._do_abort('Operation cancelled by user')
+        self.obsClient.log_client.log(INFO, 'Operation cancelled')
+
+    def _check_pause_cancel(self):
+        """
+        Check if operation should pause or cancel.
+        Raises exception if cancelled, blocks if paused.
+        Returns True if operation should continue, False otherwise.
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        # Block if paused
+        self._pause_event.wait()
+
+        return True
+
+    def _is_paused(self):
+        """Check if operation is paused."""
+        return self._paused
+
+    def _is_cancelled(self):
+        """Check if operation is cancelled."""
+        return self._cancel_event.is_set()
 
     def _get_record(self):
         self.obsClient.log_client.log(INFO, 'load checkpoint file...')
@@ -192,6 +373,11 @@ class uploadOperation(Operation):
         if "uploadId" not in self._record:
             self._prepare()
 
+        # Check for cancellation before starting
+        if self._is_cancelled():
+            self._delete_record()
+            raise Exception('Upload was cancelled')
+
         unfinished_upload_parts = []
         sent_bytes = const.LONG(0)
         for p in self._record['uploadParts']:
@@ -214,16 +400,32 @@ class uploadOperation(Operation):
                                            [self._consume] * self.taskNum)
                 thread_pools.run()
 
-                if self._abort:
-                    self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'],
-                                                        extensionHeaders=self.extensionHeaders)
-                    self.obsClient.log_client.log(
-                        ERROR,
-                        'the code from server is 4**, please check space, permission and so on.'
-                    )
-                    self._delete_record()
+                # Check for cancellation
+                if self._abort or self._is_cancelled():
+                    if not self._is_paused() and self._is_cancelled():
+                        # User cancelled (not just paused)
+                        self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'],
+                                                            extensionHeaders=self.extensionHeaders)
+                        self.obsClient.log_client.log(ERROR, 'Upload cancelled by user')
+                        self._delete_record()
+                    else:
+                        # Error abort
+                        self.obsClient.abortMultipartUpload(self.bucketName, self.objectKey, self._record['uploadId'],
+                                                            extensionHeaders=self.extensionHeaders)
+                        self.obsClient.log_client.log(
+                            ERROR,
+                            'the code from server is 4**, please check space, permission and so on.'
+                        )
+                        self._delete_record()
                     if self._exception is not None:
                         raise Exception(self._exception)
+
+                # Check for pause - save checkpoint and exit gracefully
+                if self._is_paused():
+                    self.obsClient.log_client.log(INFO, 'Upload paused by user')
+                    if self.enableCheckPoint:
+                        self._write_record(self._record)
+                    return None
 
                 for p in self._record['uploadParts']:
                     if not p['isCompleted']:
@@ -381,9 +583,13 @@ class uploadOperation(Operation):
         if self.enableCheckPoint:
             self._write_record(self._record)
 
-    @staticmethod
-    def _produce(ThreadPool, upload_parts):
+    def _produce(self, ThreadPool, upload_parts):
         for part in upload_parts:
+            # Check for cancellation before adding each part
+            if self._is_cancelled():
+                break
+            # Wait if paused
+            self._pause_event.wait()
             ThreadPool.put(part)
 
     def _consume(self, ThreadPool):
@@ -394,6 +600,10 @@ class uploadOperation(Operation):
             self._upload_part(part)
 
     def _upload_part(self, part):
+        # Check for cancellation before uploading part
+        if not self._check_pause_cancel():
+            return
+
         if not self._is_abort():
             try:
                 resp = self.get_upload_part_resp(part)

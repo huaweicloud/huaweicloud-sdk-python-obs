@@ -37,7 +37,7 @@ from obs.model import ACL, AppendObjectContent, AppendObjectHeader, BaseModel, C
     ObjectStream, PutObjectHeader, ResponseWrapper, SetObjectMetadataHeader, RenameFileHeader, Versions, _FetchJob, \
     ExtensionHeader, \
     BucketAliasModel, Replication, ReplicationRule
-from obs.transfer import _resume_download, _resume_upload
+from obs.transfer import _resume_download, _resume_upload, _resume_upload_async
 from obs.posix_transfer import _resume_delete
 
 if const.IS_PYTHON2:
@@ -2800,6 +2800,49 @@ class ObsClient(_BasicClient):
         return _resume_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile,
                               checkSum, metadata, progressCallback, self, headers,
                               extensionHeaders=extensionHeaders, encoding_type=encoding_type, isAttachCrc64=isAttachCrc64)
+
+    def uploadFileAsync(self, bucketName, objectKey, uploadFile, partSize=9 * 1024 * 1024,
+                        taskNum=1, enableCheckpoint=False, checkpointFile=None,
+                        checkSum=False, metadata=None, progressCallback=None, headers=None,
+                        extensionHeaders=None, encoding_type=None, isAttachCrc64=False):
+        """
+        Upload file asynchronously with pause/resume/cancel capabilities.
+
+        This method returns an UploadTask object that allows control over the upload:
+        - task.pause(): Pause the upload (requires enableCheckpoint=True)
+        - task.cancel(): Cancel the upload
+        - task.resume(): Resume a paused upload
+        - task.wait_for_completion(): Wait for upload to finish
+
+        Usage example:
+            task = obsClient.uploadFileAsync('bucket', 'key', 'file', enableCheckpoint=True)
+            # Later: task.pause() to pause, task.cancel() to cancel
+            response = task.wait_for_completion()
+
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param uploadFile: Local file path to upload
+        :param partSize: Size of each part in bytes (default: 9MB)
+        :param taskNum: Number of concurrent upload threads (default: 1)
+        :param enableCheckpoint: Enable checkpoint for resumable upload (default: False)
+        :param checkpointFile: Path to checkpoint file (default: uploadFile + '.upload_record')
+        :param checkSum: Enable checksum verification (default: False)
+        :param metadata: Object metadata
+        :param progressCallback: Progress callback function
+        :param headers: Upload headers (UploadFileHeader)
+        :param extensionHeaders: Extension headers
+        :param encoding_type: Encoding type
+        :param isAttachCrc64: Attach CRC64 checksum (default: False)
+        :return: UploadTask instance for controlling the upload
+        """
+        self.log_client.log(INFO, 'enter async upload file...')
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+        self._assert_not_null(uploadFile, 'uploadFile is empty')
+
+        return _resume_upload_async(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile,
+                                    checkSum, metadata, progressCallback, self, headers,
+                                    extensionHeaders=extensionHeaders, encoding_type=encoding_type, isAttachCrc64=isAttachCrc64)
 
     @funcCache
     def _downloadFileWithNotifier(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1,

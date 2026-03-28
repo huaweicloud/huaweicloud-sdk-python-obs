@@ -31,6 +31,7 @@ from obs.model import (InventoryConfiguration, InventoryFormat, InventoryFrequen
                        InventoryOptionalFields, InventoryFilter, InventoryDestination, InventoryBucketDestination,
                        PutBucketInventoryResponse, GetBucketInventoryResponse, DeleteBucketInventoryResponse,
                        ListBucketInventoryResponse)
+from obs.model import UploadTaskStatus, UploadTask
 from obs.workflow import WorkflowClient
 from obs.crypto_client import CryptoObsClient
 from obs.obs_cipher_suite import CTRCipherGenerator
@@ -123,5 +124,7 @@ __all__ = [
     'PutBucketInventoryResponse',
     'GetBucketInventoryResponse',
     'DeleteBucketInventoryResponse',
-    'ListBucketInventoryResponse'
+    'ListBucketInventoryResponse',
+    'UploadTaskStatus',
+    'UploadTask'
 ]
