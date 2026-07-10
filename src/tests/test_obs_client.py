@@ -1334,6 +1334,186 @@ class TestOBSClient(object):
         assert result.status == 400
         assert result.errorCode == 'InvalidBucketName'
 
+    def test_content_type_wasm(self):
+        obsClient = ObsClient(access_key_id=test_config["ak"],
+                                                        secret_access_key=test_config["sk"],
+                                                        server=test_config["endpoint"])
+        bucket_name = 'test-union-sdk-cname'
+
+        # Step 1: 使用put上传a.wasm对象到桶A
+        object_name_a = 'a.wasm'
+        result = obsClient.putContent(bucket_name, object_name_a, 'test wasm content')
+        assert result.status == 200
+
+        # Step 2: 获取a.wasm对象的元数据，查看Content-Type
+        result = obsClient.getObjectMetadata(bucket_name, object_name_a)
+        assert result.status == 200
+        assert result.body['contentType'] == 'application/wasm'
+
+        # Step 3: 使用断点续传上传b.wasm对象到桶A
+        object_name_b = 'b.wasm'
+        # Create a temporary file for multipart upload
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.wasm') as temp_file:
+            temp_file.write('test wasm content for multipart upload')
+            temp_file_path = temp_file.name
+
+        try:
+            result = obsClient.uploadFile(bucket_name, object_name_b, temp_file_path)
+            assert result.status == 200
+
+            # Step 4: 获取b.wasm对象的元数据，查看Content-Type
+            result = obsClient.getObjectMetadata(bucket_name, object_name_b)
+            assert result.status == 200
+            assert result.body['contentType'] == 'application/wasm'
+        finally:
+            # Clean up temporary file
+            os.unlink(temp_file_path)
+
+        # Step 5: 使用put上传c.wasmm对象到桶A
+        object_name_c = 'c.wasmm'
+        result = obsClient.putContent(bucket_name, object_name_c, 'test wasmm content')
+        assert result.status == 200
+
+        # Step 6: 获取c.wasmm对象的元数据，查看Content-Type
+        result = obsClient.getObjectMetadata(bucket_name, object_name_c)
+        assert result.status == 200
+        # Content-Type 不为application/wasm因为.wasmm不是标准的wasm文件扩展名
+        assert result.body['contentType'] != 'application/wasm'
+
+    def test_crc64_create_folder(self):
+        """Test CRC64 functionality with folder creation using putContent with trailing slash"""
+        client_type, crc64Client, obsClient = self.get_client()
+
+        bucket_a = "python-test-crc64-folder-a"
+        folder_a = "a/"
+
+        bucket_b = "python-test-crc64-folder-b"
+        folder_b = "b/"
+
+        try:
+            # Create buckets first if they don't exist
+            create_result_a = crc64Client.createBucket(bucket_a)
+            assert create_result_a.status in [200, 204]  # 204 if bucket already exists
+
+            headers = CreateBucketHeader(isPFS=True)
+            create_result_b = crc64Client.createBucket(bucket_b, headers)
+            assert create_result_b.status in [200, 204]  # 204 if bucket already exists
+
+            # Step 1: 开启crc64在A桶创建文件夹a
+            headers_a = PutObjectHeader()
+            headers_a.isAttachCrc64 = True
+            # Create folder by putting content with trailing slash
+            create_folder_a = crc64Client.putContent(bucket_a, folder_a, None, headers=headers_a)
+            assert create_folder_a.status == 200
+
+            # Step 2: 开启crc64在B桶创建文件夹b
+            headers_b = PutObjectHeader()
+            headers_b.isAttachCrc64 = True
+            # Create folder by putting content with trailing slash
+            create_folder_b = crc64Client.putContent(bucket_b, folder_b, None, headers=headers_b)
+            assert create_folder_b.status == 200
+
+        finally:
+            # Cleanup: Delete the buckets
+            try:
+                obsClient.deleteObject(bucket_a, folder_a)
+                obsClient.deleteBucket(bucket_a)
+            except:
+                pass  # Ignore if deletion fails
+            try:
+                obsClient.deleteObject(bucket_b, folder_b)
+                obsClient.deleteBucket(bucket_b)
+            except:
+                pass  # Ignore if deletion fails
+
+    def test_create_bucket_availableZone_single_az(self, delete_bucket_after_test):
+        """tc_python_alpha_availableZone_01: 创建桶并设置availableZone为single-az成功"""
+        _, uploadClient, _ = self.get_client()
+        bucket_name = test_config["bucket_prefix"] + "availablezone-single-001"
+        delete_bucket_after_test["client"] = uploadClient
+        delete_bucket_after_test["need_delete_buckets"].append(bucket_name)
+
+        # 创建桶,设置availableZone为single-az
+        create_bucket_header = CreateBucketHeader(availableZone='single-az')
+        create_result = uploadClient.createBucket(
+            bucket_name,
+            header=create_bucket_header,
+            location=test_config["location"]
+        )
+        assert create_result.status == 200
+
+        # 获取桶元数据,验证availableZone为single-az
+        bucket_metadata = uploadClient.getBucketMetadata(bucket_name)
+        assert bucket_metadata.status == 200
+        assert bucket_metadata.body.availableZone == 'single-az'
+
+    @pytest.mark.skip(reason="当前测试区域cn-north-7不支持multi-az")
+    def test_create_bucket_availableZone_multi_az(self, delete_bucket_after_test):
+        """tc_python_alpha_availableZone_02: 创建桶并设置availableZone为multi-az成功"""
+        _, uploadClient, _ = self.get_client()
+        bucket_name = test_config["bucket_prefix"] + "availablezone-multi-001"
+        delete_bucket_after_test["client"] = uploadClient
+        delete_bucket_after_test["need_delete_buckets"].append(bucket_name)
+
+        # 创建桶,设置availableZone为multi-az
+        create_bucket_header = CreateBucketHeader(availableZone='multi-az')
+        create_result = uploadClient.createBucket(
+            bucket_name,
+            header=create_bucket_header,
+            location=test_config["location"]
+        )
+        assert create_result.status == 200
+
+        # 获取桶元数据,验证availableZone为multi-az
+        bucket_metadata = uploadClient.getBucketMetadata(bucket_name)
+        assert bucket_metadata.status == 200
+        assert bucket_metadata.body.availableZone == 'multi-az'
+
+    @pytest.mark.skip(reason="当前测试区域cn-north-7不支持multi-az")
+    def test_create_bucket_availableZone_3az(self, delete_bucket_after_test):
+        """tc_python_alpha_availableZone_03: 【兼容旧参数】创建桶并设置availableZone为3az成功"""
+        _, uploadClient, _ = self.get_client()
+        bucket_name = test_config["bucket_prefix"] + "availablezone-3az-001"
+        delete_bucket_after_test["client"] = uploadClient
+        delete_bucket_after_test["need_delete_buckets"].append(bucket_name)
+
+        # 创建桶,设置availableZone为multi-az(3az兼容)
+        create_bucket_header = CreateBucketHeader(availableZone='multi-az')
+        create_result = uploadClient.createBucket(
+            bucket_name,
+            header=create_bucket_header,
+            location=test_config["location"]
+        )
+        assert create_result.status == 200
+
+        # 获取桶元数据,验证availableZone为multi-az
+        bucket_metadata = uploadClient.getBucketMetadata(bucket_name)
+        assert bucket_metadata.status == 200
+        assert bucket_metadata.body.availableZone == 'multi-az'
+
+    @pytest.mark.skip(reason="服务端未对availableZone参数值做校验,接受任意值")
+    def test_create_bucket_availableZone_invalid_value(self):
+        """tc_python_alpha_availableZone_04: 创建桶并设置availableZone为错误值失败"""
+        _, uploadClient, _ = self.get_client()
+        bucket_name = test_config["bucket_prefix"] + "availablezone-invalid-001"
+
+        # 创建桶,设置availableZone为double-az(错误值)
+        create_bucket_header = CreateBucketHeader(availableZone='double-az')
+        create_result = uploadClient.createBucket(
+            bucket_name,
+            header=create_bucket_header,
+            location=test_config["location"]
+        )
+        # 验证创建失败,返回400
+        assert create_result.status == 400
+
+        # 清理:尝试删除可能部分创建的桶
+        try:
+            uploadClient.deleteBucket(bucket_name)
+        except:
+            pass
+
 
 if __name__ == "__main__":
     pytest.main(["-v", 'test_obs_client.py::TestOBSClient::test_uploadFile_with_metadata'])

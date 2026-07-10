@@ -1,0 +1,74 @@
+#!/usr/bin/python
+# -*- coding:utf-8 -*-
+# Copyright 2019 Huawei Technologies Co.,Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+# this file except in compliance with the License.  You may obtain a copy of the
+# License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software distributed
+# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations under the License.
+
+"""
+  This sample demonstrates how to upload a file and set object ACL operation on OBS using the OBS SDK for Python.
+"""
+
+from __future__ import print_function
+
+import traceback
+
+from obs import ObsClient, PutObjectHeader, HeadPermission
+
+# Obtain an AK and SK pair using environment variables or import the AK and SK pair in other ways. Using hard coding may result in leakage.
+# Obtain an AK and SK pair on the management console. For details, see https://support.huaweicloud.com/intl/en-us/usermanual-ca/ca_01_0003.html.
+AK = '*** Provide your Access Key ***'
+SK = '*** Provide your Secret Key ***'
+
+# Set server to the endpoint corresponding to the bucket
+server = 'https://your-endpoint'
+bucketName = 'your-obs-bucket'
+objectKey = 'your-object-name'
+# Specify the path of a local HTML website file.
+file_path = 'localfile.html'
+
+if __name__ == '__main__':
+    # Create an obsClient instance.
+    obsClient = ObsClient(access_key_id=AK, secret_access_key=SK, server=server)
+
+    try:
+        # Specify a website file name.
+        objectKey = 'test.html'
+
+        headers = PutObjectHeader()
+        # Specify the MIME type for the object.
+        headers.contentType = 'text/html'
+
+        # Upload the object.
+        resp = obsClient.putFile(bucketName, objectKey, file_path, headers=headers)
+
+        # If status code 2xx is returned, the API is called successfully. Otherwise, the API call fails.
+        if resp.status < 300:
+            print('Put File Succeeded')
+            print('requestId:', resp.requestId)
+            # Set the object ACL to public read.
+            resp2 = obsClient.setObjectAcl(bucketName, objectKey, aclControl=HeadPermission.PUBLIC_READ)
+            if resp2.status < 300:
+                print('Set Object Acl Succeeded')
+                print('requestId:', resp2.requestId)
+            else:
+                print('Set Object Acl Failed')
+                print('status:', resp.status)
+                print('requestId:', resp2.requestId)
+                print('errorCode:', resp2.errorCode)
+                print('errorMessage:', resp2.errorMessage)
+        else:
+            print('Put File Failed')
+            print('requestId:', resp.requestId)
+            print('errorCode:', resp.errorCode)
+            print('errorMessage:', resp.errorMessage)
+    except Exception as e:
+        print('Put File Failed')
+        print(traceback.format_exc())
