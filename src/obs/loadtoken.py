@@ -294,7 +294,7 @@ class ECS(object):
         """Retrieve token from v2 API (with retry mechanism)."""
         try:
             # Add retry mechanism, the retry_count is passed in by the decorator and is read-only within the function.
-            conn = httplib.HTTPConnection(hostIP, timeout=10)  # Handle timeout.
+            conn = httplib.HTTPConnection(hostIP, timeout=5)  # Handle timeout.
             # use v2 to obtain token
             headers = {'X-securitykey-Token-Ttl-Seconds': "21600"}
             getTokenResult = ECS._conn_request(conn, 'PUT', contactTokenURL, headers=headers)
