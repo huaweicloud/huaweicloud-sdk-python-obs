@@ -1,0 +1,9 @@
+{
+    "id_token": "your_id_token",
+    "idp_id": "your_idp_id",
+    "project_id": "your_project_id",
+    "iam_endpoint": "https://iam.myhuaweicloud.com",
+    "refresh_before_seconds": 300,
+    "max_retry_times": 3,
+    "credential_expires_seconds": 3600
+}

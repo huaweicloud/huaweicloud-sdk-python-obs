@@ -20,6 +20,8 @@ READ_ONCE_LENGTH = 65536
 
 CONTENT_LENGTH_HEADER = 'Content-Length'
 CONTENT_TYPE_HEADER = 'Content-Type'
+CONTENT_TYPE_JSON = 'application/json'
+CONTENT_TYPE_XML = 'application/xml'
 CONTENT_MD5_HEADER = 'Content-MD5'
 CACHE_CONTROL_HEADER = 'Cache-Control'  # type: str
 CONTENT_DISPOSITION_HEADER = 'Content-Disposition'
@@ -71,6 +73,9 @@ RESPONSE_EXPIRES_PARAM = 'response-expires'
 X_IMAGE_PROCESS_PARAM = 'x-image-process'
 OBSALIAS_PARAM = 'obsalias'
 OBSBUCKETALIAS_PARAM = 'obsbucketalias'
+TAGGING_PARAM = 'tagging'
+INVENTORY_PARAM = 'inventory'
+INVENTORY_ID_PARAM = 'id'
 
 HTTP_METHOD_PUT = 'PUT'
 HTTP_METHOD_POST = 'POST'
@@ -101,7 +106,7 @@ DEFAULT_TASK_NUM = 8
 DEFAULT_TASK_QUEUE_SIZE = 20000
 CONNECTION_POOL_SIZE = 10
 
-OBS_SDK_VERSION = '3.26.2'
+OBS_SDK_VERSION = '3.26.6'
 
 V2_META_HEADER_PREFIX = 'x-amz-meta-'
 V2_HEADER_PREFIX = 'x-amz-'
@@ -124,6 +129,8 @@ OBS_SIGNATURE = 'obs'
 
 FETCH_POLICY_KEY = "v1/extension_policy"
 FETCH_JOB_KEY = "v1/async-fetch/jobs"
+DIS_POLICY_KEY = "disPolicy"
+DIRECT_COLD_ACCESS_KEY = "directcoldaccess"
 
 WORKFLOW_TEMPLATES = 'workflowtemplates'
 WORKFLOWS = 'workflows'
@@ -150,6 +157,7 @@ ALLOWED_RESOURCE_PARAMTER_NAMES = (
     'partnumber',
     'website',
     'notification',
+    'dispolicy',
     'lifecycle',
     'deletebucket',
     'delete',
@@ -163,6 +171,11 @@ ALLOWED_RESOURCE_PARAMTER_NAMES = (
     'bucketstatus',
     'policystatus',
     'x-obs-accesslabel',
+    'inventory',
+    'obscompresspolicy',
+    'object-lock',
+    'retention',
+    'directcoldaccess',
 
     # File System API
     'append',

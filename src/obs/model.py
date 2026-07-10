@@ -16,6 +16,7 @@ import time
 from obs.const import LONG, BASESTRING
 from obs import util
 from obs import progress
+import threading
 
 __all__ = [
     'BaseModel',
@@ -141,7 +142,23 @@ __all__ = [
     'CustomDomainConfiguration',
     'BucketCustomDomain',
     'ListBucketCustomDomainsResponse',
-    'ClientVerify'
+    'ClientVerify',
+    'TagInfoModel',
+    'SetObjectTaggingResponse',
+    'GetObjectTaggingResponse',
+    'DeleteObjectTaggingResponse',
+    'InventoryConfiguration',
+    'InventoryFormat',
+    'InventoryFrequency',
+    'InventoryIncludedObjectVersions',
+    'InventoryOptionalFields',
+    'InventoryFilter',
+    'InventoryDestination',
+    'ListBucketInventoryResponse',
+    'ObsCompressPolicyRule',
+    'GetObsCompressPolicyResponse',
+    'UploadTaskStatus',
+    'UploadTask'
 ]
 
 
@@ -664,6 +681,29 @@ class FilterRule(BaseModel):
         self.value = value
 
 
+class DisPolicyRule(BaseModel):
+    allowedAttr = {'id': BASESTRING, 'stream': BASESTRING, 'project': BASESTRING, 'events': list,
+                   'prefix': BASESTRING, 'suffix': BASESTRING, 'agency': BASESTRING}
+
+    def __init__(self, id=None, stream=None, project=None, events=None, prefix=None, suffix=None, agency=None):
+        super(DisPolicyRule, self).__init__()
+        self.id = id
+        self.stream = stream
+        self.project = project
+        self.events = events
+        self.prefix = prefix
+        self.suffix = suffix
+        self.agency = agency
+
+
+class DisPolicy(BaseModel):
+    allowedAttr = {'rules': list}
+
+    def __init__(self, rules=None):
+        super(DisPolicy, self).__init__()
+        self.rules = rules
+
+
 class ObjectDeleteMarker(BaseModel):
     allowedAttr = {'key': BASESTRING, 'versionId': BASESTRING, 'isLatest': bool, 'lastModified': BASESTRING,
                    'owner': Owner}
@@ -820,6 +860,31 @@ class Tag(BaseModel):
     def __init__(self, key=None, value=None):
         self.key = key
         self.value = value
+
+    def __eq__(self, other):
+        if not isinstance(other, Tag):
+            return False
+        return self.key == other.key and self.value == other.value
+
+    def to_dict(self):
+        """
+        Convert Tag to dictionary
+
+        :return: dict with 'key' and 'value'
+        """
+        return {'key': self.key, 'value': self.value}
+
+    @classmethod
+    def from_dict(cls, dict_data):
+        """
+        Create Tag from dictionary
+
+        :param dict_data: Dictionary with 'key' and 'value' keys
+        :return: Tag object
+        """
+        if dict_data is None:
+            return None
+        return cls(key=dict_data.get('key'), value=dict_data.get('value'))
 
 
 class TagInfo(BaseModel):
@@ -1807,3 +1872,570 @@ class ClientVerify(BaseModel):
         self.clientEncCert = clientEncCert
         self.clientEncKey = clientEncKey
         self.clientEncKeyPassword = clientEncKeyPassword
+
+
+# Object tagging related classes
+class TagInfoModel(BaseModel):
+    """Object tagging information model"""
+    allowedAttr = {'tags': list}
+
+    def __init__(self, tags=None):
+        super(TagInfoModel, self).__init__()
+        self.tags = tags if tags is not None else []
+
+
+class SetObjectTaggingResponse(GetResult):
+    """Response for setObjectTagging operation"""
+    def __init__(self, body=None, headers=None):
+        super(SetObjectTaggingResponse, self).__init__(body=body, header=headers)
+
+
+class GetObjectTaggingResponse(GetResult):
+    """Response for getObjectTagging operation"""
+    def __init__(self, body=None, headers=None):
+        super(GetObjectTaggingResponse, self).__init__(body=body, header=headers)
+        # Parse body to extract tags if body is TagInfoModel
+        if isinstance(body, TagInfoModel):
+            self.tagInfo = body
+        else:
+            self.tagInfo = None
+
+
+class DeleteObjectTaggingResponse(GetResult):
+    """Response for deleteObjectTagging operation"""
+    def __init__(self, body=None, headers=None):
+        super(DeleteObjectTaggingResponse, self).__init__(body=body, header=headers)
+
+
+# Bucket Inventory related classes
+class InventoryFormat:
+    """Inventory format enumeration"""
+    CSV = 'CSV'
+
+
+class InventoryFrequency:
+    """Inventory frequency enumeration"""
+    Daily = 'Daily'
+    Weekly = 'Weekly'
+
+
+class InventoryIncludedObjectVersions:
+    """Inventory included object versions enumeration"""
+    All = 'All'
+    Current = 'Current'
+
+
+class InventoryOptionalFields:
+    """Inventory optional fields enumeration"""
+    Size = 'Size'
+    LastModifiedDate = 'LastModifiedDate'
+    ETag = 'ETag'
+    StorageClass = 'StorageClass'
+    IsMultipartUploaded = 'IsMultipartUploaded'
+    ReplicationStatus = 'ReplicationStatus'
+    EncryptionStatus = 'EncryptionStatus'
+    ObjectAcl = 'ObjectAcl'
+    ObjectOwner = 'ObjectOwner'
+    VersionId = 'VersionId'
+
+
+class InventoryDestination(BaseModel):
+    """Inventory destination configuration"""
+    allowedAttr = {'bucket': BASESTRING, 'prefix': BASESTRING, 'format': BASESTRING}
+
+    def __init__(self, bucket=None, prefix=None, format=None):
+        """
+        Init InventoryDestination
+
+        :param bucket: Destination bucket name
+        :param prefix: Prefix for inventory reports
+        :param format: Format of inventory reports (InventoryFormat.CSV)
+        """
+        super(InventoryDestination, self).__init__()
+        self.bucket = bucket
+        self.prefix = prefix
+        self.format = format
+
+
+class InventoryFilter(BaseModel):
+    """Inventory filter configuration"""
+    allowedAttr = {'prefix': BASESTRING}
+
+    def __init__(self, prefix=None):
+        """
+        Init InventoryFilter
+
+        :param prefix: Prefix filter for inventory objects
+        """
+        super(InventoryFilter, self).__init__()
+        self.prefix = prefix
+
+
+class InventoryConfiguration(BaseModel):
+    """Bucket inventory configuration"""
+    allowedAttr = {'inventoryId': BASESTRING, 'isEnabled': bool, 'objectVersion': BASESTRING,
+                   'filter': InventoryFilter, 'frequency': BASESTRING, 'destination': InventoryDestination,
+                   'optionalFields': list}
+
+    def __init__(self, inventoryId=None, isEnabled=None, objectVersion=None, filter=None,
+                 frequency=None, destination=None, optionalFields=None):
+        """
+        Init InventoryConfiguration
+
+        :param inventoryId: Unique identifier for this inventory configuration
+        :param isEnabled: Whether this inventory is enabled
+        :param objectVersion: Object versions to include (All or Current)
+        :param filter: Filter for objects to include in inventory
+        :param frequency: Frequency of inventory generation (Daily or Weekly)
+        :param destination: Destination for inventory reports
+        :param optionalFields: Optional fields to include in inventory
+        """
+        super(InventoryConfiguration, self).__init__()
+        self.inventoryId = inventoryId
+        self.isEnabled = isEnabled
+        self.objectVersion = objectVersion
+        self.filter = filter
+        self.frequency = frequency
+        self.destination = destination
+        self.optionalFields = optionalFields
+
+
+class ListBucketInventoryResponse(GetResult):
+    """Response for listBucketInventory operation"""
+    allowedAttr = {'configurations': list}
+
+    def __init__(self, configurations=None):
+        super(ListBucketInventoryResponse, self).__init__()
+        self.configurations = configurations if configurations is not None else []
+
+
+# OBS Compress Policy (Online Decompression) related classes
+class ObsCompressPolicyRule(BaseModel):
+    """Rule for OBS compress policy (online decompression)"""
+    allowedAttr = {'id': BASESTRING, 'project': BASESTRING, 'agency': BASESTRING,
+                   'events': list, 'prefix': BASESTRING, 'suffix': BASESTRING,
+                   'overwrite': int, 'decompresspath': BASESTRING, 'policytype': BASESTRING}
+
+    def __init__(self, id=None, project=None, agency=None, events=None,
+                 prefix=None, suffix=None, overwrite=None, decompresspath=None, policytype=None):
+        """
+        Init ObsCompressPolicyRule
+
+        :param id: Rule ID [1, 256]
+        :param project: Project ID
+        :param agency: Agency name
+        :param events: List of events (e.g., ['ObjectCreated:*'])
+        :param prefix: Prefix filter [0, 1023]
+        :param suffix: Suffix filter (e.g., '.zip')
+        :param overwrite: Whether to overwrite (0=crc32 check, 1=overwrite)
+        :param decompresspath: Decompression path [0, 800], should end with '/'
+        :param policytype: Policy type, fixed to 'decompress'
+        """
+        super(ObsCompressPolicyRule, self).__init__()
+        self.id = id
+        self.project = project
+        self.agency = agency
+        self.events = events if events is not None else []
+        self.prefix = prefix
+        self.suffix = suffix
+        self.overwrite = overwrite
+        self.decompresspath = decompresspath
+        self.policytype = policytype
+
+
+class GetObsCompressPolicyResponse(GetResult):
+    """Response for getObsCompressPolicy operation"""
+    allowedAttr = {'rules': list}
+
+    def __init__(self, rules=None):
+        super(GetObsCompressPolicyResponse, self).__init__()
+        self.rules = rules
+
+
+# WORM Object Lock Policy related classes
+class ObjectLockRule(BaseModel):
+    """Rule for Object Lock (WORM) policy"""
+    allowedAttr = {'days': [int, LONG, BASESTRING], 'years': [int, LONG, BASESTRING], 'mode': BASESTRING}
+
+    def __init__(self, days=None, years=None, mode=None):
+        """
+        Init ObjectLockRule
+        :param days: Protection days (Object Lock retention period)
+        :param years: Protection years (Object Lock retention period)
+        :param mode: mode of rule
+        """
+        super(ObjectLockRule, self).__init__()
+        self.days = days
+        self.years = years
+        self.mode = mode
+
+
+class ObjectLockConfiguration(BaseModel):
+    """Request for Object Lock (WORM) policy"""
+    allowedAttr = {'objectLockEnabled': BASESTRING, 'rule': ObjectLockRule}
+
+    def __init__(self, objectLockEnabled=None, rule=None):
+        """
+        Init ObjectLockConfiguration
+        :param objectLockEnabled: Object Lock enabled status (S3 format)
+        :param rule: ObjectLockRule object (AWS S3 supports only ONE rule)
+        """
+        super(ObjectLockConfiguration, self).__init__()
+        self.objectLockEnabled = objectLockEnabled
+        self.rule = rule
+
+
+class DirectColdAccessConfiguration(BaseModel):
+    """归档直读配置信息"""
+    allowedAttr = {'status': BASESTRING}
+
+    def __init__(self, status=None):
+        """
+        Init DirectColdAccessConfiguration
+        :param status: 归档直读策略状态，值为"Enabled"表示开启
+        """
+        super(DirectColdAccessConfiguration, self).__init__()
+        self.status = status
+
+
+class GetBucketDirectColdAccessResponse(BaseModel):
+    """获取桶归档直读配置响应"""
+    allowedAttr = {'status': BASESTRING}
+
+    def __init__(self, status=None):
+        super(GetBucketDirectColdAccessResponse, self).__init__()
+        self.status = status
+
+
+class UploadTaskStatus(object):
+    """
+    Enumeration of upload task status values.
+    Represents the current state of an UploadTask during its lifecycle.
+    """
+    PENDING = 'pending'
+    IN_PROGRESS = 'in_progress'
+    PAUSED = 'paused'
+    COMPLETED = 'completed'
+    CANCELLED = 'cancelled'
+    FAILED = 'failed'
+
+
+class UploadTask(object):
+    """
+    Represents an asynchronous upload task with pause/resume/cancel capabilities.
+    Similar to AWS S3 TransferManager and Alibaba OSS upload management.
+
+    The UploadTask provides control over resumable multipart uploads:
+    - pause(): Pause the upload (requires checkpoint enabled)
+    - cancel(): Cancel the upload and cleanup resources
+    - resume(): Resume a paused upload
+    - wait_for_completion(): Wait for upload to finish
+
+    Usage example:
+        task = obsClient.uploadFileAsync('bucket', 'key', 'file', enableCheckpoint=True)
+        # Pause if needed
+        task.pause()
+        # Resume later
+        task.resume()
+        # Or cancel
+        task.cancel()
+        # Wait for completion
+        response = task.wait_for_completion()
+    """
+
+    def __init__(self, bucket_name, object_key, upload_file, obs_client):
+        """
+        Initialize UploadTask for asynchronous upload with control capabilities.
+
+        :param bucket_name: Bucket name
+        :param object_key: Object key
+        :param upload_file: Local file path to upload
+        :param obs_client: ObsClient instance
+        """
+        self._bucket_name = bucket_name
+        self._object_key = object_key
+        self._upload_file = upload_file
+        self._obs_client = obs_client
+
+        # Upload state
+        self._upload_id = None
+        self._checkpoint_file = None
+        self._status = UploadTaskStatus.PENDING
+        self._enable_checkpoint = False
+
+        # Progress tracking
+        self._transferred_bytes = 0
+        self._total_bytes = 0
+
+        # Results
+        self._response = None
+        self._exception = None
+
+        # Thread management
+        self._thread = None
+        self._completion_callback = None
+
+        # Thread-safe state management
+        self._lock = threading.Lock()
+        self._pause_event = threading.Event()
+        self._cancel_event = threading.Event()
+        self._completion_event = threading.Event()
+
+        # Internal operation reference
+        self._upload_operation = None
+
+    def pause(self):
+        """
+        Pause the upload task.
+        The task can be resumed by calling resume().
+        Requires enable_checkpoint=True to save progress.
+
+        :return: True if pause was successful
+        :raises ValueError: If task cannot be paused (not started, no checkpoint, etc.)
+        """
+        with self._lock:
+            current_status = self._status
+
+        if current_status == UploadTaskStatus.PENDING:
+            raise ValueError('Cannot pause task that has not started')
+
+        if current_status == UploadTaskStatus.COMPLETED:
+            raise ValueError('Cannot pause completed task')
+
+        if current_status == UploadTaskStatus.CANCELLED:
+            raise ValueError('Cannot pause cancelled task')
+
+        if current_status == UploadTaskStatus.PAUSED:
+            return True  # Already paused
+
+        if not self._enable_checkpoint:
+            raise ValueError('Checkpoint must be enabled to pause upload')
+
+        self._pause_event.clear()
+
+        with self._lock:
+            self._status = UploadTaskStatus.PAUSED
+
+        self._obs_client.log_client.log('INFO',
+            'Upload task paused: %s/%s' % (self._bucket_name, self._object_key))
+        return True
+
+    def cancel(self):
+        """
+        Cancel the upload task completely.
+        This will abort the multipart upload and clean up checkpoint file.
+        Cannot be resumed after cancellation.
+
+        :return: True if cancellation was successful
+        :raises ValueError: If task cannot be cancelled (already completed, etc.)
+        """
+        with self._lock:
+            current_status = self._status
+
+        if current_status == UploadTaskStatus.PENDING:
+            raise ValueError('Cannot cancel task that has not started')
+
+        if current_status == UploadTaskStatus.COMPLETED:
+            raise ValueError('Cannot cancel completed task')
+
+        if current_status == UploadTaskStatus.CANCELLED:
+            return True  # Already cancelled
+
+        self._cancel_event.set()
+
+        # Signal upload operation to abort
+        if self._upload_operation:
+            try:
+                if hasattr(self._upload_operation, '_do_abort'):
+                    self._upload_operation._do_abort('User canceled upload')
+            except Exception as e:
+                self._obs_client.log_client.log('ERROR',
+                    'Error signaling upload abort: %s' % e)
+
+        # Abort multipart upload on server
+        if self._upload_id:
+            try:
+                self._obs_client.abortMultipartUpload(
+                    self._bucket_name,
+                    self._object_key,
+                    self._upload_id
+                )
+                self._obs_client.log_client.log('INFO',
+                    'Aborted multipart upload: %s' % self._upload_id)
+            except Exception as e:
+                self._obs_client.log_client.log('ERROR',
+                    'Error aborting multipart upload: %s' % e)
+
+        # Cleanup checkpoint file
+        if self._checkpoint_file:
+            try:
+                import os
+                if os.path.exists(self._checkpoint_file):
+                    os.remove(self._checkpoint_file)
+                    self._obs_client.log_client.log('INFO',
+                        'Removed checkpoint file: %s' % self._checkpoint_file)
+            except Exception as e:
+                self._obs_client.log_client.log('ERROR',
+                    'Error removing checkpoint file: %s' % e)
+
+        with self._lock:
+            self._status = UploadTaskStatus.CANCELLED
+
+        self._obs_client.log_client.log('INFO',
+            'Upload task cancelled: %s/%s' % (self._bucket_name, self._object_key))
+        return True
+
+    def resume(self):
+        """
+        Resume a paused upload task.
+        Only works if the task was paused and checkpoint is enabled.
+
+        :return: self for method chaining
+        :raises ValueError: If task is not paused
+        """
+        with self._lock:
+            current_status = self._status
+
+        if current_status != UploadTaskStatus.PAUSED:
+            raise ValueError('Can only resume a paused task')
+
+        self._pause_event.set()
+
+        with self._lock:
+            self._status = UploadTaskStatus.IN_PROGRESS
+
+        self._obs_client.log_client.log('INFO',
+            'Upload task resumed: %s/%s' % (self._bucket_name, self._object_key))
+        return self
+
+    def wait_for_completion(self, timeout=None):
+        """
+        Wait for the upload task to complete.
+
+        :param timeout: Maximum time to wait in seconds (None = wait forever)
+        :return: CompleteMultipartUploadResponse if successful
+        :raises TimeoutError: If timeout expires before completion
+        :raises Exception: If upload failed or was cancelled
+        """
+        if not self._completion_event.wait(timeout=timeout):
+            raise TimeoutError('Upload did not complete within the specified timeout')
+
+        with self._lock:
+            if self._status == UploadTaskStatus.COMPLETED:
+                return self._response
+            elif self._status == UploadTaskStatus.FAILED:
+                if self._exception:
+                    raise self._exception
+                raise Exception('Upload failed')
+            elif self._status == UploadTaskStatus.CANCELLED:
+                raise Exception('Upload was cancelled')
+            else:
+                raise Exception('Upload in unexpected state: %s' % self._status)
+
+    def set_completion_callback(self, callback):
+        """
+        Set a callback to be called when the upload completes.
+
+        :param callback: Function that takes UploadTask as parameter
+        """
+        self._completion_callback = callback
+
+    def get_progress_percentage(self):
+        """
+        Get the upload progress as a percentage.
+
+        :return: Progress percentage (0.0 to 100.0)
+        """
+        with self._lock:
+            if self._total_bytes > 0:
+                return (self._transferred_bytes / self._total_bytes) * 100.0
+            return 0.0
+
+    # Properties
+    @property
+    def bucket_name(self):
+        """Get the bucket name."""
+        return self._bucket_name
+
+    @property
+    def object_key(self):
+        """Get the object key."""
+        return self._object_key
+
+    @property
+    def upload_file(self):
+        """Get the upload file path."""
+        return self._upload_file
+
+    @property
+    def upload_id(self):
+        """Get the multipart upload ID."""
+        return self._upload_id
+
+    @property
+    def status(self):
+        """Get the current task status."""
+        with self._lock:
+            return self._status
+
+    @property
+    def transferred_bytes(self):
+        """Get the number of bytes transferred."""
+        with self._lock:
+            return self._transferred_bytes
+
+    @property
+    def total_bytes(self):
+        """Get the total size of the file in bytes."""
+        with self._lock:
+            return self._total_bytes
+
+    @property
+    def response(self):
+        """Get the upload response."""
+        with self._lock:
+            return self._response
+
+    @property
+    def exception(self):
+        """Get the exception that caused the upload to fail."""
+        with self._lock:
+            return self._exception
+
+    @property
+    def is_pending(self):
+        """Check if the upload is pending (not started)."""
+        with self._lock:
+            return self._status == UploadTaskStatus.PENDING
+
+    @property
+    def is_in_progress(self):
+        """Check if the upload is currently in progress."""
+        with self._lock:
+            return self._status == UploadTaskStatus.IN_PROGRESS
+
+    @property
+    def is_paused(self):
+        """Check if the upload is currently paused."""
+        with self._lock:
+            return self._status == UploadTaskStatus.PAUSED
+
+    @property
+    def is_completed(self):
+        """Check if the upload has completed successfully."""
+        with self._lock:
+            return self._status == UploadTaskStatus.COMPLETED
+
+    @property
+    def is_cancelled(self):
+        """Check if the upload has been cancelled."""
+        with self._lock:
+            return self._status == UploadTaskStatus.CANCELLED
+
+    @property
+    def is_failed(self):
+        """Check if the upload has failed."""
+        with self._lock:
+            return self._status == UploadTaskStatus.FAILED
+
+

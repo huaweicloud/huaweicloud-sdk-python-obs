@@ -13,15 +13,21 @@
 # specific language governing permissions and limitations under the License.
 
 from obs.loadtoken import NoneTokenException
-
+from obs.ilog import WARNING
 
 def get_token(security_providers, name='OBS_DEFAULT'):
     if name == 'OBS_DEFAULT':
         for method in security_providers:
             try:
-                value = method.search()
-            except Exception:
-                print("Method search Error")
+                value = _call_provider_method(method)
+            except Exception as e:
+                log_msg = "Provider '{}' search error: {}".format(
+                    getattr(method, '__name__', 'Unknown'), str(e))
+                try:
+                    from obs.loadtoken import log_client
+                    log_client.log(WARNING, log_msg)
+                except Exception:
+                    print(log_msg)
             else:
                 return {'accessKey': value.get('accessKey'),
                         'secretKey': value.get('secretKey'),
@@ -31,7 +37,7 @@ def get_token(security_providers, name='OBS_DEFAULT'):
     for method in security_providers:
         if getattr(method, '__name__') == name:
             try:
-                value = method.search()
+                value = _call_provider_method(method)
             except Exception:
                 raise
             else:
@@ -39,3 +45,19 @@ def get_token(security_providers, name='OBS_DEFAULT'):
                         'secretKey': value.get('secretKey'),
                         'securityToken': value.get('securityToken')}
     raise ValueError('No such method: ' + name)
+
+
+def _call_provider_method(method):
+    """
+    调用凭证提供者的方法获取凭证
+
+    优先调用实例方法get_credentials()，如果没有则调用静态方法search()
+
+    :param method: 凭证提供者实例或类
+    :return: 包含accessKey、secretKey、securityToken的字典
+    """
+    # 如果是实例且有get_credentials方法，优先调用
+    if hasattr(method, 'get_credentials') and callable(getattr(method, 'get_credentials')):
+        return method.get_credentials()
+    # 否则调用静态方法search()
+    return method.search()

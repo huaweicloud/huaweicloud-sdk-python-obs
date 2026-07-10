@@ -19,16 +19,26 @@ from obs.model import CompletePart, Permission, StorageClass, EventType, Restore
 from obs.model import ExtensionGrant, Owner, ACL, Condition, DateTime, SseCHeader, SseKmsHeader, CopyObjectHeader
 from obs.model import SetObjectMetadataHeader,RenameFileHeader, CorsRule, CreateBucketHeader, ErrorDocument, IndexDocument, Expiration
 from obs.model import NoncurrentVersionExpiration, GetObjectHeader, HeadPermission, Lifecycle, Notification
-from obs.model import TopicConfiguration, FunctionGraphConfiguration, FilterRule, Replication, ReplicationRule
+from obs.model import TopicConfiguration, FunctionGraphConfiguration, FilterRule, DisPolicy, DisPolicyRule, Replication, ReplicationRule
 from obs.model import Options, PutObjectHeader, AppendObjectHeader, AppendObjectContent, RedirectAllRequestTo
 from obs.model import Redirect, RoutingRule, Tag, TagInfo, Transition, NoncurrentVersionTransition, Rule, Versions, AbortIncompleteMultipartUpload
 from obs.model import Object, WebsiteConfiguration, Logging, CompleteMultipartUploadRequest, DeleteObjectsRequest,CustomDomainConfiguration
 from obs.model import ListMultipartUploadsRequest, GetObjectRequest, UploadFileHeader, Payer, ClientVerify
 from obs.model import ExtensionHeader, FetchStatus, BucketAliasModel, ListBucketAliasModel
+from obs.model import TagInfoModel, SetObjectTaggingResponse, GetObjectTaggingResponse, DeleteObjectTaggingResponse
+from obs.model import (InventoryConfiguration, InventoryFormat, InventoryFrequency, InventoryIncludedObjectVersions,
+                       InventoryOptionalFields, InventoryFilter, InventoryDestination, ListBucketInventoryResponse)
+from obs.model import ObsCompressPolicyRule, GetObsCompressPolicyResponse
+from obs.model import ObjectLockRule, ObjectLockConfiguration, DirectColdAccessConfiguration, GetBucketDirectColdAccessResponse
 from obs.workflow import WorkflowClient
 from obs.crypto_client import CryptoObsClient
 from obs.obs_cipher_suite import CTRCipherGenerator
 from obs.obs_cipher_suite import CtrRSACipherGenerator
+from obs.model import UploadTaskStatus, UploadTask
+from obs.loadtoken import IdTokenCredentialsProvider
+from obs.loadtoken import OIDC
+from obs.loadtoken import IdTokenAuthException, IdTokenExpiredException, IdTokenInvalidException
+from obs.loadtoken import FederationTokenException, TemporaryAKSKException, IdTokenParamsException
 
 __all__ = [
     'LogConf',
@@ -65,6 +75,8 @@ __all__ = [
     'TopicConfiguration',
     'FunctionGraphConfiguration',
     'FilterRule',
+    'DisPolicy',
+    'DisPolicyRule',
     'Replication',
     'ReplicationRule',
     'Options',
@@ -98,5 +110,33 @@ __all__ = [
     'BucketAliasModel',
     'ListBucketAliasModel',
     'CustomDomainConfiguration',
-    'ClientVerify'
+    'ClientVerify',
+    'TagInfoModel',
+    'SetObjectTaggingResponse',
+    'GetObjectTaggingResponse',
+    'DeleteObjectTaggingResponse',
+    'InventoryConfiguration',
+    'InventoryFormat',
+    'InventoryFrequency',
+    'InventoryIncludedObjectVersions',
+    'InventoryOptionalFields',
+    'InventoryFilter',
+    'InventoryDestination',
+    'ListBucketInventoryResponse',
+    'ObsCompressPolicyRule',
+    'GetObsCompressPolicyResponse',
+    'ObjectLockRule',
+    'ObjectLockConfiguration',
+    'DirectColdAccessConfiguration',
+    'GetBucketDirectColdAccessResponse',
+    'UploadTaskStatus',
+    'UploadTask',
+    'IdTokenCredentialsProvider',
+    'OIDC',
+    'IdTokenAuthException',
+    'IdTokenExpiredException',
+    'IdTokenInvalidException',
+    'FederationTokenException',
+    'TemporaryAKSKException',
+    'IdTokenParamsException'
 ]

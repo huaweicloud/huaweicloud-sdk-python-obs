@@ -37,7 +37,7 @@ from obs.model import ACL, AppendObjectContent, AppendObjectHeader, BaseModel, C
     ObjectStream, PutObjectHeader, ResponseWrapper, SetObjectMetadataHeader, RenameFileHeader, Versions, _FetchJob, \
     ExtensionHeader, \
     BucketAliasModel, Replication, ReplicationRule
-from obs.transfer import _resume_download, _resume_upload
+from obs.transfer import _resume_download, _resume_upload, _resume_upload_async
 from obs.posix_transfer import _resume_delete
 
 if const.IS_PYTHON2:
@@ -303,7 +303,7 @@ class _BasicClient(object):
 
     def _parse_security_providers(self, security_providers):
         if security_providers is None:
-            self.security_providers = [loadtoken.ENV, loadtoken.ECS]
+            self.security_providers = [loadtoken.ENV, loadtoken.ECS, loadtoken.OIDC]
         else:
             self.security_providers = security_providers
         try:
@@ -344,6 +344,7 @@ class _BasicClient(object):
 
     def _get_token(self):
         from obs.searchmethod import get_token
+        from obs.loadtoken import IdTokenAuthException
         try:
             if self.security_provider_policy is not None:
                 if self.securityProvider.access_key_id != '' and self.securityProvider.secret_access_key != '':
@@ -353,6 +354,8 @@ class _BasicClient(object):
                 securityProvider = _SecurityProvider(value_dict.get('accessKey'), value_dict.get('secretKey'),
                                                      value_dict.get('securityToken'))
                 return securityProvider
+        except IdTokenAuthException:
+            raise
         except Exception:
             self.log_client.log(WARNING, traceback.format_exc())
         return self.securityProvider
@@ -837,7 +840,8 @@ class _BasicClient(object):
             if isAttachCrc64:
                 obs_crc64 = headers.get('x-amz-checksum-crc64ecma') or headers.get('x-obs-checksum-crc64ecma')
                 if obs_crc64:
-                    result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier, obs_crc64=obs_crc64)
+                    result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier,
+                                                     obs_crc64=obs_crc64)
                     self.log_client.log(DEBUG, 'CRC64 from the server is {0}'.format(obs_crc64))
                 else:
                     result_wrapper = ResponseWrapper(conn, response, self.connHolder, content_length, notifier)
@@ -1072,7 +1076,43 @@ class _CreatePostSignatureResponse(BaseModel):
 class ObsClient(_BasicClient):
 
     def __init__(self, *args, **kwargs):
+        # 提取id_token_credentials_provider参数
+        id_token_credentials_provider = kwargs.pop('id_token_credentials_provider', None)
         super(ObsClient, self).__init__(*args, **kwargs)
+
+        # 处理IdToken凭证提供者
+        self._id_token_provider = None
+        if id_token_credentials_provider is not None:
+            from obs.loadtoken import IdTokenCredentialsProvider
+            if isinstance(id_token_credentials_provider, const.BASESTRING):
+                # 配置文件路径
+                self._id_token_provider = IdTokenCredentialsProvider(
+                    config_file=id_token_credentials_provider
+                )
+            elif isinstance(id_token_credentials_provider, dict):
+                # 字典配置
+                self._id_token_provider = IdTokenCredentialsProvider(
+                    **id_token_credentials_provider
+                )
+            elif isinstance(id_token_credentials_provider, IdTokenCredentialsProvider):
+                # 直接传入实例
+                self._id_token_provider = id_token_credentials_provider
+
+            # 如果使用IdToken provider，设置security_providers并同步代理配置
+            if self._id_token_provider:
+                self._id_token_provider.set_proxy(
+                    self.proxy_host, self.proxy_port,
+                    self.proxy_username, self.proxy_password
+                )
+                self.security_providers = [self._id_token_provider]
+                self.security_provider_policy = 'IdTokenCredentialsProvider'
+
+        # 为默认链中的 OIDC 传播代理配置
+        if self._id_token_provider is None and self.proxy_host is not None:
+            loadtoken.OIDC.set_proxy(
+                self.proxy_host, self.proxy_port,
+                self.proxy_username, self.proxy_password,
+            )
 
     def _prepareParameterForSignedUrl(self, specialParam, expires, headers, queryParams):
 
@@ -1549,23 +1589,176 @@ class ObsClient(_BasicClient):
                                       extensionHeaders=extensionHeaders)
 
     @funcCache
-    def putBucketPublicAccessBlock(self, bucketName, blockPublicAcls=False, ignorePublicAcls=False, blockPublicPolicy=False, restrictPublicBuckets=False, extensionHeaders=None):
+    def putBucketPublicAccessBlock(self, bucketName, blockPublicAcls=False, ignorePublicAcls=False,
+                                   blockPublicPolicy=False, restrictPublicBuckets=False, extensionHeaders=None):
         return self._make_put_request(bucketName, extensionHeaders=extensionHeaders,
-                                  **self.convertor.trans_set_bucket_bpa(blockPublicAcls, ignorePublicAcls, blockPublicPolicy, restrictPublicBuckets))
+                                      **self.convertor.trans_set_bucket_bpa(blockPublicAcls, ignorePublicAcls,
+                                                                            blockPublicPolicy, restrictPublicBuckets))
 
     @funcCache
     def getBucketPublicAccessBlock(self, bucketName, extensionHeaders=None):
-        return self._make_get_request(bucketName, pathArgs={'publicAccessBlock': None}, methodName='getBucketPublicAccessBlock',
+        return self._make_get_request(bucketName, pathArgs={'publicAccessBlock': None},
+                                      methodName='getBucketPublicAccessBlock',
                                       extensionHeaders=extensionHeaders)
 
     @funcCache
     def deleteBucketPublicAccessBlock(self, bucketName, extensionHeaders=None):
-        return self._make_delete_request(bucketName, pathArgs={'publicAccessBlock': None}, extensionHeaders=extensionHeaders)
+        return self._make_delete_request(bucketName, pathArgs={'publicAccessBlock': None},
+                                         extensionHeaders=extensionHeaders)
 
+    # Bucket inventory related methods
+    @funcCache
+    def putBucketInventory(self, bucketName, inventoryId, inventoryConfiguration, extensionHeaders=None):
+        """
+        Put/Update bucket inventory configuration
+
+        :param bucketName: Bucket name
+        :param inventoryId: Inventory configuration ID
+        :param inventoryConfiguration: InventoryConfiguration object or dict
+        :param extensionHeaders: Extension headers (optional)
+        :return: PutBucketInventoryResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(inventoryId, 'inventoryId is empty')
+        self._assert_not_null(inventoryConfiguration, 'inventoryConfiguration is empty')
+
+        # Ensure inventoryId is set in the configuration
+        if isinstance(inventoryConfiguration, dict):
+            inventoryConfiguration['inventoryId'] = inventoryId
+        elif hasattr(inventoryConfiguration, 'inventoryId'):
+            inventoryConfiguration.inventoryId = inventoryId
+
+        entity = self.convertor.trans_put_bucket_inventory(inventoryConfiguration)
+
+        return self._make_put_request(
+            bucketName,
+            extensionHeaders=extensionHeaders,
+            **entity
+        )
+
+    @funcCache
+    def getBucketInventory(self, bucketName, inventoryId, extensionHeaders=None):
+        """
+        Get bucket inventory configuration
+
+        :param bucketName: Bucket name
+        :param inventoryId: Inventory configuration ID
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetBucketInventoryResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(inventoryId, 'inventoryId is empty')
+
+        return self._make_get_request(
+            bucketName,
+            pathArgs={'inventory': None, 'id': inventoryId},
+            methodName='getBucketInventory',
+            extensionHeaders=extensionHeaders
+        )
+
+    @funcCache
+    def deleteBucketInventory(self, bucketName, inventoryId, extensionHeaders=None):
+        """
+        Delete bucket inventory configuration
+
+        :param bucketName: Bucket name
+        :param inventoryId: Inventory configuration ID
+        :param extensionHeaders: Extension headers (optional)
+        :return: DeleteBucketInventoryResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(inventoryId, 'inventoryId is empty')
+
+        return self._make_delete_request(
+            bucketName,
+            pathArgs={'inventory': None, 'id': inventoryId},
+            extensionHeaders=extensionHeaders
+        )
+
+    @funcCache
+    def listBucketInventory(self, bucketName, extensionHeaders=None):
+        """
+        List all bucket inventory configurations
+
+        :param bucketName: Bucket name
+        :param extensionHeaders: Extension headers (optional)
+        :return: ListBucketInventoryResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+
+        return self._make_get_request(
+            bucketName,
+            pathArgs={'inventory': None},
+            methodName='listBucketInventory',
+            extensionHeaders=extensionHeaders
+        )
+
+    # end bucket inventory related methods
+
+    # OBS Compress Policy (Online Decompression) related methods
+    @funcCache
+    def setObsCompressPolicy(self, bucketName, rules, extensionHeaders=None):
+        """
+        Set/Update bucket online decompression (obscompress) policy
+
+        :param bucketName: Bucket name
+        :param rules: Rules as list of ObsCompressPolicyRule objects or dicts
+            - Rule object: ObsCompressPolicyRule(id='rule-001', project='project-id')
+            - Dict format: {'id': 'rule-001', 'project': 'project-id'}
+        :param extensionHeaders: Extension headers (optional)
+        :return: SetObsCompressPolicyResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(rules, 'rules is empty')
+
+        convertor_result = self.convertor.trans_put_obs_compress_policy(rules=rules)
+        return self._make_put_request(
+            bucketName,
+            extensionHeaders=extensionHeaders,
+            **convertor_result
+        )
+
+    @funcCache
+    def getObsCompressPolicy(self, bucketName, extensionHeaders=None):
+        """
+        Get bucket online decompression (obscompress) policy
+
+        :param bucketName: Bucket name
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetObsCompressPolicyResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+
+        return self._make_get_request(
+            bucketName,
+            pathArgs={'obscompresspolicy': None},
+            methodName='getObsCompressPolicy',
+            extensionHeaders=extensionHeaders
+        )
+
+    @funcCache
+    def deleteObsCompressPolicy(self, bucketName, extensionHeaders=None):
+        """
+        Delete bucket online decompression (obscompress) policy
+
+        :param bucketName: Bucket name
+        :param extensionHeaders: Extension headers (optional)
+        :return: DeleteObsCompressPolicyResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+
+        return self._make_delete_request(
+            bucketName,
+            pathArgs={'obscompresspolicy': None},
+            extensionHeaders=extensionHeaders
+        )
+
+    # end obs compress policy related methods
 
     @funcCache
     def getBucketPolicyPublicStatus(self, bucketName, extensionHeaders=None):
-        return self._make_get_request(bucketName, pathArgs={'policyStatus': None}, methodName='getBucketPolicyPublicStatus',
+        return self._make_get_request(bucketName, pathArgs={'policyStatus': None},
+                                      methodName='getBucketPolicyPublicStatus',
                                       extensionHeaders=extensionHeaders)
 
     def getBucketPublicStatus(self, bucketName, extensionHeaders=None):
@@ -1593,6 +1786,59 @@ class ObsClient(_BasicClient):
                                        pathArgs={'rename': None, 'name': util.to_string(newObjectKey)},
                                        headers=headers,
                                        extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def modifyFile(self, bucketName, objectKey, position, content=None, headers=None, progressCallback=None,
+                   autoClose=True, extensionHeaders=None):
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+        self._assert_not_null(util.to_int(position), 'position is empty')
+        readable = False
+        chunkedMode = False
+        notifier = None
+        if headers is None:
+            headers = {}
+        try:
+            entity = content
+            if entity is None:
+                entity = ''
+            elif hasattr(entity, 'read') and callable(entity.read):
+                readable = True
+                if headers.get('contentLength') is None:
+                    chunkedMode = True
+                    notifier = progress.ProgressNotifier(progressCallback,
+                                                         -1) if progressCallback is not None else progress.NONE_NOTIFIER
+                    entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose,
+                                                      use_http_conns=self.use_http_conns)
+                else:
+                    totalCount = util.to_long(headers.get('contentLength'))
+                    notifier = progress.ProgressNotifier(progressCallback,
+                                                         totalCount) if totalCount > 0 and progressCallback \
+                                                                        is not None else progress.NONE_NOTIFIER
+                    entity = util.get_entity_for_send_with_total_count(read_able=entity, totalCount=totalCount,
+                                                                       chunk_size=self.chunk_size, notifier=notifier,
+                                                                       auto_close=autoClose,
+                                                                       use_http_conns=self.use_http_conns)
+
+                notifier.start()
+            ret = self._make_put_request(bucketName, objectKey, entity=entity, readable=readable,
+                                         chunkedMode=chunkedMode, headers=headers,
+                                         pathArgs={'modify': None, 'position': util.to_int(position)},
+                                         methodName='putContent', extensionHeaders=extensionHeaders)
+
+        finally:
+            if notifier is not None:
+                notifier.end()
+        self._generate_object_url(ret, bucketName, objectKey)
+        return ret
+    @funcCache
+    def truncateFile(self, bucketName, objectKey, length, extensionHeaders=None):
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+        self._assert_not_null(util.to_int(length), 'length is empty')
+        return self._make_put_request(bucketName, objectKey,
+                                      pathArgs={'truncate': None, 'length': util.to_int(length)},
+                                      extensionHeaders=extensionHeaders)
 
     @funcCache
     def getBucketNotification(self, bucketName, extensionHeaders=None):
@@ -1660,7 +1906,8 @@ class ObsClient(_BasicClient):
 
     @funcCache
     def getObject(self, bucketName, objectKey, downloadPath=None, getObjectRequest=None,
-                  headers=None, loadStreamInMemory=False, progressCallback=None, isAttachCrc64=False, extensionHeaders=None, notifier=None):
+                  headers=None, loadStreamInMemory=False, progressCallback=None, isAttachCrc64=False,
+                  extensionHeaders=None, notifier=None):
         if headers and isAttachCrc64 and headers.range:
             raise Exception('Range download does not support CRC64 verification.')
         if getObjectRequest is None:
@@ -1740,8 +1987,10 @@ class ObsClient(_BasicClient):
                 notifier = progress.ProgressNotifier(progressCallback,
                                                      totalCount) if totalCount > 0 and progressCallback is not None \
                     else progress.NONE_NOTIFIER
-                entity = util.get_entity_for_send_with_total_count(read_able=entity, totalCount=totalCount, chunk_size=self.chunk_size, notifier=notifier,
-                                                                   auto_close=autoClose, use_http_conns=self.use_http_conns)
+                entity = util.get_entity_for_send_with_total_count(read_able=entity, totalCount=totalCount,
+                                                                   chunk_size=self.chunk_size, notifier=notifier,
+                                                                   auto_close=autoClose,
+                                                                   use_http_conns=self.use_http_conns)
 
         return entity, readable, chunkedMode, notifier
 
@@ -1776,7 +2025,8 @@ class ObsClient(_BasicClient):
                                                                                                 autoClose, readable,
                                                                                                 chunkedMode, notifier)
 
-            headers = self.convertor.trans_put_object(metadata=metadata, headers=headers, content=content.get('content'))
+            headers = self.convertor.trans_put_object(metadata=metadata, headers=headers,
+                                                      content=content.get('content'))
 
         try:
             if notifier is not None:
@@ -1818,7 +2068,8 @@ class ObsClient(_BasicClient):
                     chunkedMode = True
                     notifier = progress.ProgressNotifier(progressCallback,
                                                          -1) if progressCallback is not None else progress.NONE_NOTIFIER
-                    entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose, use_http_conns=self.use_http_conns)
+                    entity = util.get_readable_entity(entity, self.chunk_size, notifier, autoClose,
+                                                      use_http_conns=self.use_http_conns)
                 else:
                     totalCount = util.to_long(headers.get('contentLength'))
                     notifier = progress.ProgressNotifier(progressCallback,
@@ -1826,7 +2077,8 @@ class ObsClient(_BasicClient):
                                                                         is not None else progress.NONE_NOTIFIER
                     entity = util.get_entity_for_send_with_total_count(read_able=entity, totalCount=totalCount,
                                                                        chunk_size=self.chunk_size, notifier=notifier,
-                                                                       auto_close=autoClose, use_http_conns=self.use_http_conns)
+                                                                       auto_close=autoClose,
+                                                                       use_http_conns=self.use_http_conns)
 
                 notifier.start()
             ret = self._make_put_request(bucketName, objectKey, headers=_headers, entity=entity,
@@ -1942,7 +2194,8 @@ class ObsClient(_BasicClient):
         if crc64:
             self.convertor._put_key_value(headers, self.ha.crc64_header(), crc64)
         elif isAttachCrc64:
-            self.convertor._put_key_value(headers, self.ha.crc64_header(), util.calculate_file_crc64(file_path, offset=offset, totalCount=partSize))
+            self.convertor._put_key_value(headers, self.ha.crc64_header(),
+                                          util.calculate_file_crc64(file_path, offset=offset, totalCount=partSize))
         if sseHeader is not None:
             self.convertor._set_sse_header(sseHeader, headers, True)
 
@@ -2014,8 +2267,11 @@ class ObsClient(_BasicClient):
 
             readable, notifier = self._prepare_upload_part_notifier(checked_file_part_info["partSize"],
                                                                     progressCallback, readable)
-            entity = util.get_entity_for_send_with_total_count(checked_file_part_info["file_path"], checked_file_part_info["partSize"], checked_file_part_info["offset"],
-                                                               self.chunk_size, notifier, use_http_conns=self.use_http_conns)
+            entity = util.get_entity_for_send_with_total_count(checked_file_part_info["file_path"],
+                                                               checked_file_part_info["partSize"],
+                                                               checked_file_part_info["offset"],
+                                                               self.chunk_size, notifier,
+                                                               use_http_conns=self.use_http_conns)
         else:
             headers = {}
             if content is not None and hasattr(content, 'read') and callable(content.read):
@@ -2034,7 +2290,8 @@ class ObsClient(_BasicClient):
                     notifier = self._get_notifier_with_size(progressCallback, totalCount)
                     entity = util.get_entity_for_send_with_total_count(read_able=content, totalCount=totalCount,
                                                                        chunk_size=self.chunk_size, notifier=notifier,
-                                                                       auto_close=autoClose, use_http_conns=self.use_http_conns)
+                                                                       auto_close=autoClose,
+                                                                       use_http_conns=self.use_http_conns)
             else:
                 entity = content
                 if entity is None:
@@ -2083,8 +2340,10 @@ class ObsClient(_BasicClient):
 
             if notifier is not None and not isinstance(notifier, progress.NoneNotifier):
                 readable = True
-            entity = util.get_entity_for_send_with_total_count(checked_file_part_info["file_path"], partSize, checked_file_part_info["offset"],
-                                                               self.chunk_size, notifier, use_http_conns=self.use_http_conns)
+            entity = util.get_entity_for_send_with_total_count(checked_file_part_info["file_path"], partSize,
+                                                               checked_file_part_info["offset"],
+                                                               self.chunk_size, notifier,
+                                                               use_http_conns=self.use_http_conns)
         else:
             if content is not None and hasattr(content, 'read') and callable(content.read):
                 readable = True
@@ -2092,10 +2351,12 @@ class ObsClient(_BasicClient):
 
                 if partSize is None:
                     chunkedMode = True
-                    entity = util.get_readable_entity(content, self.chunk_size, notifier, use_http_conns=self.use_http_conns)
+                    entity = util.get_readable_entity(content, self.chunk_size, notifier,
+                                                      use_http_conns=self.use_http_conns)
                 else:
                     headers[const.CONTENT_LENGTH_HEADER] = util.to_string(partSize)
-                    entity = util.get_entity_for_send_with_total_count(read_able=content, totalCount=util.to_long(partSize),
+                    entity = util.get_entity_for_send_with_total_count(read_able=content,
+                                                                       totalCount=util.to_long(partSize),
                                                                        chunk_size=self.chunk_size, notifier=notifier,
                                                                        use_http_conns=self.use_http_conns)
             else:
@@ -2150,6 +2411,82 @@ class ObsClient(_BasicClient):
 
         return self._make_get_request(bucketName, objectKey, pathArgs=pathArgs, methodName='getObjectAcl',
                                       extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def setObjectTagging(self, bucketName, objectKey, tags, versionId=None, extensionHeaders=None):
+        """
+        Set object tagging
+
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param tags: Tags as list, dict, or list of Tag objects
+            - List format: [{'key': 'k1', 'value': 'v1'}, {'key': 'k2', 'value': 'v2'}]
+            - Dict format: {'k1': 'v1', 'k2': 'v2'}
+            - Tag objects: [Tag('k1', 'v1'), Tag('k2', 'v2')]
+        :param versionId: Object version ID (optional)
+        :param extensionHeaders: Extension headers (optional)
+        :return: SetObjectTaggingResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+        self._assert_not_null(tags, 'tags is empty')
+
+        objectKey = util.safe_encode(objectKey)
+        if objectKey is None:
+            objectKey = ''
+
+        return self._make_put_request(bucketName, objectKey, extensionHeaders=extensionHeaders,
+                                      **self.convertor.trans_set_object_tagging(tags=tags, versionId=versionId))
+
+    @funcCache
+    def getObjectTagging(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
+        """
+        Get object tagging
+
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param versionId: Object version ID (optional)
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetObjectTaggingResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+
+        objectKey = util.safe_encode(objectKey)
+        if objectKey is None:
+            objectKey = ''
+
+        pathArgs = {const.TAGGING_PARAM: None}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+
+        return self._make_get_request(bucketName, objectKey, pathArgs=pathArgs, methodName='getObjectTagging',
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def deleteObjectTagging(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
+        """
+        Delete object tagging
+
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param versionId: Object version ID (optional)
+        :param extensionHeaders: Extension headers (optional)
+        :return: DeleteObjectTaggingResponse
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+
+        objectKey = util.safe_encode(objectKey)
+        if objectKey is None:
+            objectKey = ''
+
+        pathArgs = {const.TAGGING_PARAM: None}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+
+        return self._make_delete_request(bucketName, objectKey, pathArgs=pathArgs, methodName='deleteObjectTagging',
+                                         extensionHeaders=extensionHeaders)
 
     @funcCache
     def deleteObject(self, bucketName, objectKey, versionId=None, extensionHeaders=None):
@@ -2222,7 +2559,8 @@ class ObsClient(_BasicClient):
         pathArgs = {'uploadId': uploadId}
         if encoding_type is not None:
             pathArgs["encoding-type"] = encoding_type
-        entity, headers = self.convertor.trans_complete_multipart_upload_request(completeMultipartUploadRequest, isAttachCrc64)
+        entity, headers = self.convertor.trans_complete_multipart_upload_request(completeMultipartUploadRequest,
+                                                                                 isAttachCrc64)
         ret = self._make_post_request(bucketName, objectKey,
                                       pathArgs=pathArgs, headers=headers,
                                       entity=entity, methodName='completeMultipartUpload',
@@ -2304,6 +2642,72 @@ class ObsClient(_BasicClient):
     def getBucketRequestPayment(self, bucketName, extensionHeaders=None):
         return self._make_get_request(bucketName, pathArgs={'requestPayment': None},
                                       methodName='getBucketRequestPayment', extensionHeaders=extensionHeaders)
+
+    # WORM Object Lock Policy related methods
+    @funcCache
+    def setBucketObjectLock(self, bucketName, objectLockConfiguration=None, extensionHeaders=None):
+        """
+        Set/Update bucket Object Lock (WORM) policy
+        :param bucketName: Bucket name
+        :param objectLockConfiguration: ObjectLockRule object
+            - Rule object: ObjectLockRule(days=30)
+            - Dict format: {"days": 30}
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetResult
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+
+        convertor_result = self.convertor.trans_put_bucket_object_lock(config=objectLockConfiguration)
+        return self._make_put_request(
+            bucketName,
+            extensionHeaders=extensionHeaders,
+            **convertor_result)
+
+    @funcCache
+    def getBucketObjectLock(self, bucketName, extensionHeaders=None):
+        """
+        Get bucket Object Lock (WORM) policy
+        :param bucketName: Bucket name
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetBucketObjectLockResponse
+        """
+
+        self._assert_not_null(bucketName, 'bucketName is empty')
+
+        return self._make_get_request(
+            bucketName,
+            pathArgs={'object-lock': None},
+            methodName='getBucketObjectLock',
+            extensionHeaders=extensionHeaders
+        )
+
+    @funcCache
+    def putObjectRetention(self, bucketName, objectKey, mode, retainUntilDate, versionId=None, extensionHeaders=None):
+        """
+        Set/Update bucket Object Lock (WORM) policy
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param versionId: Object versionId
+        :param mode: retention mode
+        :param retainUntilDate: retainUntilDate
+        :param extensionHeaders: Extension headers (optional)
+        :return: GetResult
+        """
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+        self._assert_not_null(mode, 'mode is empty')
+        self._assert_not_null(retainUntilDate, 'retainUntilDate is empty')
+        pathArgs = {'retention': None}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+
+        convertor_result = self.convertor.trans_put_object_retention(mode, retainUntilDate)
+        return self._make_put_request(
+            bucketName,
+            objectKey,
+            pathArgs,
+            extensionHeaders=extensionHeaders,
+            entity=convertor_result)
 
     # begin virtual bucket related
     # begin virtual bucket related
@@ -2574,7 +2978,53 @@ class ObsClient(_BasicClient):
 
         return _resume_upload(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint, checkpointFile,
                               checkSum, metadata, progressCallback, self, headers,
-                              extensionHeaders=extensionHeaders, encoding_type=encoding_type, isAttachCrc64=isAttachCrc64)
+                              extensionHeaders=extensionHeaders, encoding_type=encoding_type,
+                              isAttachCrc64=isAttachCrc64)
+
+    def uploadFileAsync(self, bucketName, objectKey, uploadFile, partSize=9 * 1024 * 1024,
+                        taskNum=1, enableCheckpoint=False, checkpointFile=None,
+                        checkSum=False, metadata=None, progressCallback=None, headers=None,
+                        extensionHeaders=None, encoding_type=None, isAttachCrc64=False):
+        """
+        Upload file asynchronously with pause/resume/cancel capabilities.
+
+        This method returns an UploadTask object that allows control over the upload:
+        - task.pause(): Pause the upload (requires enableCheckpoint=True)
+        - task.cancel(): Cancel the upload
+        - task.resume(): Resume a paused upload
+        - task.wait_for_completion(): Wait for upload to finish
+
+        Usage example:
+            task = obsClient.uploadFileAsync('bucket', 'key', 'file', enableCheckpoint=True)
+            # Later: task.pause() to pause, task.cancel() to cancel
+            response = task.wait_for_completion()
+
+        :param bucketName: Bucket name
+        :param objectKey: Object key
+        :param uploadFile: Local file path to upload
+        :param partSize: Size of each part in bytes (default: 9MB)
+        :param taskNum: Number of concurrent upload threads (default: 1)
+        :param enableCheckpoint: Enable checkpoint for resumable upload (default: False)
+        :param checkpointFile: Path to checkpoint file (default: uploadFile + '.upload_record')
+        :param checkSum: Enable checksum verification (default: False)
+        :param metadata: Object metadata
+        :param progressCallback: Progress callback function
+        :param headers: Upload headers (UploadFileHeader)
+        :param extensionHeaders: Extension headers
+        :param encoding_type: Encoding type
+        :param isAttachCrc64: Attach CRC64 checksum (default: False)
+        :return: UploadTask instance for controlling the upload
+        """
+        self.log_client.log(INFO, 'enter async upload file...')
+        self._assert_not_null(bucketName, 'bucketName is empty')
+        self._assert_not_null(objectKey, 'objectKey is empty')
+        self._assert_not_null(uploadFile, 'uploadFile is empty')
+
+        return _resume_upload_async(bucketName, objectKey, uploadFile, partSize, taskNum, enableCheckpoint,
+                                    checkpointFile,
+                                    checkSum, metadata, progressCallback, self, headers,
+                                    extensionHeaders=extensionHeaders, encoding_type=encoding_type,
+                                    isAttachCrc64=isAttachCrc64)
 
     @funcCache
     def _downloadFileWithNotifier(self, bucketName, objectKey, downloadFile=None, partSize=5 * 1024 * 1024, taskNum=1,
@@ -2654,8 +3104,9 @@ class ObsClient(_BasicClient):
         self._assert_not_null(jobId, "jobId is empty")
         headers = {self.ha.oef_marker_header(): "yes"}
         key = const.FETCH_JOB_KEY + "/" + jobId
-        return self._make_get_request(bucketName, key, methodName="getBucketFetchJob", headers=headers,extensionHeaders=extensionHeaders)
-    
+        return self._make_get_request(bucketName, key, methodName="getBucketFetchJob", headers=headers,
+                                      extensionHeaders=extensionHeaders)
+
     @funcCache
     def getBucketCustomDomain(self, bucketName, certificateId=None, extensionHeaders=None):
         pathArgs = {"customdomain": None}
@@ -2665,6 +3116,7 @@ class ObsClient(_BasicClient):
             pathArgs = {"certificateId": certificateId}
         return self._make_get_request(bucketName, pathArgs=pathArgs, methodName="getBucketCustomDomain",
                                       extensionHeaders=extensionHeaders)
+
     @funcCache
     def setBucketCustomDomain(self, bucketName, domainName, certificateInfo=None, extensionHeaders=None):
         self._assert_not_null(domainName, "Domain Name is empty")
@@ -2682,15 +3134,51 @@ class ObsClient(_BasicClient):
             size = convertor_result["size"]
             raise Exception("set bucket custom domain failed, reason: %s, size: %s" % (error_message, size))
         return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, **convertor_result)
-           
+
+    @funcCache
+    def setBucketDisPolicy(self, bucketName, disPolicy, extensionHeaders=None):
+        self._assert_not_null(disPolicy, 'disPolicy is empty')
+        pathArgs = {"disPolicy": None}
+        return self._make_put_request(bucketName, pathArgs=pathArgs, extensionHeaders=extensionHeaders,
+                                      **self.convertor.trans_set_dis_policy(disPolicy))
+
+    @funcCache
+    def getBucketDisPolicy(self, bucketName, extensionHeaders=None):
+        pathArgs = {"disPolicy": None}
+        return self._make_get_request(bucketName, pathArgs=pathArgs, methodName="getBucketDisPolicy",
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def deleteBucketDisPolicy(self, bucketName, extensionHeaders=None):
+        pathArgs = {"disPolicy": None}
+        return self._make_delete_request(bucketName, pathArgs=pathArgs, extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def setBucketDirectColdAccess(self, bucketName, directColdAccessConfiguration, extensionHeaders=None):
+        self._assert_not_null(directColdAccessConfiguration, 'directColdAccessConfiguration is empty')
+        pathArgs = {"directcoldaccess": None}
+        return self._make_put_request(bucketName, extensionHeaders=extensionHeaders, pathArgs=pathArgs,
+                                      **self.convertor.trans_set_bucket_direct_cold_access(
+                                          directColdAccessConfiguration=directColdAccessConfiguration))
+
+    @funcCache
+    def getBucketDirectColdAccess(self, bucketName, extensionHeaders=None):
+        pathArgs = {"directcoldaccess": None}
+        return self._make_get_request(bucketName, methodName="getBucketDirectColdAccess", pathArgs=pathArgs,
+                                      extensionHeaders=extensionHeaders)
+
+    @funcCache
+    def deleteBucketDirectColdAccess(self, bucketName, extensionHeaders=None):
+        pathArgs = {"directcoldaccess": None}
+        return self._make_delete_request(bucketName, pathArgs=pathArgs, extensionHeaders=extensionHeaders)
+
     @funcCache
     def deleteBucketCustomDomain(self, bucketName, domainName=None, extensionHeaders=None):
         self._assert_not_null(domainName, "Domain Name is empty")
         return self._make_delete_request(bucketName, pathArgs={"customdomain": domainName},
                                          extensionHeaders=extensionHeaders)
-    
+
     def get_shadow_client(self):
-        
 
         try:
             token = get_from_cache("shadow_tokens")
@@ -2711,7 +3199,7 @@ class ObsClient(_BasicClient):
         except ValueError as ve:
             raise ve
         except Exception as err:
-            raise RuntimeError("Error occurred when creating shadow client object",str(err))
+            raise RuntimeError("Error occurred when creating shadow client object", str(err))
 
 
 ObsClient.setBucketVersioningConfiguration = ObsClient.setBucketVersioning

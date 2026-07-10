@@ -29,7 +29,7 @@ from obs.model import SseCHeader, SseKmsHeader, Owner, Bucket, ListBucketsRespon
     InitiateMultipartUploadResponse, CopyObjectResponse, GetObjectMetadataResponse, SetObjectMetadataResponse, \
     UploadPartResponse, CopyPartResponse, Replication, GetBucketRequestPaymentResponse, GetBPAModel, GetBPSModel
 from obs.model import FetchPolicy, SetBucketFetchJobResponse, GetBucketFetchJobResponse, FetchJobResponse, \
-    ListWorkflowTemplateResponse,BucketCustomDomain,ListBucketCustomDomainsResponse
+    ListWorkflowTemplateResponse, BucketCustomDomain, ListBucketCustomDomainsResponse
 from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowResponse, \
     AsyncAPIStartWorkflowResponse, ListWorkflowExecutionResponse, GetWorkflowExecutionResponse, \
     RestoreFailedWorkflowExecutionResponse, GetTriggerPolicyResponse, CreateWorkflowTemplateResponse, \
@@ -37,7 +37,10 @@ from obs.model import GetWorkflowResponse, UpdateWorkflowResponse, ListWorkflowR
 from obs.model import DateTime, ListObjectsResponse, Content, CorsRule, ObjectVersionHead, ObjectVersion, \
     ObjectDeleteMarker, DeleteObjectResult, NoncurrentVersionExpiration, NoncurrentVersionTransition, Rule, Condition, \
     Redirect, FilterRule, FunctionGraphConfiguration, Upload, CompleteMultipartUploadResponse, ListPartsResponse, \
-    Grant, ReplicationRule, Transition, Grantee, BucketAliasModel, ListBucketAliasModel, AbortIncompleteMultipartUpload
+    Grant, ReplicationRule, Transition, Grantee, BucketAliasModel, ListBucketAliasModel, AbortIncompleteMultipartUpload, \
+    TagInfoModel, SetObjectTaggingResponse, GetObjectTaggingResponse, DeleteObjectTaggingResponse
+from obs.model import (InventoryConfiguration, InventoryDestination, InventoryFilter, ListBucketInventoryResponse)
+from obs.model import GetObsCompressPolicyResponse, ObjectLockRule, ObjectLockConfiguration
 
 if const.IS_PYTHON2:
     from urllib import unquote_plus, quote_plus
@@ -455,6 +458,84 @@ class Convertor(object):
                     ET.SubElement(tagEle, 'Value').text = util.safe_decode(tag['value'])
         return ET.tostring(root, 'UTF-8')
 
+    def trans_set_object_tagging(self, **kwargs):
+        """
+        Convert object tagging to XML format
+
+        :param kwargs: Should contain 'tags' parameter (list, dict, or list of Tag objects) and optional 'versionId'
+        :return: Dictionary with pathArgs, headers, and entity
+        """
+        tags = kwargs.get('tags')
+        versionId = kwargs.get('versionId')
+        entity = self._trans_object_tags_to_xml(tags)
+
+        pathArgs = {const.TAGGING_PARAM: None}
+        if versionId:
+            pathArgs[const.VERSION_ID_PARAM] = util.to_string(versionId)
+
+        return {
+            'pathArgs': pathArgs,
+            'headers': {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))},
+            'entity': entity
+        }
+
+    def _trans_object_tags_to_xml(self, tags):
+        """
+        Convert tags to XML format for object tagging
+
+        :param tags: Tags as list, dict, or list of Tag objects
+        :return: XML string
+        """
+        root = ET.Element('Tagging')
+        tagSetEle = ET.SubElement(root, 'TagSet')
+
+        # Normalize tags to list
+        tag_list = self._normalize_tags(tags)
+
+        if tag_list:
+            for tag in tag_list:
+                if tag.get('key') is not None:
+                    tagEle = ET.SubElement(tagSetEle, 'Tag')
+                    key_elem = ET.SubElement(tagEle, 'Key')
+                    key_elem.text = util.to_string(tag['key'])
+
+                    # Value can be empty string - use util.safe_decode which handles empty strings
+                    value_elem = ET.SubElement(tagEle, 'Value')
+                    value = tag.get('value')
+                    if value is not None:
+                        value_elem.text = util.safe_decode(value)
+                    else:
+                        value_elem.text = util.safe_decode('')
+
+        return ET.tostring(root, 'UTF-8')
+
+    def _normalize_tags(self, tags):
+        """
+        Normalize tags to a list of dictionaries
+
+        :param tags: Tags in various formats (list, dict, list of Tag objects)
+        :return: List of dictionaries with 'key' and 'value'
+        """
+        if tags is None:
+            return []
+
+        # If it's a dict, convert to list
+        if isinstance(tags, dict):
+            return [{'key': k, 'value': v} for k, v in tags.items()]
+
+        # If it's a list, normalize each item
+        if isinstance(tags, list):
+            normalized = []
+            for item in tags:
+                if isinstance(item, dict):
+                    normalized.append({'key': item.get('key'), 'value': item.get('value')})
+                else:
+                    # Assume it's a Tag object with key and value attributes
+                    normalized.append({'key': getattr(item, 'key', None), 'value': getattr(item, 'value', None)})
+            return normalized
+
+        return []
+
     def trans_set_bucket_cors(self, **kwargs):
         entity = self.trans_cors_rules(kwargs.get('corsRuleList'))
         headers = {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))}
@@ -579,7 +660,7 @@ class Convertor(object):
 
                 if item.get('abortIncompleteMultipartUpload') is not None and item[
                     'abortIncompleteMultipartUpload'].get(
-                        'daysAfterInitiation') is not None:
+                    'daysAfterInitiation') is not None:
                     abortIncompleteMultipartUploadEle = ET.SubElement(ruleEle, 'AbortIncompleteMultipartUpload')
                     ET.SubElement(abortIncompleteMultipartUploadEle, 'DaysAfterInitiation').text = util.to_string(
                         item['abortIncompleteMultipartUpload']['daysAfterInitiation'])
@@ -648,7 +729,8 @@ class Convertor(object):
             if certificate.get("encPrivateKey", None):
                 ET.SubElement(root, "ENCPrivateKey").text = util.to_string(certificate.get("encPrivateKey", None))
             if util.to_string(certificate.get("deleteCertificate", None)):
-                ET.SubElement(root, "DeleteCertificate").text = util.to_string(certificate.get("deleteCertificate", None))
+                ET.SubElement(root, "DeleteCertificate").text = util.to_string(
+                    certificate.get("deleteCertificate", None))
             entity = ET.tostring(root, "UTF-8")
             if len(entity) > const.MAX_CERT_XML_BODY_SIZE:
                 error_message = "XML body size exceeds {} KB limit".format(const.MAX_CERT_XML_BODY_SIZE / 1024)
@@ -1217,6 +1299,24 @@ class Convertor(object):
         entity = json.dumps(fetchJob, ensure_ascii=False)
         return {'headers': headers, 'entity': entity}
 
+    def trans_set_dis_policy(self, disPolicy):
+        headers = {}
+        self._put_key_value(headers, const.CONTENT_TYPE_HEADER, const.MIME_TYPES.get("json"))
+        jsonPolicy = {"rules": disPolicy.get('rules')}
+        entity = json.dumps(jsonPolicy, ensure_ascii=False)
+        return {'headers': headers, 'entity': entity}
+
+    def parseGetBucketDisPolicy(self, body, headers=None):
+        if body is not None and len(body) > 0:
+            body = util.safe_decode(body)
+            jsonBody = json.loads(body)
+            if jsonBody.get('rules') is not None:
+                from obs.model import DisPolicy
+                disPolicy = DisPolicy()
+                disPolicy.rules = jsonBody.get('rules')
+                return disPolicy
+        return None
+
     @staticmethod
     def _find_item(root, item_name, encoding_type=None):
         result = root.find(item_name)
@@ -1338,7 +1438,7 @@ class Convertor(object):
         option.epid = headers.get(self.ha.epid_header())
         option.redundancy = headers.get(self.ha.bucket_redundancy_header())
         return option
-    
+
     def parseGetBucketCustomDomain(self, xml, headers=None):
         root = ET.fromstring(xml)
         domains = root.findall("Domains")
@@ -1353,7 +1453,8 @@ class Convertor(object):
             certificate_type = self._find_item(domain, "CertificateType")
             e = self._find_item(domain, "ExpiredTime")
             expired_time = DateTime.UTCToLocal(e)
-            curr_bucket = BucketCustomDomain(domainName=domain_name, createTime=create_time, certificateId=certificate_id,
+            curr_bucket = BucketCustomDomain(domainName=domain_name, createTime=create_time,
+                                             certificateId=certificate_id,
                                              name=name, certificateType=certificate_type, expiredTime=expired_time)
             entries.append(curr_bucket)
 
@@ -1437,6 +1538,52 @@ class Convertor(object):
                 value = util.safe_encode(value.text) if value is not None else None
                 result.addTag(key, value)
         return result
+
+    def parseGetObjectTagging(self, xml, headers=None):
+        """
+        Parse object tagging XML response
+
+        :param xml: XML string response
+        :param headers: Response headers (optional)
+        :return: TagInfoModel object
+        """
+        from obs.model import Tag
+        result = TagInfoModel()
+        root = ET.fromstring(xml)
+        tags = root.findall('TagSet/Tag')
+        if tags:
+            for tag in tags:
+                key_elem = tag.find('Key')
+                key = util.safe_encode(key_elem.text) if key_elem is not None and key_elem.text is not None else None
+                value_elem = tag.find('Value')
+                # Handle self-closing tags (text is None) - treat as empty string
+                value_text = value_elem.text if value_elem is not None else None
+                if value_text is None:
+                    value_text = ''
+                value = util.safe_encode(value_text)
+                if key is not None:
+                    result.tags.append(Tag(key=key, value=value))
+        return result
+
+    def parseSetObjectTagging(self, xml, headers=None):
+        """
+        Parse setObjectTagging response (HTTP 200 with empty or minimal body)
+
+        :param xml: XML response (may be empty)
+        :param headers: Response headers (optional)
+        :return: SetObjectTaggingResponse
+        """
+        return SetObjectTaggingResponse(body=xml, headers=headers)
+
+    def parseDeleteObjectTagging(self, xml, headers=None):
+        """
+        Parse deleteObjectTagging response (HTTP 204 with no body)
+
+        :param xml: XML response (typically empty for 204)
+        :param headers: Response headers (optional)
+        :return: DeleteObjectTaggingResponse
+        """
+        return DeleteObjectTaggingResponse(body=xml, headers=headers)
 
     def parseGetBucketCors(self, xml, headers=None):
         root = ET.fromstring(xml)
@@ -2025,8 +2172,10 @@ class Convertor(object):
 
     def parseGetBucketPublicAccessBlock(self, xml, headers=None):
         root = ET.fromstring(xml)
-        return GetBPAModel(util.to_bool(self._find_item(root, 'BlockPublicAcls')), util.to_bool(self._find_item(root, 'IgnorePublicAcls')),
-                             util.to_bool(self._find_item(root, 'BlockPublicPolicy')), util.to_bool(self._find_item(root, 'RestrictPublicBuckets')))
+        return GetBPAModel(util.to_bool(self._find_item(root, 'BlockPublicAcls')),
+                           util.to_bool(self._find_item(root, 'IgnorePublicAcls')),
+                           util.to_bool(self._find_item(root, 'BlockPublicPolicy')),
+                           util.to_bool(self._find_item(root, 'RestrictPublicBuckets')))
 
     def parseGetBucketPolicyPublicStatus(self, xml, headers=None):
         root = ET.fromstring(xml)
@@ -2357,5 +2506,468 @@ class Convertor(object):
         return listBucketAlias
 
     # end virtual bucket related
-    # end virtual bucket related
-    # end virtual bucket related
+
+    # Bucket inventory related methods
+    def trans_put_bucket_inventory(self, inventoryConfiguration):
+        """
+        Convert putBucketInventory request to XML format
+        Uses Huawei Cloud OBS XML format (no S3BucketDestination wrapper)
+
+        :param inventoryConfiguration: InventoryConfiguration object or dict
+        :return: Dictionary with pathArgs, headers, and entity
+        """
+        # Use lowercase root element for Huawei Cloud OBS compatibility
+        root = ET.Element('InventoryConfiguration')
+
+        # Handle both dict and InventoryConfiguration object
+        if isinstance(inventoryConfiguration, dict):
+            config = inventoryConfiguration
+        else:
+            config = {
+                'inventoryId': inventoryConfiguration.inventoryId,
+                'isEnabled': inventoryConfiguration.isEnabled,
+                'objectVersion': inventoryConfiguration.objectVersion,
+                'filter': inventoryConfiguration.filter,
+                'frequency': inventoryConfiguration.frequency,
+                'destination': inventoryConfiguration.destination,
+                'optionalFields': inventoryConfiguration.optionalFields
+            }
+
+        # Add InventoryId (required)
+        if config.get('inventoryId') is not None:
+            ET.SubElement(root, 'Id').text = util.safe_decode(config['inventoryId'])
+
+        # Add IsEnabled (required)
+        if config.get('isEnabled') is not None:
+            ET.SubElement(root, 'IsEnabled').text = 'true' if config['isEnabled'] else 'false'
+
+        # Add Filter (optional) - must come before Destination in Huawei Cloud OBS format
+        if config.get('filter') is not None:
+            filter_obj = config['filter']
+            if isinstance(filter_obj, dict):
+                prefix = filter_obj.get('prefix')
+            else:
+                prefix = filter_obj.prefix
+            if prefix is not None:
+                filter_ele = ET.SubElement(root, 'Filter')
+                ET.SubElement(filter_ele, 'Prefix').text = util.safe_decode(prefix)
+
+        # Add Destination (Huawei Cloud OBS format - no S3BucketDestination wrapper)
+        destination = config.get('destination')
+        if destination is not None:
+            dest_ele = ET.SubElement(root, 'Destination')
+
+            # Handle both dict and InventoryDestination object
+            if isinstance(destination, dict):
+                bucket = destination.get('bucket')
+                prefix = destination.get('prefix')
+                format_val = destination.get('format')
+            else:
+                bucket = destination.bucket
+                prefix = destination.prefix
+                format_val = destination.format
+
+            # Huawei Cloud OBS format: Format, Bucket, Prefix directly under Destination
+            if format_val is not None:
+                ET.SubElement(dest_ele, 'Format').text = util.to_string(format_val)
+            if bucket is not None:
+                ET.SubElement(dest_ele, 'Bucket').text = util.safe_decode(bucket)
+            if prefix is not None:
+                ET.SubElement(dest_ele, 'Prefix').text = util.safe_decode(prefix)
+
+        # Add Schedule with Frequency
+        if config.get('frequency') is not None:
+            schedule_ele = ET.SubElement(root, 'Schedule')
+            ET.SubElement(schedule_ele, 'Frequency').text = util.to_string(config['frequency'])
+
+        # Add IncludedObjectVersions (required) - comes after Schedule in Huawei Cloud OBS format
+        if config.get('objectVersion') is not None:
+            ET.SubElement(root, 'IncludedObjectVersions').text = util.to_string(config['objectVersion'])
+
+        # Add OptionalFields (optional)
+        optional_fields = config.get('optionalFields')
+        if optional_fields is not None and len(optional_fields) > 0:
+            fields_ele = ET.SubElement(root, 'OptionalFields')
+            for field in optional_fields:
+                ET.SubElement(fields_ele, 'Field').text = util.to_string(field)
+
+        entity = ET.tostring(root, 'UTF-8')
+        inventory_id = config.get('inventoryId')
+
+        return {
+            'pathArgs': {'inventory': None, 'id': inventory_id},
+            'headers': {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))},
+            'entity': entity
+        }
+
+    def parseGetBucketInventory(self, xml, headers=None):
+        """
+        Parse getBucketInventory response
+
+        :param xml: XML response
+        :param headers: Response headers (optional)
+        :return: GetBucketInventoryResponse
+        """
+        root = ET.fromstring(xml)
+
+        # Parse InventoryId
+        inventory_id = self._find_item(root, 'Id')
+
+        # Parse IsEnabled
+        is_enabled_ele = root.find('IsEnabled')
+        is_enabled = True if is_enabled_ele is not None and is_enabled_ele.text == 'true' else False
+
+        # Parse ObjectVersion
+        object_version = self._find_item(root, 'IncludedObjectVersions')
+
+        # Parse Filter (optional)
+        filter_obj = None
+        filter_ele = root.find('Filter')
+        if filter_ele is not None:
+            prefix = self._find_item(filter_ele, 'Prefix')
+            if prefix is not None:
+                filter_obj = InventoryFilter(prefix=prefix)
+
+        # Parse Frequency from Schedule (AWS S3 standard format with Frequency subelement)
+        frequency = None
+        schedule_ele = root.find('Schedule')
+        if schedule_ele is not None:
+            # Try AWS S3 format first (Frequency subelement)
+            freq_ele = schedule_ele.find('Frequency')
+            if freq_ele is not None and freq_ele.text:
+                frequency = freq_ele.text
+            else:
+                # Try direct text value (alternative format)
+                if schedule_ele.text is not None and schedule_ele.text.strip():
+                    frequency = schedule_ele.text
+
+        # Parse Destination (AWS S3 standard format with S3BucketDestination wrapper)
+        destination = None
+        dest_ele = root.find('Destination')
+        if dest_ele is not None:
+            # Try AWS S3 format first (S3BucketDestination wrapper)
+            bucket_dest_ele = dest_ele.find('S3BucketDestination')
+            if bucket_dest_ele is not None:
+                bucket = self._find_item(bucket_dest_ele, 'Bucket')
+                prefix = self._find_item(bucket_dest_ele, 'Prefix')
+                format_val = self._find_item(bucket_dest_ele, 'Format')
+                destination = InventoryDestination(
+                    bucket=bucket,
+                    prefix=prefix,
+                    format=format_val
+                )
+            else:
+                # Try alternative format (fields directly under Destination)
+                bucket = self._find_item(dest_ele, 'Bucket')
+                prefix = self._find_item(dest_ele, 'Prefix')
+                format_val = self._find_item(dest_ele, 'Format')
+                if bucket is not None or format_val is not None:
+                    destination = InventoryDestination(
+                        bucket=bucket,
+                        prefix=prefix,
+                        format=format_val
+                    )
+
+        # Parse OptionalFields (optional)
+        optional_fields = []
+        optional_fields_ele = root.find('OptionalFields')
+        if optional_fields_ele is not None:
+            field_elements = optional_fields_ele.findall('Field')
+            if field_elements is not None:
+                for field_ele in field_elements:
+                    if field_ele.text:
+                        optional_fields.append(util.safe_encode(field_ele.text))
+
+        # Create InventoryConfiguration
+        configuration = InventoryConfiguration(
+            inventoryId=inventory_id,
+            isEnabled=is_enabled,
+            objectVersion=object_version,
+            filter=filter_obj,
+            frequency=frequency,
+            destination=destination,
+            optionalFields=optional_fields if len(optional_fields) > 0 else None
+        )
+
+        return configuration
+
+    def parseListBucketInventory(self, xml, headers=None):
+        """
+        Parse listBucketInventory response
+
+        :param xml: XML response
+        :param headers: Response headers (optional)
+        :return: ListBucketInventoryResponse
+        """
+        root = ET.fromstring(xml)
+
+        configurations = []
+
+        # Parse all inventory configurations
+        config_elements = root.findall('InventoryConfiguration')
+        if config_elements is not None:
+            for config_ele in config_elements:
+                # Parse InventoryId
+                inventory_id = self._find_item(config_ele, 'Id')
+
+                # Parse IsEnabled
+                is_enabled_ele = config_ele.find('IsEnabled')
+                is_enabled = True if is_enabled_ele is not None and is_enabled_ele.text == 'true' else False
+
+                # Parse ObjectVersion
+                object_version = self._find_item(config_ele, 'IncludedObjectVersions')
+
+                # Parse Filter (optional)
+                filter_obj = None
+                filter_ele = config_ele.find('Filter')
+                if filter_ele is not None:
+                    prefix = self._find_item(filter_ele, 'Prefix')
+                    if prefix is not None:
+                        filter_obj = InventoryFilter(prefix=prefix)
+
+                # Parse Frequency from Schedule (AWS S3 standard format with Frequency subelement)
+                frequency = None
+                schedule_ele = config_ele.find('Schedule')
+                if schedule_ele is not None:
+                    # Try AWS S3 format first (Frequency subelement)
+                    freq_ele = schedule_ele.find('Frequency')
+                    if freq_ele is not None and freq_ele.text:
+                        frequency = freq_ele.text
+                    else:
+                        # Try direct text value (alternative format)
+                        if schedule_ele.text is not None and schedule_ele.text.strip():
+                            frequency = schedule_ele.text
+
+                # Parse Destination (AWS S3 standard format with S3BucketDestination wrapper)
+                destination = None
+                dest_ele = config_ele.find('Destination')
+                if dest_ele is not None:
+                    # Try AWS S3 format first (S3BucketDestination wrapper)
+                    bucket_dest_ele = dest_ele.find('S3BucketDestination')
+                    if bucket_dest_ele is not None:
+                        bucket = self._find_item(bucket_dest_ele, 'Bucket')
+                        prefix = self._find_item(bucket_dest_ele, 'Prefix')
+                        format_val = self._find_item(bucket_dest_ele, 'Format')
+                        destination = InventoryDestination(
+                            bucket=bucket,
+                            prefix=prefix,
+                            format=format_val
+                        )
+                    else:
+                        # Try alternative format (fields directly under Destination)
+                        bucket = self._find_item(dest_ele, 'Bucket')
+                        prefix = self._find_item(dest_ele, 'Prefix')
+                        format_val = self._find_item(dest_ele, 'Format')
+                        if bucket is not None or format_val is not None:
+                            destination = InventoryDestination(
+                                bucket=bucket,
+                                prefix=prefix,
+                                format=format_val
+                            )
+
+                # Parse OptionalFields (optional)
+                optional_fields = []
+                optional_fields_ele = config_ele.find('OptionalFields')
+                if optional_fields_ele is not None:
+                    field_elements = optional_fields_ele.findall('Field')
+                    if field_elements is not None:
+                        for field_ele in field_elements:
+                            if field_ele.text:
+                                optional_fields.append(util.safe_encode(field_ele.text))
+
+                # Create InventoryConfiguration
+                configuration = InventoryConfiguration(
+                    inventoryId=inventory_id,
+                    isEnabled=is_enabled,
+                    objectVersion=object_version,
+                    filter=filter_obj,
+                    frequency=frequency,
+                    destination=destination,
+                    optionalFields=optional_fields if len(optional_fields) > 0 else None
+                )
+
+                configurations.append(configuration)
+
+        return ListBucketInventoryResponse(
+            configurations=configurations
+        )
+
+
+    # OBS Compress Policy (Online Decompression) related methods
+    def trans_put_obs_compress_policy(self, rules=None):
+        """
+        Convert setObsCompressPolicy request to JSON format
+
+        :param rules: Rules as list of ObsCompressPolicyRule objects
+        :return: Dictionary with pathArgs, headers, and entity
+        """
+        # Handle single ObsCompressPolicyRequest object for backward compatibility
+        if rules is None:
+            rules = []
+
+        # If a dict with 'rules' key, extract it
+        if isinstance(rules, dict) and 'rules' in rules:
+            rules = rules['rules']
+        # If it's not a list, convert to list
+        if not isinstance(rules, list):
+            rules = [rules]
+
+        # Build rules array
+        rules_list = []
+        for rule in rules:
+            if isinstance(rule, dict):
+                rule_dict = rule.copy()
+            else:
+                rule_dict = {
+                    'id': rule.id,
+                    'project': rule.project,
+                    'agency': rule.agency,
+                    'events': rule.events,
+                    'prefix': rule.prefix,
+                    'suffix': rule.suffix,
+                    'overwrite': rule.overwrite,
+                    'decompresspath': rule.decompresspath,
+                    'policytype': rule.policytype
+                }
+
+            # Only include non-None values
+            rule_dict_filtered = {k: v for k, v in rule_dict.items() if v is not None}
+            rules_list.append(rule_dict_filtered)
+
+        entity = json.dumps({'rules': rules_list}, ensure_ascii=False)
+
+        return {
+            'pathArgs': {'obscompresspolicy': None},
+            'headers': {const.CONTENT_TYPE_HEADER: const.CONTENT_TYPE_JSON},
+            'entity': entity
+        }
+
+    def parseGetObsCompressPolicy(self, json_body, headers=None):
+        """
+        Parse getObsCompressPolicy response
+
+        :param json_body: JSON response body
+        :param headers: Response headers (optional)
+        :return: GetObsCompressPolicyResponse
+        """
+        if json_body:
+            if isinstance(json_body, str):
+                data = json.loads(json_body)
+            else:
+                data = json_body
+
+            rules = data.get('rules', [])
+
+        return GetObsCompressPolicyResponse(rules=rules)
+
+    # WORM Object Lock Policy related methods
+    def trans_put_bucket_object_lock(self, config=None):
+        """
+        Convert setBucketObjectLock request to XML format
+         Object Lock Configuration format
+        :param config: Object Lock Configuration
+        :return: Dictionary with pathArgs, headers, and entity
+        """
+        root = ET.Element('ObjectLockConfiguration')
+        if config is not None:
+            # Add ObjectLockEnabled element (required for AWS S3)
+            if config.objectLockEnabled is not None:
+                ET.SubElement(root, 'ObjectLockEnabled').text = config.objectLockEnabled
+            # AWS S3 Object Lock only supports ONE default retention rule
+            if config.rule is not None:
+                rule = config.rule
+                if isinstance(rule, dict):
+                    rule_dict = rule
+                else:
+                    rule_dict = {
+                        'days': rule.days,
+                        'years': rule.years if hasattr(rule, 'years') else None
+                    }
+                # Add Rule element with DefaultRetention
+                rule_ele = ET.SubElement(root, 'Rule')
+                if rule_dict.get('days') is not None:
+                    retention_ele = ET.SubElement(rule_ele, 'DefaultRetention')
+                    ET.SubElement(retention_ele, 'Mode').text = rule.mode if rule.mode else 'COMPLIANCE'
+                    ET.SubElement(retention_ele, 'Days').text = util.to_string(rule_dict['days'])
+                elif rule_dict.get('years') is not None:
+                    retention_ele = ET.SubElement(rule_ele, 'DefaultRetention')
+                    ET.SubElement(retention_ele, 'Mode').text = rule.mode if rule.mode else 'COMPLIANCE'
+                    ET.SubElement(retention_ele, 'Years').text = util.to_string(rule_dict['years'])
+        entity = ET.tostring(root, 'UTF-8')
+        return {
+            'pathArgs': {'object-lock': None},
+            'headers': {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))},
+            'entity': entity
+        }
+
+    def parseGetBucketObjectLock(self, xml, headers=None):
+        """
+        Parse getBucketObjectLock response
+        :param xml: XML response body
+        :param headers: Response headers (optional)
+        :return: ObjectLockConfiguration
+        """
+        config = ObjectLockConfiguration()
+        root = ET.fromstring(xml)
+        config.objectLockEnabled = self._find_item(root, 'ObjectLockEnabled')
+        rule = root.find('Rule')
+        if rule is not None:
+            retention = rule.find('DefaultRetention')
+            if retention is not None:
+                days = self._find_item(retention, 'Days')
+                years = self._find_item(retention, 'Years')
+                mode = self._find_item(retention, 'Mode')
+                if days or years:
+                    config.rule = ObjectLockRule(
+                        days=days,
+                        years=years,
+                        mode=mode
+                    )
+
+        return config
+
+    def trans_put_object_retention(self, mode=None, date=None):
+        root = ET.Element('Retention')
+        ET.SubElement(root, 'Mode').text = mode
+        ET.SubElement(root, 'RetainUntilDate').text = util.to_string(date)
+        return ET.tostring(root, 'UTF-8')
+
+    def trans_set_bucket_direct_cold_access(self, **kwargs):
+        """
+        转换设置桶归档直读配置请求
+        :param kwargs: 包含directColdAccessConfiguration的字典
+        :return: 请求参数字典
+        """
+        from obs.model import DirectColdAccessConfiguration
+        config = kwargs.get('directColdAccessConfiguration')
+        root = ET.Element('DirectColdAccessConfiguration')
+
+        # 根据API文档，Status是必填项
+        if config is not None and config.get('status') is not None:
+            ET.SubElement(root, 'Status').text = config.get('status')
+
+        entity = ET.tostring(root, 'UTF-8')
+        return {
+            'headers': {const.CONTENT_MD5_HEADER: util.base64_encode(util.md5_encode(entity))},
+            'entity': entity
+        }
+
+    def parseGetBucketDirectColdAccess(self, xml, headers=None):
+        """
+        解析获取桶归档直读配置响应
+        :param xml: XML响应体
+        :param headers: 响应头（可选）
+        :return: GetBucketDirectColdAccessResponse对象
+        """
+        from obs.model import GetBucketDirectColdAccessResponse
+        # 处理空body和None body
+        if xml is None or len(xml) == 0:
+            return None
+        result = GetBucketDirectColdAccessResponse()
+        root = ET.fromstring(xml)
+        # # 处理XML命名空间
+        status = root.find('{*}Status')
+        if status is None:
+            status = root.find('Status')
+        result.status = status.text if status is not None else None
+        return result

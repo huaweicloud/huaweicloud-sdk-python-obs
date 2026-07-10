@@ -1,3 +1,18 @@
+Version 3.26.6
+
+New features:
+
+1. Support bucket inventory related interfaces(ObsClient.putBucketInventory/ObsClient.getBucketInventory/ObsClient.deleteBucketInventory/ObsClient.listBucketInventory)
+2. Support online decompression related interfaces(ObsClient.setObsCompressPolicy/ObsClient.getObsCompressPolicy/ObsClient.deleteObsCompressPolicy)
+3. Support parallel file system modify object interface (ObsClient.modifyFile)
+4. Support parallel file system truncate object interface (ObsClient.truncateFile)
+5. Support object tagging related interfaces (ObsClient.setObjectTagging/ObsClient.getObjectTagging/ObsClient.deleteObjectTagging)
+6. Support WORM related interfaces (ObsClient.setBucketObjectLock/ObsClient.getBucketObjectLock/ObsClient.putObjectRetention)
+7. Support asynchronous resumable upload interface with pause and cancel capabilities (ObsClient.uploadFileAsync)
+8. Support bucket DIS policy related interfaces (ObsClient.setBucketDisPolicy/ObsClient.getBucketDisPolicy/ObsClient.deleteBucketDisPolicy)
+9. Support bucket direct archive read related interfaces (ObsClient.setBucketDirectColdAccess/ObsClient.getBucketDirectColdAccess/ObsClient.deleteBucketDirectColdAccess)
+10. Support initializing ObsClient with OIDC Token (IdTokenCredentialsProvider)
+-------------------------------------------------------------------------------------------------
 Version 3.26.2
 
 Fix problem:

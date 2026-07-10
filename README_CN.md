@@ -1,4 +1,19 @@
-﻿Version 3.26.2
+﻿Version 3.26.6
+
+新特性：
+
+1. 支持桶清单相关接口（ObsClient.putBucketInventory/ObsClient.getBucketInventory/ObsClient.deleteBucketInventory/ObsClient.listBucketInventory）
+2. 支持在线解压相关接口（ObsClient.setObsCompressPolicy/ObsClient.getObsCompressPolicy/ObsClient.deleteObsCompressPolicy）
+3. 支持并行文件系统修改写对象接口（ObsClient.modifyFile）
+4. 支持并行文件系统截断对象接口（ObsClient.truncateFile）
+5. 支持对象标签相关接口（ObsClient.setObjectTagging/ObsClient.getObjectTagging/ObsClient.deleteObjectTagging）
+6. 支持WORM相关接口（ObsClient.setBucketObjectLock/ObsClient.getBucketObjectLock/ObsClient.putObjectRetention）
+7. 支持异步断点续传上传接口，并支持暂停和取消（ObsClient.uploadFileAsync）
+8. 支持桶DIS策略相关接口（ObsClient.setBucketDisPolicy/ObsClient.getBucketDisPolicy/ObsClient.deleteBucketDisPolicy）
+9. 支持桶归档直读相关接口（ObsClient.setBucketDirectColdAccess/ObsClient.getBucketDirectColdAccess/ObsClient.deleteBucketDirectColdAccess）
+10. 支持使用OIDC Token初始化ObsClient（IdTokenCredentialsProvider）
+-------------------------------------------------------------------------------------------------
+Version 3.26.2
 
 修复问题:
 
