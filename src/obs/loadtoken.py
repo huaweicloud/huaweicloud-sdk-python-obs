@@ -729,20 +729,20 @@ class IdTokenCredentialsProvider(object):
             # 通过代理连接：先连代理，再用CONNECT隧道连目标
             if is_secure:
                 conn = httplib.HTTPSConnection(
-                    self.proxy_host, port=self.proxy_port, timeout=30
+                    self.proxy_host, port=self.proxy_port, timeout=10
                 )
                 conn.set_tunnel(host, port, headers=proxy_headers if proxy_headers else None)
             else:
                 conn = httplib.HTTPConnection(
-                    self.proxy_host, port=self.proxy_port, timeout=30
+                    self.proxy_host, port=self.proxy_port, timeout=10
                 )
                 conn.set_tunnel(host, port, headers=proxy_headers if proxy_headers else None)
         else:
             # 直连IAM
             if is_secure:
-                conn = httplib.HTTPSConnection(host, port=port, timeout=30)
+                conn = httplib.HTTPSConnection(host, port=port, timeout=10)
             else:
-                conn = httplib.HTTPConnection(host, port=port, timeout=30)
+                conn = httplib.HTTPConnection(host, port=port, timeout=10)
 
         return conn
 
